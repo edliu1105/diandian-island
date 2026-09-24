@@ -6,11 +6,17 @@ islands raw/cut/isl_*.png   -> assets/isl/<world>.png     (512 px)
 ui      raw/cut/ui_*.png    -> assets/props/ui_*.png
 bg      raw/bg/bg_*.png     -> assets/bg/<name>.jpg (1280 px) + assets/bgthumb/<name>.jpg (160 px)
 icon    raw/icon/icon_app   -> assets/icon-180/192/512.png + icon-maskable-512.png + startup images
-usage: python tools/optimize.py
+props are also given a "matte" pass (R3 open item 3, same-artist look): the glossy white specular streaks of the
+generated props are filled with their own surrounding colour (Peppa / Bluey props nearly flat, like those two families
+of character stickers; the other worlds keep a soft sheen). Outlines, shapes, sizes and every detail stay as generated.
+usage: python tools/optimize.py [--props-only]
 """
 import os, glob, colorsys
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from assets_manifest import ASSETS
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 A = os.path.join(ROOT, 'assets')
@@ -47,6 +53,46 @@ def hue_variant(im, target_hue, sat_mul=1.0, val_mul=1.0):
     return Image.fromarray((out * 255).astype(np.uint8), 'RGBA')
 
 
+PROP_WORLD = {aid[5:]: world for aid, kind, world, subj in ASSETS if aid.startswith('prop_')}
+FLAT_WORLDS = {'peppa', 'bluey'}       # the two flat-painted character families
+# designed white parts next to colour (stripes, doors, cloud, rocket body, white muzzles, cream) and glass / ice, whose shine IS the
+# material: no matte pass for these (checked on the before/after sheet)
+NO_MATTE = {'candle', 'candlebox', 'cloud', 'policecar', 'firetruck', 'rocket', 'plate', 'bunny', 'kitten', 'teddy', 'cake', 'coinjar', 'cookiejar', 'crate', 'cube'}
+
+
+def _sat(x):
+    mx = x.max(-1); mn = x.min(-1)
+    return np.where(mx > 1e-6, (mx - mn) / np.maximum(mx, 1e-6), 0), mx
+
+
+def _blur(x, r):
+    if x.ndim == 3:
+        return np.dstack([_blur(x[..., i], r) for i in range(x.shape[-1])])
+    return np.asarray(Image.fromarray(np.clip(x * 255, 0, 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(r))).astype(np.float32) / 255
+
+
+def matte(im, white):
+    """fill glossy specular highlights (near-white paint inside a strongly coloured region, away from the ink lines)
+    with the colour around them, lightened by `white` (0 = flat, 1 = unchanged). Normalised convolution: only
+    non-highlight, non-ink pixels contribute to the fill colour."""
+    a = np.asarray(im.convert('RGBA')).astype(np.float32) / 255
+    rgb, al = a[..., :3], a[..., 3]
+    R = max(im.size) / 1100.0
+    s, v = _sat(rgb)
+    ink = (v < 0.3) & (al > 0.3)
+    inkd = np.asarray(Image.fromarray((ink * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(int(9 * R) | 1))) > 0
+    cand = (s < 0.4) & (v > 0.78) & (al > 0.5)
+    valid = ((~cand) & (~ink) & (al > 0.5)).astype(np.float32)
+    num = _blur(rgb * valid[..., None], 28 * R); den = _blur(valid, 28 * R)[..., None]
+    fill = np.clip(num / np.maximum(den, 1e-3), 0, 1)
+    fs, _ = _sat(fill)
+    m = cand * np.clip((fs - 0.38) / 0.2, 0, 1) * (~inkd) * (den[..., 0] > 0.05)
+    m = np.asarray(Image.fromarray((m * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(2 * R))).astype(np.float32) / 255
+    tint = fill * (1 - white) + white
+    out = rgb * (1 - m[..., None]) + tint * m[..., None]
+    return Image.fromarray((np.clip(np.dstack([out, al]), 0, 1) * 255).astype(np.uint8), 'RGBA')
+
+
 def props():
     os.makedirs(os.path.join(A, 'props'), exist_ok=True)
     os.makedirs(os.path.join(A, 'isl'), exist_ok=True)
@@ -59,9 +105,11 @@ def props():
             print(n, save_png(im, os.path.join(A, 'props', n + '.png'), 320))
         else:
             short = n[5:]
+            if short not in NO_MATTE:
+                im = matte(im, 0.12 if PROP_WORLD.get(short) in FLAT_WORLDS else 0.4)
             print(n, save_png(im, os.path.join(A, 'props', short + '.png'), 512 if short in BIG else 400))
-    # boots colour family (the one generated pair re-coloured; outline and shine untouched)
-    boots = Image.open(os.path.join(ROOT, 'raw', 'cut', 'prop_boots.png')).convert('RGBA')
+    # boots colour family (the one generated pair re-coloured; outline untouched)
+    boots = matte(Image.open(os.path.join(ROOT, 'raw', 'cut', 'prop_boots.png')).convert('RGBA'), 0.12)
     boots.thumbnail((400, 400), Image.LANCZOS)
     for name, hue, sm, vm in (('boots_blue', 0.60, 1.0, 1.0), ('boots_yellow', 0.13, 1.0, 1.25), ('boots_green', 0.33, 0.9, 0.95), ('boots_pink', 0.93, 0.55, 1.2)):
         v = hue_variant(boots, hue, sm, vm)
@@ -128,5 +176,6 @@ def icons():
 
 if __name__ == '__main__':
     props()
-    backgrounds()
-    icons()
+    if '--props-only' not in sys.argv:
+        backgrounds()
+        icons()

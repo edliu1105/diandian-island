@@ -116,10 +116,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cu
 #gear .g{position:absolute;inset:26px;border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 0 0 2px rgba(43,33,24,.35)}
 #gear svg{position:absolute;inset:30px;width:28px;height:28px;opacity:.6}
 #gear .ring{position:absolute;inset:18px;width:52px;height:52px;transform:rotate(-90deg)}
-#nosound{position:fixed;left:50%;top:calc(14px + var(--st));width:104px;height:104px;margin-left:-52px;background:#FFE08A;z-index:45;display:none;animation:breatheBtn 1.6s ease-in-out infinite}
+#nosound{position:fixed;left:50%;top:calc(14px + var(--st));width:104px;height:104px;margin-left:-52px;background:#FFE08A;z-index:45;display:none;animation:breatheBtn 1.6s ease-in-out 4}
 #nosound svg{width:66%;height:66%}
 html.nosound body[data-scr="map"] #nosound{display:flex}
-html.nosound #avatar{animation:breatheBtn 1.6s ease-in-out infinite}
+/* no sound: only the big speaker calls (four pulses); the avatar stays still - one thing at a time */
 html.nosound #avatar .ear{background:#FFE08A;width:52px;height:52px;right:-10px;bottom:-10px}
 #toast{position:absolute;right:calc(20px + var(--sr));bottom:calc(110px + var(--sb));padding:12px 18px;border-radius:var(--r-md);background:#fff;box-shadow:var(--stk-sm);font-size:16px;font-weight:700;display:none}
 #toast.on{display:block;animation:fadeIn .2s both}
@@ -194,7 +194,7 @@ html.nosound #avatar .ear{background:#FFE08A;width:52px;height:52px;right:-10px;
 .task .it{display:flex;align-items:center;justify-content:center;gap:4px}
 .task img{height:54px;width:auto}
 .task .arw{width:34px;height:34px}
-.task .goal .tap{animation:goalTap 1.2s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 0}
+.task .goal .tap{animation:goalTap 1.2s ease-in-out 3;transform-box:fill-box;transform-origin:50% 0}
 @keyframes goalTap{0%,55%,100%{transform:translateY(0) scale(1)}70%{transform:translateY(-6px) scale(1)}85%{transform:translateY(2px) scale(.9)}}
 .task .qboth{display:flex;align-items:center;gap:6px}
 .task .linkpic{display:flex;gap:6px}
@@ -207,7 +207,7 @@ html.nosound #avatar .ear{background:#FFE08A;width:52px;height:52px;right:-10px;
 .done.press{transform:scale(.9)}
 .done svg{width:58%;height:58%;overflow:visible}
 .done .ring{position:absolute;inset:-12px;width:calc(100% + 24px);height:calc(100% + 24px);transform:rotate(-90deg);pointer-events:none}
-.done.ready{animation:readyPulse 1.4s ease-in-out infinite}
+.done.ready{animation:readyPulse 1.2s ease-in-out 2.4s 2}   /* "done?" only after a pause, twice (single focus) */
 @keyframes readyPulse{0%,100%{box-shadow:var(--stk)}50%{box-shadow:0 0 0 4px var(--ink),0 7px 0 4px rgba(43,33,24,.22),0 0 0 18px rgba(255,255,255,.55)}}
 .glow{filter:drop-shadow(0 0 14px rgba(255,236,140,1)) drop-shadow(0 0 4px rgba(255,255,255,1))}
 .yellowflash{animation:yflash .5s ease-in-out 3}
@@ -297,6 +297,10 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const fast = () => !!window.__fast;
 const T = ms => (fast() ? 0 : ms);
 const EASE = { pop: 'cubic-bezier(.2,.9,.3,1.25)', glide: 'cubic-bezier(.45,0,.2,1)', drop: 'cubic-bezier(.5,0,.9,.4)', out: 'cubic-bezier(.2,.8,.2,1)', lin: 'linear' };
+/* §3.10 rhythm, one table. Short feedback (press, pick up, place) 120-200 ms (CSS .12-.16 s); a reveal moment
+   (flip / lift / uncover, then the explanation pause) 800-1200 ms; a celebration <= 2.5 s and skippable.
+   Counting and moving the objects are math actions: one beat per object, never squeezed into a reveal. */
+const DUR = { tap: 160, reveal: 1000, praise: 1500, star: 600, celebrate: 2400, finish: 2000, mapStar: 360, mapGap: 40 };
 if (/[?&]fast=1/.test(location.search)) window.__fast = 1;
 
 function el(tag, cls, parent, attrs) {
@@ -637,6 +641,8 @@ const Sfx = {
   bubble() { this.sweep(500, 1400, 0.12, 0.08, 'sine'); },
   sparkle() { [2093, 2637, 3136, 3951].forEach((f, i) => this.mar(f, i * 0.05, 0.12, 0.35)); },
   reveal() { this.sweep(420, 1300, 0.45, 0.07, 'triangle'); this.sparkle(); },
+  hey() { this.mar(783.99, 0, 0.22, 0.35); this.mar(1046.5, 0.13, 0.2, 0.45); },
+  yawn() { this.sweep(520, 230, 1.0, 0.05, 'triangle', 0.1); this.nz(0.05, 0.9, 900, 300, 0.7, 0.035, 'lowpass'); },
   /* four sisters of one marimba figure; never the same one twice in a row */
   CORRECT: [
     [[523.25, 0], [659.25, 0.085], [783.99, 0.17], [1046.5, 0.255]],
@@ -1355,6 +1361,14 @@ class Actor {
   hop() { this.scope.anim(this.body, REACT.hop, { duration: 460, fill: 'none' }); return this; }
   cheer() { this.scope.anim(this.body, REACT.hop, { duration: 420, iterations: 2, fill: 'none' }); return this; }
   lookAt(x, y) { const d = x < this.x ? -1 : 1, up = y != null && y < this.y - this.h ? -3 : 0; this.scope.anim(this.body, [{ transform: 'translate(0,0) rotate(0)' }, { transform: 'translate(' + (d * 4) + '%,' + up + '%) rotate(' + (d * 7) + 'deg)', offset: 0.25 }, { transform: 'translate(' + (d * 4) + '%,' + up + '%) rotate(' + (d * 7) + 'deg)', offset: 0.75 }, { transform: 'translate(0,0) rotate(0)' }], { duration: 1100, easing: EASE.glide, fill: 'none' }); return this; }
+  /* §3.10 idle life. glance: leans towards the child (k < 1 = a small one); wave: a call; yawn: a big slow stretch */
+  glance(k) { k = k || 1; const f = 'translateY(' + (-2.5 * k) + '%) scale(' + (1 + 0.045 * k) + ')'; this.scope.anim(this.body, [{ transform: 'translateY(0) scale(1)' }, { transform: f, offset: 0.3 }, { transform: f, offset: 0.7 }, { transform: 'translateY(0) scale(1)' }], { duration: 1000, easing: EASE.glide, fill: 'none' }); return this; }
+  wave() { this.scope.anim(this.body, [{ transform: 'rotate(0) translateY(0)' }, { transform: 'rotate(-8deg) translateY(-4%)', offset: 0.18 }, { transform: 'rotate(8deg) translateY(-4%)', offset: 0.42 }, { transform: 'rotate(-8deg) translateY(-4%)', offset: 0.66 }, { transform: 'rotate(0) translateY(0)' }], { duration: 850, easing: 'ease-in-out', fill: 'none' }); return this; }
+  yawn() {
+    this.scope.anim(this.body, [{ transform: 'scale(1,1) rotate(0)' }, { transform: 'scale(.96,1.09) rotate(-3deg)', offset: 0.45 }, { transform: 'scale(.96,1.09) rotate(-3deg)', offset: 0.65 }, { transform: 'scale(1.04,.95) rotate(0)', offset: 0.85 }, { transform: 'scale(1,1) rotate(0)' }], { duration: 1250, easing: EASE.glide, fill: 'none' });
+    Fx.zz(this.x + this.w * 0.22, this.y - this.h * 0.92);
+    return this;
+  }
   destroy() { this.dead = true; this.root.remove(); }
 }
 
@@ -1609,6 +1623,18 @@ const Fx = {
     const an = s.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: 'translateX(320px)', opacity: 0 }], { duration: T(600) + 1, easing: EASE.out, fill: 'forwards' });
     an.onfinish = () => s.remove();
   },
+  zz(x, y) {
+    const p = Stage.toScreen(x, y);
+    [0, 1].forEach(i => {
+      const sz = 40 - i * 12;
+      const s = svg('svg', { viewBox: '0 0 20 20', width: sz, height: sz }, this.layer);
+      Object.assign(s.style, { position: 'absolute', left: (p.x + i * 20) + 'px', top: (p.y - i * 18) + 'px', opacity: 0 });
+      svg('path', { d: 'M4 4H16L4 16H16', fill: 'none', stroke: '#2B2118', 'stroke-width': 5.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+      svg('path', { d: 'M4 4H16L4 16H16', fill: 'none', stroke: '#FFFFFF', 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+      const an = s.animate([{ transform: 'translate(0,0) scale(.4)', opacity: 0 }, { transform: 'translate(8px,-18px) scale(1)', opacity: 1, offset: 0.3 }, { transform: 'translate(12px,-30px) scale(1)', opacity: 1, offset: 0.7 }, { transform: 'translate(18px,-52px) scale(1)', opacity: 0 }], { duration: T(1500) + 1, delay: T(i * 260), easing: EASE.out, fill: 'both' });
+      an.onfinish = () => s.remove();
+    });
+  },
   shake() { const g = $('#stage'); g.animate([{ translate: '0 0' }, { translate: '-6px 3px' }, { translate: '5px -4px' }, { translate: '-3px 2px' }, { translate: '0 0' }], { duration: T(360) + 1 }); },
 };
 
@@ -1819,6 +1845,11 @@ const Clock = {
 const Session = {
   G: null, st: null, qn: 0,
   alive(st) { return !!st && this.st === st && !st.scope.dead && this.G === st.G && !st.G.dead; },
+  /* the host of this scene when it is on stage as itself (not as a math object) */
+  host(G) {
+    const h = G && G.actors && G.actors[G.game.host || G.W.host];
+    return h && !h.math && !h.dead && h.x > 0 && h.x < Stage.W ? h : null;
+  },
   async start(worldId, gameId, opt) {
     opt = opt || {};
     if (this.G) this.teardown(this.G);
@@ -1988,8 +2019,10 @@ const Session = {
         this.cheer(G, st);
         this.streakFx(G);
         this.maybeEgg(G);
-        await st.scope.guard(Voice.afterSay(300));
-        await st.scope.wait(1200);
+        /* §3.10: praise + star into the tray <= DUR.celebrate - the praise waits for its own sentence at most
+           DUR.praise, the star takes DUR.star (a tap skips it all) */
+        await st.scope.guard(Promise.race([Voice.afterSay(120), st.scope.wait(DUR.praise)]));
+        await st.scope.wait(DUR.celebrate - DUR.praise - DUR.star);
         if (!this.alive(my)) return 'dead';
         if (!st.demo) Mastery.record(G, st, true);
         this.ffOff();
@@ -2052,8 +2085,8 @@ const Session = {
     const c = Stage.toScreen(Stage.W / 2, Stage.H / 2);
     Object.assign(star.style, { position: 'absolute', width: '72px', height: '72px', left: (c.x - 36) + 'px', top: (c.y - 36) + 'px' });
     Sfx.star();
-    const a = star.animate([{ transform: 'scale(.2) rotate(-40deg)', opacity: 0 }, { transform: 'scale(1.3) rotate(0)', opacity: 1, offset: 0.35 }, { transform: 'translate(' + (sr.left + sr.width / 2 - c.x) + 'px,' + (sr.top + sr.height / 2 - c.y) + 'px) scale(.55)', opacity: 1 }], { duration: T(700) + 1, easing: EASE.glide, fill: 'forwards' });
-    await G.scope.guard(new Promise(r => { a.onfinish = r; setTimeout(r, T(800) + 50); }));
+    const a = star.animate([{ transform: 'scale(.2) rotate(-40deg)', opacity: 0 }, { transform: 'scale(1.3) rotate(0)', opacity: 1, offset: 0.35 }, { transform: 'translate(' + (sr.left + sr.width / 2 - c.x) + 'px,' + (sr.top + sr.height / 2 - c.y) + 'px) scale(.55)', opacity: 1 }], { duration: T(DUR.star) + 1, easing: EASE.glide, fill: 'forwards' });
+    await G.scope.guard(new Promise(r => { a.onfinish = r; setTimeout(r, T(DUR.star + 100) + 50); }));
     star.remove();
     slot.classList.add('on');
     slot.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: T(260) + 1, easing: EASE.pop });
@@ -2089,7 +2122,7 @@ const Session = {
     sc.timeout(() => { Sfx.mar(1568, 0, 0.25, 0.4); Sfx.mar(2093, 0.06, 0.25, 0.35); Fx.burst((host.x + mate.x) / 2, Math.min(host.y - host.h * 0.55, mate.y - mate.h * 0.55), { n: 12, dist: 60 }); }, 360);
   },
   streakFx(G) {
-    if (G.streak === 3) { this.highFive(G); Object.values(G.actors).filter(a => !a.math).forEach((a, i) => G.scope.timeout(() => a.cheer(), 1200 + i * 90)); Fx.confetti(30); }
+    if (G.streak === 3) { this.highFive(G); Object.values(G.actors).filter(a => !a.math).forEach((a, i) => G.scope.timeout(() => a.cheer(), 900 + i * 60)); Fx.confetti(30); }
     if (G.streak === 5) { Fx.confetti(60); Fx.burst(Stage.W / 2, Stage.H * 0.3, { n: 24, dist: 200 }); Sfx.fanfare(); }
   },
   maybeEgg(G) {
@@ -2141,7 +2174,7 @@ const Session = {
     Fx.confetti(40);
     Object.values(G.actors).filter(a => !a.math).forEach((a, i) => sc.timeout(() => a.cheer(), i * 110));
     Voice.say(G.game.bye || '玩得真开心！', { tag: 'bye', owner: G });
-    await sc.wait(2200);                      /* never resolves if the child left meanwhile (C02-a) */
+    await sc.wait(DUR.finish);                /* never resolves if the child left meanwhile (C02-a) */
     if (G.dead || this.G !== G) return;
     this.ffOff();
     Mastery.sessionEnd(G);
@@ -2206,7 +2239,10 @@ const Session = {
 
 /* ================================================================ HINTS
    one clock (Clock.t, paused in the background) and absolute deadlines from the child's last own action:
-   5 s the question again · 10 s the gesture · 15 s the hand points · 25 s the helper does one step · then one step every 10 s.
+   5 s the host leans towards the child and says the question again (then the work glows) · 10 s the host waves,
+   then the gesture · 15 s the host yawns, then the hand points · 20 s the helper does one step · then one every 1.6 s.
+   One thing at a time: a cue first, its hint only after it and only if the child has not acted meanwhile.
+   Before the first hint (the child is thinking) a friend now and then glances at the child - never the host.
    Every one of them marks the question as assisted (it can never count as mastery evidence). */
 const Hints = {
   arm(st) { this.reset(st); st.hintTimer = st.scope.interval(() => this.tick(st), 100); },
@@ -2220,9 +2256,17 @@ const Hints = {
     if (st.hintLv === 0 && (Voice.busy() || Hand.busy)) { st.idleFrom = t; return; }   /* the ladder starts after the question was said */
     if (Hand.busy) return;
     const idle = (t - st.idleFrom) / HS();
-    if (st.hintLv < 1) { if (idle >= 5000) { st.hintLv = 1; this.mark(st, 'hint1'); Voice.say(st.prompt || st.game.intro, { tag: 'hint1' }); this.glow(st); } return; }
-    if (st.hintLv < 2) { if (idle >= 10000) { st.hintLv = 2; this.mark(st, 'hint2'); if (st.game.gestureHint) st.game.gestureHint(st, false); } return; }
-    if (st.hintLv < 3) { if (idle >= 15000) { st.hintLv = 3; this.mark(st, 'hint3'); const step = st.game.next(st, 'right'); if (step) this.point(st, step); } return; }
+    if (st.hintLv < 1) {
+      if (idle < 5000) { this.life(st, t, idle); return; }
+      st.hintLv = 1; this.mark(st, 'hint1');
+      const h = Session.host(st.G); if (h && !fast()) h.glance();
+      Voice.say(st.prompt || st.game.intro, { tag: 'hint1' });
+      this.retap();
+      st.scope.timeout(() => { if (st.hintLv === 1) this.glow(st); }, 450 * HS());
+      return;
+    }
+    if (st.hintLv < 2) { if (idle >= 10000) { st.hintLv = 2; this.mark(st, 'hint2'); this.cue(st, 'wave', 2, () => { if (st.game.gestureHint) st.game.gestureHint(st, false); }); } return; }
+    if (st.hintLv < 3) { if (idle >= 15000) { st.hintLv = 3; this.mark(st, 'hint3'); this.cue(st, 'yawn', 3, () => { const step = st.game.next(st, 'right'); if (step) this.point(st, step); }); } return; }
     const due = st.nextAuto || (st.idleFrom + 20000 * HS());      /* anchored: 20 s, then every 1.6 s - never drifting */
     if (t < due - 20) return;
     if (Voice.busy()) { if (!st.autoDue) st.autoDue = t; if (t - st.autoDue < 3000 * HS()) return; }   /* let a sentence end (max 3 s) */
@@ -2233,6 +2277,25 @@ const Hints = {
     if (step) this.showStep(st, step).then(() => { if (Session.alive(st) && ['act', 'ready', 'input'].includes(st.phase)) gesture(step.g, step.p, { system: true }); });
   },
   glow(st) { (st.game.workEls ? st.game.workEls(st) : []).forEach(e => { e.classList.add('glow'); st.scope.timeout(() => e.classList.remove('glow'), 1400); }); },
+  /* the child is thinking: now and then ONE friend (never the host) glances at the child - peripheral life, not a call */
+  life(st, t, idle) {
+    if (!st.glanceAt) st.glanceAt = t + 3500 * HS();                 /* the first glance ~3.5 s into the thinking */
+    if (st.guided || fast() || idle < 2500 || Voice.busy() || t < st.glanceAt) return;
+    st.glanceAt = t + (8000 + Math.random() * 6000) * HS();
+    const G = st.G, host = Session.host(G);
+    const pool = Object.values(G.actors || {}).filter(a => a !== host && !a.math && !a.dead && a.x > 40 && a.x < Stage.W - 40);
+    if (pool.length) pool[Math.floor(Math.random() * pool.length)].glance(0.6);
+  },
+  /* the host's own cue (wave / yawn) comes first and alone; the hint it introduces follows when it is over */
+  cue(st, kind, lv, then) {
+    const go = () => { if (Session.alive(st) && st.hintLv === lv && ['act', 'ready', 'input'].includes(st.phase)) then(); };
+    const h = Session.host(st.G);
+    if (!h || fast()) { go(); return; }
+    if (kind === 'wave') { h.wave(); Sfx.hey(); } else { h.yawn(); Sfx.yawn(); }
+    st.scope.timeout(go, (kind === 'wave' ? 850 : 1250) * HS());
+  },
+  /* the task card's example taps again together with the repeated question */
+  retap() { $$('.task .goal .tap').forEach(e => { e.style.animation = 'none'; void e.getBoundingClientRect(); e.style.animation = ''; }); },
   point(st, step) { const t = this.target(st, step); if (!t) return; Hand.busy++; Hand.tap(st.scope, t.x, t.y).then(() => { Hand.done(); }); },
   target(st, step) { if (step.x != null) return { x: step.x, y: step.y }; const e = st.game.find ? st.game.find(st, step.p.id) : null; return e ? center(e) : null; },
   async showStep(st, step) {
@@ -2276,6 +2339,7 @@ function gesture(name, p, meta) {
   if (!system) {
     st.childOps++;
     Hints.touch(st);
+    const db = st.doneBtn; if (db && db.classList.contains('ready')) { db.style.animation = 'none'; void db.offsetWidth; db.style.animation = ''; }
     if (st.demo && !st.childTook) { st.childTook = true; Hand.kill(); }
   }
   if (st.phase === 'ready') st.phase = 'input';
@@ -2488,6 +2552,10 @@ const MapView = {
     this.build();
     const tok = this.celebTok = (this.celebTok || 0) + 1;
     const live = () => this.celebTok === tok && Screens.cur === 'map' && !Session.G;   /* a new session ends the show */
+    /* §3.10: short (5 stars ~2.4 s) and a tap anywhere skips to the end (update() below draws the final lamps) */
+    let skip = false, fly = null;
+    const onTap = () => { skip = true; if (fly) try { fly.finish(); } catch (e) {} };
+    $('#map').addEventListener('pointerdown', onTap, { capture: true, once: true });
     const ws = Store.w(wid), I = this.isl[wid];
     const before = ws.stars - n;
     const lamps = $$('i', I.lan);
@@ -2495,18 +2563,21 @@ const MapView = {
     if (before % 10 === 0) lamps.forEach(l => l.classList.remove('on'));
     const bigN = Math.floor(before / 10);
     I.big.innerHTML = ''; for (let i = 0; i < Math.min(bigN, 6); i++) img('assets/props/ui_star.png', '', I.big);
-    await new Promise(r => setTimeout(r, T(400)));
+    await new Promise(r => setTimeout(r, T(150)));
     let cur = before;
     for (let i = 0; i < n; i++) {
       if (!live()) return;
+      if (skip) break;
       cur++;
       const slot = lamps[(cur - 1) % 10];
       const sr = slot.getBoundingClientRect();
       const star = img('assets/props/ui_star.png', '', $('#fx'));
       const sx = window.innerWidth / 2, sy = window.innerHeight / 2;
       Object.assign(star.style, { position: 'absolute', width: '60px', height: '60px', left: (sx - 30) + 'px', top: (sy - 30) + 'px' });
-      const a = star.animate([{ transform: 'scale(.3)', opacity: 0 }, { transform: 'scale(1.2)', opacity: 1, offset: 0.3 }, { transform: 'translate(' + (sr.left + sr.width / 2 - sx) + 'px,' + (sr.top + sr.height / 2 - sy) + 'px) scale(.4)', opacity: 1 }], { duration: T(620) + 1, easing: EASE.glide, fill: 'forwards' });
-      await new Promise(r => { a.onfinish = r; setTimeout(r, T(700) + 30); });
+      const a = star.animate([{ transform: 'scale(.3)', opacity: 0 }, { transform: 'scale(1.2)', opacity: 1, offset: 0.3 }, { transform: 'translate(' + (sr.left + sr.width / 2 - sx) + 'px,' + (sr.top + sr.height / 2 - sy) + 'px) scale(.4)', opacity: 1 }], { duration: T(DUR.mapStar) + 1, easing: EASE.glide, fill: 'forwards' });
+      fly = a;
+      await new Promise(r => { a.onfinish = r; setTimeout(r, T(DUR.mapStar + 80) + 30); });
+      fly = null;
       star.remove(); if (!live()) return;
       slot.classList.add('on'); Sfx.star();
       Count.say(((cur - 1) % 10) + 1);
@@ -2521,8 +2592,9 @@ const MapView = {
         bs.animate([{ transform: 'scale(3)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: T(500) + 1, easing: EASE.pop });
         Sfx.complete(); Voice.say('十颗变一颗大星！', { tag: 'ten' });
         await new Promise(r => setTimeout(r, T(600)));
-      } else await new Promise(r => setTimeout(r, T(220)));
+      } else await new Promise(r => setTimeout(r, T(DUR.mapGap)));
     }
+    $('#map').removeEventListener('pointerdown', onTap, { capture: true });
     if (!live()) return;
     this.update();
     const opened = LIVE().filter(o => Store.w(o).justOpened);
@@ -6616,12 +6688,13 @@ defGame({
     const crates = on.filter(x => x.el._val === 10), ones = on.filter(x => x.el._val < 10);
     crates.forEach(c => c.el.classList.add('glow'));
     Sfx.reveal();
-    /* place value: the tens digit lands on the crate(s), the ones digit on the loose cubes */
+    /* place value: the tens digit under the lifted crate(s), the ones digit under the lifted loose cubes - in the gap the
+       lift opens on the platform (above them it would sit on the host's face: spot check 5150, V2 L3 landscape) */
     if (digits()) {
       const tensD = UI.num(Math.floor(q.T / 10), 64), onesD = UI.num(q.T % 10, 64);
-      const cb = box(crates[0].el); const t = el('div', '', Stage.el); t.style.position = 'absolute'; t.style.zIndex = 12; t.appendChild(tensD); st.els.push(t); place(t, cb.x + cb.w / 2 - 24, cb.y - 150);
+      const cb = box(crates[0].el); const t = el('div', '', Stage.el); t.style.position = 'absolute'; t.style.zIndex = 12; t.appendChild(tensD); st.els.push(t); place(t, cb.x + cb.w / 2 - 24, cb.y + cb.h - 44);
       K.pop(st, t);
-      if (ones.length || q.T % 10 === 0) { const ob = ones.length ? box(ones[0].el) : { x: cb.x + cb.w + 20, y: cb.y, w: 60 }; const o2 = el('div', '', Stage.el); o2.style.position = 'absolute'; o2.style.zIndex = 12; o2.appendChild(onesD); st.els.push(o2); place(o2, ob.x + ob.w / 2 - 24, ob.y - 150); K.pop(st, o2, 200); }
+      if (ones.length || q.T % 10 === 0) { const ob = ones.length ? box(ones[0].el) : { x: cb.x + cb.w + 20, y: cb.y, w: 60, h: cb.h }; const o2 = el('div', '', Stage.el); o2.style.position = 'absolute'; o2.style.zIndex = 12; o2.appendChild(onesD); st.els.push(o2); place(o2, ob.x + ob.w / 2 - 24, ob.y + ob.h - 44); K.pop(st, o2, 200); }
     } else {
       K.bigQty(st, q.T, box(G.els.plat).x + 165, box(G.els.plat).y - 260, 90);
     }

@@ -10,15 +10,24 @@ Budget: about 10-15 minutes wall clock. A new random sample every run (the seed 
  3. random screenshots (WebKit, real timings): 8 random game / level / orientation picks, question + reveal, on a
     contact sheet for a human look (clipping, overlaps, readability)                               (~5 min)
  4. offline, sampled (Chromium): first visit precaches every asset, offline reload, one question   (~1 min)
-usage: python tests/spotcheck.py [seed]
-out:   tests/logs/spotcheck.log, shots/spot/spot_<seed>.jpg
+ 5. idle cues and rhythm, looked at and timed (real timings): a child who touches nothing - the host's cues come
+    one at a time (a screenshot at each cue, on a sheet); a right answer - praise + star into the tray; the map's
+    star show for 5 stars and a tap that skips it; frame pacing during the celebrations and the tap-to-press delay
+    (Chromium - a desktop proxy, the iPad itself stays on the real-device checklist)                (~1.5 min)
+What is judged is what the child sees and hears (screens, order, timing). Code is only read to explain a problem.
+usage: python tests/spotcheck.py [seed] [--parts 1,3,5]
+out:   tests/logs/spotcheck.log, shots/spot/spot_<seed>.jpg, shots/spot/idle_<seed>.jpg
 """
 import os, sys, time, random, re
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import serve, new_page, enter, wait_phase, q, step, answer_question, wait_next_question, Log, ROOT, SPEECH_INIT
 
-SEED = int(sys.argv[1]) if len(sys.argv) > 1 else int(time.time()) % 100000
+ARGS = [a for i, a in enumerate(sys.argv[1:]) if not a.startswith('--') and sys.argv[i] != '--parts']
+SEED = int(ARGS[0]) if ARGS else int(time.time()) % 100000
+PARTS = set('12345')
+if '--parts' in sys.argv:
+    PARTS = set(sys.argv[sys.argv.index('--parts') + 1].replace(',', ''))
 R = random.Random(SEED)
 WORLDS = [('peppa', ['P1', 'P2', 'P3', 'P4'], 3), ('bluey', ['B1', 'B2', 'B3', 'B4'], 3), ('huluwa', ['H1', 'H2', 'H3', 'H4'], 4),
           ('paw', ['A1', 'A2', 'A3', 'A4'], 4), ('xiyou', ['X1', 'X2', 'X3', 'X4'], 4), ('avengers', ['V1', 'V2', 'V3', 'V4'], 4)]
@@ -60,17 +69,150 @@ def real_answer(page, gen, limit=40):
     return q(page)
 
 
+TIMELINE_JS = """() => {
+  window.__tl = [];
+  const now = () => Math.round(performance.now());
+  for (const k of ['glance', 'wave', 'yawn']) { const o = Actor.prototype[k]; Actor.prototype[k] = function (...a) { window.__tl.push([k, this.id, now()]); return o.apply(this, a); }; }
+  const og = Hand.go; let last = 0;
+  Hand.go = function (...a) { const t = now(); if (t - last > 400) window.__tl.push(['hand', '', t]); last = t; return og.apply(this, a); };
+  const ogl = Hints.glow; Hints.glow = function (...a) { window.__tl.push(['glow', '', now()]); return ogl.apply(this, a); };
+  const osay = Voice.say; Voice.say = function (text, opt) { if (opt && opt.tag === 'hint1') window.__tl.push(['say-again', '', now()]); return osay.apply(this, arguments); };
+}"""
+
+FRAMES_JS = """(ms) => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;
+  const f = t => { d.push(t - last); last = t; if (t - t0 < ms) requestAnimationFrame(f); else { d.sort((a, b) => a - b); res({ n: d.length, p50: d[Math.floor(d.length * 0.5)], p95: d[Math.floor(d.length * 0.95)], long: d.filter(x => x > 25).length }); } };
+  requestAnimationFrame(f); })"""
+
+
+def part5(p, base, log):
+    """5. this round's UX: the idle cues one at a time (screenshots), the celebration budget, the map's star show and
+    its skip, frame pacing and the tap-to-press delay"""
+    from PIL import Image, ImageDraw, ImageFont
+    shots = []
+    wk = p.webkit.launch()
+    page = new_page(wk, base, 1180, 820, fast=False, sw='block')
+    enter(page); page.wait_for_timeout(600)
+    page.evaluate(TIMELINE_JS)
+    w, g = R.choice([('peppa', 'P2'), ('peppa', 'P3'), ('bluey', 'B2'), ('bluey', 'B4'), ('huluwa', 'H1'), ('paw', 'A1'), ('xiyou', 'X2'), ('avengers', 'V2')])
+    page.evaluate("([w,g,s]) => window.__go(w, g, 1, {noDemo: true, seed: s})", [w, g, R.randint(1, 9999)])
+    try:
+        st = wait_phase(page, phases=('ready', 'input'), timeout=30000)
+        gen = st['gen']
+        mates = page.evaluate("() => { const G = Session.G, h = Session.host(G); return Object.values(G.actors).filter(a => a !== h && !a.math && !a.dead && a.x > 40 && a.x < Stage.W - 40).map(a => a.id); }")
+        f = os.path.join(SHOTS, 'idle_0_ready.png'); page.screenshot(path=f); shots.append((f, '%s ready' % g))
+        seen = 0
+        t_end = time.time() + 22
+        while time.time() < t_end:
+            tl = page.evaluate('window.__tl')
+            cur = q(page)
+            if not cur or cur['gen'] != gen:
+                break
+            if len(tl) > seen:
+                ev = tl[seen]; seen += 1
+                if ev[0] in ('glow', 'say-again'):
+                    continue
+                page.wait_for_timeout(380)
+                f = os.path.join(SHOTS, 'idle_%d_%s.png' % (len(shots), ev[0]))
+                page.screenshot(path=f); shots.append((f, '%s %s' % (ev[0], ev[1])))
+                if ev[0] == 'hand' and any(e[0] == 'yawn' for e in tl[:seen]):
+                    break
+            page.wait_for_timeout(100)
+        tl = page.evaluate('window.__tl')
+        t = {}
+        for k, who, ms in tl:
+            t.setdefault(k, []).append(ms)
+        t0 = tl[0][2] if tl else 0
+        log.w('5 %s idle timeline (ms from the first cue): %s' % (g, ', '.join('%s:%s@%d' % (k, who, ms - t0) for k, who, ms in tl)))
+        wave, yawn, hands = (t.get('wave') or [None])[0], (t.get('yawn') or [None])[0], t.get('hand', [])
+        glow, again = (t.get('glow') or [None])[0], (t.get('say-again') or [None])[0]
+        log.check(again is not None and glow is not None and glow > again, '5 %s 5 s: the question is said again, the work glows after it (+%s ms)' % (g, None if again is None or glow is None else glow - again))
+        log.check(wave is not None and any(h > wave + 600 for h in hands) and not any(wave - 50 < h < wave + 600 for h in hands),
+                  '5 %s 10 s: the host waves first, the gesture comes after the wave' % g)
+        log.check(yawn is not None and any(h >= yawn + 1000 for h in hands) and not any(yawn - 50 < h < yawn + 1000 for h in hands),
+                  '5 %s 15 s: the host yawns (little z), then the hand points - never both at once' % g)
+        friends = [x for x in tl if x[0] == 'glance' and again is not None and x[2] < again - 200]
+        log.check(len(friends) == (1 if mates else 0), '5 %s thinking time: %s glances at the child before the first hint (%s; friends on stage %s)' % (g, 'one friend' if mates else 'nobody (no friend on stage)', [x[1] for x in friends], mates))
+        cur = real_answer(page, gen)
+        page.wait_for_function("(g) => { const q = window.__q; return !q || q.gen !== g || q.phase === 'praise'; }", arg=gen, timeout=20000, polling=20)
+        t1 = time.time()
+        page.wait_for_function("(g) => { const q = window.__q; return !q || q.gen !== g; }", arg=gen, timeout=20000, polling=20)
+        cel = (time.time() - t1) * 1000
+        log.check(cel <= 2700, '5 %s right answer: praise + star into the tray %.0f ms (<= 2.5 s + polling)' % (g, cel))
+    except Exception as e:
+        log.fail('5 %s idle / celebration: %s' % (g, str(e)[:160]))
+    page.evaluate("gesture('home')"); page.wait_for_timeout(900)
+    try:
+        ms = page.evaluate("async (w) => { Store.w(w).stars += 5; const t = performance.now(); await MapView.celebrate(w, 5, false); return performance.now() - t; }", w)
+        log.check(ms <= 2500, '5 map: 5 stars fly into the lamps in %.0f ms (<= 2.5 s)' % ms)
+        page.evaluate("(w) => { Store.w(w).stars += 5; window.__celT = null; const t = performance.now(); MapView.celebrate(w, 5, false).then(() => { window.__celT = performance.now() - t; }); }", w)
+        page.wait_for_timeout(650)
+        f = os.path.join(SHOTS, 'idle_map_stars.png'); page.screenshot(path=f); shots.append((f, 'map stars flying'))
+        page.evaluate("document.querySelector('#map').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}))")
+        page.wait_for_function('window.__celT != null', timeout=5000)
+        skipped = page.evaluate('window.__celT')
+        log.check(skipped <= 1300, '5 map: a tap skips the star show (it ended %.0f ms after it began)' % skipped)
+    except Exception as e:
+        log.fail('5 map star show: %s' % str(e)[:160])
+    log.check(not page.errors, '5 zero page / console errors %s' % page.errors[:2])
+    page.context.close(); wk.close()
+    cr = p.chromium.launch()
+    page = new_page(cr, base, 1180, 820, fast=False, sw='block')
+    enter(page); page.wait_for_timeout(600)
+    try:
+        page.evaluate("([w,g]) => window.__go(w, g, 1, {noDemo: true, seed: 7})", ['peppa', 'P1'])
+        wait_phase(page, phases=('act', 'ready', 'input'), timeout=30000)
+        page.evaluate("""() => { window.__lat = []; document.addEventListener('pointerdown', e => { const ts = e.timeStamp, t = e.target.closest('.tgt,.card,.done,.item');
+            requestAnimationFrame(() => requestAnimationFrame(() => window.__lat.push([Math.round(performance.now() - ts), !!(t && t.classList.contains('press'))]))); }, true); }""")
+        s1 = page.evaluate("window.__next('right')")
+        if s1 and s1.get('at'):
+            page.mouse.move(s1['at']['x'], s1['at']['y']); page.mouse.down(); page.wait_for_timeout(120); page.mouse.up()
+        page.wait_for_timeout(300)
+        lat = page.evaluate('window.__lat')
+        log.check(bool(lat) and lat[0][0] <= 50, '5 a touch shows its press by the second frame, %s ms (<= 50 ms, Chromium)' % (lat[0][0] if lat else None))
+        for i in range(30):
+            cur = q(page)
+            if not cur or cur['submitted']:
+                break
+            if cur['phase'] in ('act', 'ready', 'input'):
+                step(page, 'right')
+            page.wait_for_timeout(250)
+        page.wait_for_function("() => { const q = window.__q; return !q || q.phase === 'praise'; }", timeout=20000, polling=20)
+        fr = page.evaluate(FRAMES_JS, 2500)
+        log.check(fr['p95'] <= 20 and fr['long'] <= max(2, fr['n'] // 50), '5 celebration frame pacing (Chromium): p50 %.1f / p95 %.1f ms, %d of %d frames > 25 ms' % (fr['p50'], fr['p95'], fr['long'], fr['n']))
+    except Exception as e:
+        log.fail('5 frames / latency: %s' % str(e)[:160])
+    log.check(not page.errors, '5 chromium: zero page / console errors %s' % page.errors[:2])
+    page.context.close(); cr.close()
+    try:
+        font = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 20)
+        cell = 420; cols = 3; rows = (len(shots) + cols - 1) // cols
+        S = Image.new('RGB', (cols * (cell + 10) + 10, max(1, rows) * (cell + 40) + 10), (250, 246, 238))
+        d = ImageDraw.Draw(S)
+        for k, (f, n) in enumerate(shots):
+            im = Image.open(f).convert('RGB'); im.thumbnail((cell, cell))
+            r, c = divmod(k, cols); x, y = 10 + c * (cell + 10), 10 + r * (cell + 40)
+            S.paste(im, (x, y + 30)); d.text((x, y + 4), '%d %s' % (k, n), fill=(43, 33, 24), font=font)
+        out = os.path.join(SHOTS, 'idle_%d.jpg' % SEED); S.save(out, quality=85)
+        log.w('idle sheet: %s' % out)
+    except Exception as e:
+        log.warn('idle sheet: %s' % e)
+
+
 def main():
     log = Log('spotcheck')
     log.w('seed %d' % SEED)
     t_all = time.time()
     with sync_playwright() as p, serve() as base:
         wk = p.webkit.launch()
+        if '5' in PARTS:
+            t0 = time.time()
+            part5(p, base, log)
+            log.w('part 5: %.0f s' % (time.time() - t0))
         # ---------------------------------------------------------------- 1. every game once, random level
         t0 = time.time()
         page = new_page(wk, base, 1180, 820, fast=True)
         enter(page)
-        for w, games, top in WORLDS:
+        for w, games, top in (WORLDS if '1' in PARTS else []):
             for g in games:
                 lv = R.randint(1, top)
                 before = len(page.errors)
@@ -92,7 +234,7 @@ def main():
         t0 = time.time()
         page = new_page(wk, base, 1180, 820, fast=True)
         enter(page)
-        for w, games, top in WORLDS:
+        for w, games, top in (WORLDS if '2' in PARTS else []):
             g, lv = R.choice(games), R.randint(1, top)
             before = len(page.errors)
             page.evaluate("([w,g,l,s]) => window.__go(w, g, l, {noDemo: true, seed: s})", [w, g, lv, R.randint(1, 9999)])
@@ -115,15 +257,16 @@ def main():
             except Exception:
                 log.fail('2 %s: the home button did not return to the map' % g)
                 page.evaluate("gesture('home')")
-        gb = page.locator('#gear').bounding_box()
-        page.mouse.move(gb['x'] + gb['width'] / 2, gb['y'] + gb['height'] / 2)
-        page.mouse.down(); page.wait_for_timeout(1800); page.mouse.up()
-        page.wait_for_timeout(300)
-        log.check(page.evaluate("document.querySelector('#parent').classList.contains('on')"), '2 parent gear: a real 1.8 s long press opens the adult gate')
-        page.evaluate("Parent.close()")
-        page.mouse.click(gb['x'] + gb['width'] / 2, gb['y'] + gb['height'] / 2)
-        page.wait_for_timeout(300)
-        log.check(not page.evaluate("document.querySelector('#parent').classList.contains('on')"), '2 parent gear: a short tap does NOT open the gate (child-proof)')
+        if '2' in PARTS:
+            gb = page.locator('#gear').bounding_box()
+            page.mouse.move(gb['x'] + gb['width'] / 2, gb['y'] + gb['height'] / 2)
+            page.mouse.down(); page.wait_for_timeout(1800); page.mouse.up()
+            page.wait_for_timeout(300)
+            log.check(page.evaluate("document.querySelector('#parent').classList.contains('on')"), '2 parent gear: a real 1.8 s long press opens the adult gate')
+            page.evaluate("Parent.close()")
+            page.mouse.click(gb['x'] + gb['width'] / 2, gb['y'] + gb['height'] / 2)
+            page.wait_for_timeout(300)
+            log.check(not page.evaluate("document.querySelector('#parent').classList.contains('on')"), '2 parent gear: a short tap does NOT open the gate (child-proof)')
         log.check(not page.errors, '2 zero page / console errors %s' % page.errors[:2])
         page.context.close()
         log.w('part 2: %.0f s' % (time.time() - t0))
@@ -132,7 +275,7 @@ def main():
         t0 = time.time()
         picks = []
         allg = [(w, g, top) for w, games, top in WORLDS for g in games]
-        for w, g, top in R.sample(allg, 8):
+        for w, g, top in (R.sample(allg, 8) if '3' in PARTS else []):
             picks.append((w, g, R.randint(1, top), R.choice(['L', 'P'])))
         files = []
         for orient in ('L', 'P'):
@@ -175,6 +318,8 @@ def main():
             page.context.close()
         wk.close()
         try:
+            if not files:
+                raise RuntimeError('part 3 not run - no contact sheet')
             from PIL import Image, ImageDraw, ImageFont
             font = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 20)
             ims = [(os.path.basename(f), Image.open(f).convert('RGB')) for f in files]
@@ -197,6 +342,9 @@ def main():
 
         # ---------------------------------------------------------------- 4. offline, sampled (Chromium)
         t0 = time.time()
+        if '4' not in PARTS:
+            log.w('total %.1f min (seed %d, parts %s)' % ((time.time() - t_all) / 60, SEED, ''.join(sorted(PARTS))))
+            sys.exit(0 if log.close() else 1)
         cr = p.chromium.launch()
         ctx = cr.new_context(viewport={'width': 1180, 'height': 820}, service_workers='allow')
         ctx.add_init_script('window.__fast = 1;' + SPEECH_INIT)
