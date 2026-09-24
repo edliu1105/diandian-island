@@ -1,0 +1,12 @@
+# working material (not published)
+batches/
+incoming/
+raw/
+review/
+shots/
+tests/logs/
+__pycache__/
+*.pyc
+# the client's brief and raw review-tool transcripts stay on the developer machine (not published)
+docs/TASK.md
+docs/logs/

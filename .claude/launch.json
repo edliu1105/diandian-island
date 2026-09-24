@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "diandian",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "18743", "--bind", "127.0.0.1"],
+      "port": 18743
+    }
+  ]
+}
