@@ -2979,7 +2979,9 @@ const SWU = {
     if (!reg || this.reg === reg) return;
     this.reg = reg;
     reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') this.maybe(); }); });
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.switching) { location.reload(); return; } this.stale = true; this.reloadIfSafe(); });
+    /* the first install claiming a page that had no worker is NOT a version switch (same release as this page) */
+    this.hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.switching) { location.reload(); return; } if (this.hadController) { this.stale = true; this.reloadIfSafe(); } this.hadController = true; });
     try { reg.update(); } catch (e) {}
     this.maybe();
   },

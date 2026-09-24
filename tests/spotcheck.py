@@ -354,6 +354,7 @@ def main():
         page.goto(base + 'index.html')
         page.wait_for_function('window.__ready === true', timeout=20000)
         page.click('#play')
+        page.evaluate('window.__firstLoad = 1')           # a reload by itself would drop this mark
         n_assets = len(re.findall(r'\["\./assets/', open(os.path.join(ROOT, 'sw.js'), encoding='utf-8').read()))
         full = False
         for _ in range(90):
@@ -363,6 +364,8 @@ def main():
                 break
             page.wait_for_timeout(1000)
         log.check(full, '4 first visit: all %d assets precached' % n_assets)
+        page.wait_for_timeout(3500)                          # past the map's safe-moment check
+        log.check(page.evaluate('window.__firstLoad === 1'), '4 first visit: the page never reloads by itself when the worker takes over')
         ctx.set_offline(True)
         try:
             page.reload(); page.wait_for_function('window.__ready === true', timeout=20000)
