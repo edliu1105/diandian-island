@@ -147,6 +147,11 @@ html.nosound #avatar .ear{background:#FFE08A;width:52px;height:52px;right:-10px;
 #gbg.blur{filter:blur(14px)}
 #stage{position:absolute;left:0;top:0;transform-origin:0 0}
 #stage > *{position:absolute}
+/* one depth order on the stage: the scene <= 30 (ground furniture low; characters and things - the nearer in front) <
+   cards, task card, done button 40 < a thing under the finger 45 < notes - numbers, rings, flags, badges, pairing
+   lines, marks 50 (never covered) < the ghost hand 60 */
+#stage > .card, #stage > .task, #stage > .done{z-index:40}
+#stage > .badge, #stage > .ringo, #stage > .flagb, #stage > .note, #stage > svg.lines:not(.scene){z-index:50 !important}
 .hud{position:absolute;z-index:40}
 #home{left:calc(14px + var(--sl));top:calc(14px + var(--st));width:96px;height:96px;background:#FFE08A}
 #home img{width:74%;height:74%;object-fit:contain}
@@ -313,7 +318,36 @@ function el(tag, cls, parent, attrs) {
 function img(src, cls, parent) { const i = el('img', cls, parent); i.alt = ''; i.draggable = false; i.decoding = 'async'; i.src = src; return i; }
 const SVGNS = 'http://www.w3.org/2000/svg';
 function svg(tag, attrs, parent) { const e = document.createElementNS(SVGNS, tag); if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
-function place(e, x, y, w, h) { e.style.left = x + 'px'; e.style.top = y + 'px'; if (w != null) e.style.width = w + 'px'; if (h != null) e.style.height = h + 'px'; }
+function place(e, x, y, w, h) { e.style.left = x + 'px'; e.style.top = y + 'px'; if (w != null) e.style.width = w + 'px'; if (h != null) e.style.height = h + 'px'; if (e._actorId) Stand.dirty(); }
+/* the characters on the stage stand on one ground: the nearer one (feet lower on the screen) is drawn in front of every
+   farther one it overlaps (a nearer character is only ever raised, never lowered below what a game put it above).
+   Recomputed in the frame after a character was placed. The math things (items) keep the layer their game gave them:
+   what is being counted is never pushed behind a character (see tests/depth_audit.py). */
+const Stand = {
+  due: 0,
+  dirty() { if (!this.due) this.due = requestAnimationFrame(() => { this.due = 0; this.sort(); }); },
+  sort() {
+    if (!Session.G || !Stage.el) return;
+    const A = [];
+    Array.from(Stage.el.children).forEach((e, i) => {
+      if (!e._actorId || e.style.visibility === 'hidden' || e.dataset.z != null) return;
+      const b = box(e); if (b.x + b.w < 0 || b.x > Stage.W || b.y + b.h < 0 || b.y > Stage.H) return;   /* where it really stands */
+      const z = parseInt(e.style.zIndex, 10);
+      A.push({ e, i, b, z: isNaN(z) ? 0 : z, z0: e.style.zIndex });
+    });
+    const over = (p, q) => { const dx = Math.min(p.x + p.w * 0.86, q.x + q.w * 0.86) - Math.max(p.x + p.w * 0.14, q.x + q.w * 0.14), dy = Math.min(p.y + p.h, q.y + q.h) - Math.max(p.y, q.y); return dx > 0 && dy > 0; };
+    const above = (p, q) => (p.z !== q.z ? p.z > q.z : p.i > q.i);
+    for (let pass = 0; pass < 6; pass++) {
+      let moved = false;
+      for (const a of A) for (const b of A) {
+        if (a === b || a.b.y + a.b.h <= b.b.y + b.b.h + 6 || !over(a.b, b.b) || above(a, b)) continue;   /* a nearer, drawn behind b */
+        a.z = Math.min(30, b.z + 1); moved = true;
+      }
+      if (!moved) break;
+    }
+    A.forEach(o => { if (o.z !== (parseInt(o.z0, 10) || 0)) o.e.style.zIndex = String(o.z); });
+  },
+};
 function box(e) { return { x: parseFloat(e.style.left) || 0, y: parseFloat(e.style.top) || 0, w: parseFloat(e.style.width) || 0, h: parseFloat(e.style.height) || 0 }; }
 function center(e) { const b = box(e); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; }
 
@@ -1188,7 +1222,8 @@ const Input = {
     c.path.push(p); if (c.path.length > 400) c.path.splice(1, 1);
     if (sp.drag && c.moved) {
       c.el.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(1.08) rotate(' + clamp(dx * 0.04, -8, 8) + 'deg)';
-      c.el.style.zIndex = 30;
+      if (c.z0 === undefined) c.z0 = c.el.style.zIndex;        /* its own layer, given back on release */
+      c.el.style.zIndex = 45;
       if (sp.onDragMove) sp.onDragMove(p);
     }
     if (sp.rotate) {
@@ -1239,8 +1274,8 @@ const Input = {
     if (sp.slide) { const last = c.passed[c.passed.length - 1]; if (last) { gesture('pick', { id: sp.id, at: last }); return; } }
     if (sp.drag && c.moved) {
       const drop = this.findDrop(sp, p);
-      if (drop) { t.style.zIndex = ''; gesture('drop', { id: sp.id, to: drop }); this.fails = 0; }
-      else { this.snapBack(t); this.fail(); }
+      if (drop) { t.style.zIndex = c.z0 || ''; gesture('drop', { id: sp.id, to: drop }); this.fails = 0; }
+      else { this.snapBack(t, c.z0); this.fail(); }
       if (sp.onDragEnd) sp.onDragEnd(!!drop);
       return;
     }
@@ -1277,7 +1312,7 @@ const Input = {
     const c = this.cur; if (!c || e.pointerId !== c.pid) return;
     this.cur = null; clearTimeout(c.holdT);
     c.el.classList.remove('press');
-    if (c.spec.drag && c.moved) this.snapBack(c.el);
+    if (c.spec.drag && c.moved) this.snapBack(c.el, c.z0);
     if (c.spec.hold && c.spec.onHoldEnd) c.spec.onHoldEnd(false);
   },
   /* rotation / exit / teardown: drop any gesture in flight, objects spring home */
@@ -1286,7 +1321,7 @@ const Input = {
     this.cur = null; clearTimeout(c.holdT);
     try { c.el.releasePointerCapture(c.pid); } catch (err) {}
     c.el.classList.remove('press');
-    if (c.spec.drag && c.moved) this.snapBack(c.el);
+    if (c.spec.drag && c.moved) this.snapBack(c.el, c.z0);
     if (c.spec.hold && c.spec.onHoldEnd) c.spec.onHoldEnd(false);
   },
   findDrop(sp, p) {
@@ -1301,9 +1336,9 @@ const Input = {
     });
     return best;
   },
-  snapBack(t) {
+  snapBack(t, z0) {
     const a = t.animate([{ transform: t.style.transform || 'none' }, { transform: 'none' }], { duration: T(260), easing: EASE.pop });
-    t.style.transform = ''; t.style.zIndex = '';
+    t.style.transform = ''; t.style.zIndex = z0 || '';
     a.onfinish = () => {};
   },
   isArc(path) {
@@ -3210,7 +3245,7 @@ const K = {
     return b;
   },
   bigQty(st, n, x, y, h) {
-    const d = el('div', '', Stage.el); d.style.position = 'absolute';
+    const d = el('div', 'note', Stage.el); d.style.position = 'absolute';
     d.appendChild(UI.qty(n, h || 120));
     const w = (d.firstChild.getAttribute('width') | 0) || h;
     place(d, Math.round(x - w / 2), Math.round(y - (h || 120) / 2));
@@ -3396,7 +3431,7 @@ defGame({
   sheetRect() { return K.L() ? { x: 96, y: 150, w: 380, h: 280 } : { x: 130, y: 236, w: 384, h: 280 }; },
   build(G) {
     const E = G.els;
-    E.rope = svg('svg', { class: 'lines', width: 10, height: 10 }, Stage.el); E.rope.style.position = 'absolute';
+    E.rope = svg('svg', { class: 'lines scene', width: 10, height: 10 }, Stage.el); E.rope.style.position = 'absolute';
     E.sheet = el('div', '', Stage.el); E.sheet.style.position = 'absolute';
     E.sheet.innerHTML = '<svg viewBox="0 0 380 280" width="100%" height="100%" preserveAspectRatio="none"><path d="M6 6 H374 V262 C340 274 300 266 262 274 C220 282 180 268 140 276 C100 282 60 268 6 274 Z" fill="#FFFFFF" stroke="#2B2118" stroke-width="5" stroke-linejoin="round"/><path d="M70 10 C74 90 66 180 72 262 M190 10 C196 100 186 190 192 270 M306 10 C300 110 310 190 304 266" stroke="#E6ECF2" stroke-width="6" fill="none"/></svg>';
     E.splats = el('div', '', E.sheet); Object.assign(E.splats.style, { position: 'absolute', inset: '0' });
@@ -3498,7 +3533,7 @@ defGame({
     const pts = K.cardDotStage(card);
     await Promise.all(st.splats.map((s, i) => {
       const t = pts[pts.length - st.splats.length + i]; if (!t) return null;
-      const c = splatEl(60, i); c.style.zIndex = 30; Stage.el.appendChild(c); st.els.push(c);
+      const c = splatEl(60, i); c.classList.add('note'); Stage.el.appendChild(c); st.els.push(c);     /* lands ON the card: a note */
       const sb = box(s); place(c, sb.x + r.x, sb.y + r.y);
       return K.flyTo(st, c, t.x - 30, t.y - 30, 520, 60, 0.36).then(() => { Sfx.count(i + 1); });
     }));
@@ -3966,7 +4001,7 @@ defGame({
     G.actors[q.star].cheer(); Sfx.whoosh(0.4);
     const c = center(G.els.cake);
     st.candles.forEach(cd => { if (cd.flame) cd.flame.remove(); });
-    const puffs = st.candles.map((cd, i) => { const b = box(cd.el); const p = el('div', '', Stage.el); Object.assign(p.style, { position: 'absolute', width: '34px', height: '34px', borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 3px #2B2118', zIndex: 8 }); place(p, b.x - 4, b.y - 30); st.els.push(p); return p; });
+    const puffs = st.candles.map((cd, i) => { const b = box(cd.el); const p = el('div', 'note', Stage.el); Object.assign(p.style, { position: 'absolute', width: '34px', height: '34px', borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 3px #2B2118' }); place(p, b.x - 4, b.y - 30); st.els.push(p); return p; });
     const L = UI.dotPos(q.N, q.N <= 6 ? 'dice' : 'frame'), W = q.N <= 6 ? 120 : 220;
     const y0 = K.L() ? 150 : 236;                                       /* portrait: below the task card (R3-V01) */
     await Promise.all(puffs.map((p, i) => { const [u, v] = L.P[i] || [0.5, 0.5]; return K.flyTo(st, p, c.x - W / 2 + u * W - 17, y0 + v * (q.N <= 6 ? 120 : 50), 700, 40); }));
@@ -3981,7 +4016,7 @@ defGame({
     if (ans > N) { const extra = st.candles.slice(N); K.flash(st, extra.map(c => c.el)); await st.scope.wait(500); while (st.candles.length > N) { this.remove(st); await st.scope.wait(180); } }
     else {
       st.rings = [];
-      for (let i = 0; i < N; i++) { const s = this.slot(st, i, N); const r = el('div', '', Stage.el); Object.assign(r.style, { position: 'absolute', width: '40px', height: '40px', borderRadius: '50%', border: '4px dashed #2B2118', zIndex: 6 }); place(r, s.x - 7, s.y + 60); st.els.push(r); st.rings.push(r); }
+      for (let i = 0; i < N; i++) { const s = this.slot(st, i, N); const r = el('div', 'note', Stage.el); Object.assign(r.style, { position: 'absolute', width: '40px', height: '40px', borderRadius: '50%', border: '4px dashed #2B2118' }); place(r, s.x - 7, s.y + 60); st.els.push(r); st.rings.push(r); }
       K.flash(st, st.rings.slice(ans));
       await st.scope.wait(900);
     }
@@ -4046,7 +4081,7 @@ async function stackCompare(st, plateA, A, plateB, B, hide) {
   const L = K.L(), n = Math.max(A.length, B.length, 1);
   const pw = 300, ph = 190, cx = Stage.W / 2;
   const yA = L ? 140 : 250, yB = L ? 372 : 482;                   /* two plates, a clear gap between them */
-  (hide || []).forEach(e => st.scope.anim(e, [{ opacity: 1 }, { opacity: 0.2 }], { duration: 250 }));
+  (hide || []).forEach(e => st.scope.anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 250 }));      /* out of the plates' way */
   const sz = n > 5 ? 36 : 46, gap = Math.min(50, (pw - 90) / Math.max(1, n - 1));
   const x0 = cx - (n - 1) * gap / 2;
   await Promise.all([K.flyTo(st, plateA, cx - pw / 2, yA, 420), K.flyTo(st, plateB, cx - pw / 2, yB, 420)]);
@@ -4706,7 +4741,7 @@ defGame({
   build(G) {
     BRO.forEach(id => { const a = K.actor(G, id, 150); hideActor(a); });
     K.actor(G, 'grandpa', 240);
-    G.els.vine = svg('svg', { class: 'lines' }, Stage.el); G.els.vine.style.position = 'absolute'; G.els.vine.style.zIndex = 2;
+    G.els.vine = svg('svg', { class: 'lines scene' }, Stage.el); G.els.vine.style.position = 'absolute'; G.els.vine.style.zIndex = 2;
     G.els.hit = el('div', '', Stage.el); Object.assign(G.els.hit.style, { position: 'absolute', zIndex: 8 });
   },
   layout(G) {
@@ -5383,7 +5418,7 @@ defGame({
     st.sel = null;
     this.arrange(st, true);
     st.pups.forEach((p, i) => { K.reg(st, p.id, p.a.root, { drag: st.level < 3, drops: () => [{ id: 'm0', rect: () => box(G.els.p0) }, { id: 'm1', rect: () => box(G.els.p1) }] }); K.pop(st, p.a.root, 60 * i); });
-    st.needs = [0, 1].map(m => { const v = m ? q.b : q.a; const d = el('div', ''); Object.assign(d.style, { position: 'absolute', zIndex: 4, display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }); st.els.push(d); Stage.el.appendChild(d); if (m === 1 && st.level >= 3) d.innerHTML = ICONS.q.replace('<svg', '<svg width="64" height="64"'); else { if (digits()) d.appendChild(UI.num(v, 56)); d.appendChild(UI.dots(v, 64, { layout: 'dice' })); } return d; });
+    st.needs = [0, 1].map(m => { const v = m ? q.b : q.a; const d = el('div', 'note'); Object.assign(d.style, { position: 'absolute', display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }); st.els.push(d); Stage.el.appendChild(d); if (m === 1 && st.level >= 3) d.innerHTML = ICONS.q.replace('<svg', '<svg width="64" height="64"'); else { if (digits()) d.appendChild(UI.num(v, 56)); d.appendChild(UI.dots(v, 64, { layout: 'dice' })); } return d; });
     this.placeNeeds(st);
     K.reg(st, 'm0', G.els.p0, {}); K.reg(st, 'm1', G.els.p1, {});
     G.actors.ryder.hop();
@@ -5527,7 +5562,7 @@ defGame({
     const pts = K.cells(rng, a + b, 3, 2, 0.1);
     return { k: [a, b, pair[0]], a, b, n: a + b, answer: a + b, pair, animal, animal2, opts: numOptions(G, a + b, 1, 9), pts };
   },
-  geo() { return K.L() ? { pen: { x: 302, y: 200, w: 420, h: 350 }, vA: [60, 380], vB: [770, 380], ryder: [96, 700], rocky: [820, 700], rubble: [950, 700] } : { pen: { x: 142, y: 350, w: 420, h: 340 }, vA: [30, 180], vB: [470, 180], ryder: [352, 1010], rocky: [90, 1010], rubble: [610, 1010] }; },
+  geo() { return K.L() ? { pen: { x: 302, y: 200, w: 420, h: 350 }, vA: [60, 330], vB: [770, 330], ryder: [96, 700], rocky: [820, 700], rubble: [950, 700] } : { pen: { x: 142, y: 350, w: 420, h: 340 }, vA: [30, 232], vB: [470, 232], ryder: [352, 1010], rocky: [90, 1010], rubble: [610, 1010] }; },
   build(G) {
     ['ryder', 'rocky', 'rubble', 'zuma', 'skye', 'chase', 'marshall'].forEach(id => K.actor(G, id, id === 'ryder' ? (K.L() ? 200 : 150) : 140));
     G.els.pen = K.item(Stage.el, 'assets/props/pen.png', 420, 350); G.els.pen.style.zIndex = 2;
@@ -5555,13 +5590,13 @@ defGame({
   cardSpot() { return K.L() ? { cx: 512, cy: 632 } : { cx: 352, cy: 776 }; },
   parked() { const g = this.geo(); return { pa: { x: Math.max(8, g.pen.x - 170), y: g.pen.y + 120 }, pb: { x: Math.min(Stage.W - 218, g.pen.x + g.pen.w - 40), y: g.pen.y + 120 } }; },
   /* each driver stands in front of the outer half of its own vehicle */
-  driverXY(v, right) { return { x: right ? v.x + 155 : v.x + 55, y: v.y + 164 }; },
+  driverXY(v, right) { return { x: right ? v.x + 155 : v.x + 55, y: v.y + 180 }; },     /* a clear gap under the riders on the roof */
   benchRect() { const g = this.geo(); return { x: g.pen.x + g.pen.w / 2 - 2.5 * 62 - 14, y: g.pen.y + 56, w: 5 * 62 + 28, h: 96 }; },
   placeAnimals(st, instant) {
     const g = this.geo(), q = st.q, ps = [];
     st.animals.forEach((an, i) => {
       let x, y;
-      if (!st.arrived) { const v = box(an.from ? st.G.els.vB : st.G.els.vA), j = an.j; x = v.x + 30 + (j % 3) * 50; y = v.y - 10 - Math.floor(j / 3) * 40; }
+      if (!st.arrived) { const v = box(an.from ? st.G.els.vB : st.G.els.vA), j = an.j; x = v.x + 30 + (j % 3) * 50; y = v.y - 34 - Math.floor(j / 3) * 40; }   /* on the roof, clear of the driver's head */
       else if (q.b && st.level >= 4 && !an.from) { x = g.pen.x + g.pen.w / 2 - 2.5 * 62 + an.j * 62; y = g.pen.y + 70; }       /* five in a packed row on the bench */
       else if (st.level >= 4) { x = g.pen.x + g.pen.w / 2 - 120 + an.j * 120 + (q.b === 1 ? 60 : 0) - 38; y = g.pen.y + 200; }
       else { const [u, v] = q.pts[i]; x = g.pen.x + 45 + u * (g.pen.w - 90) - 38; y = g.pen.y + 80 + v * (g.pen.h - 130) - 38; }
@@ -5712,7 +5747,7 @@ defGame({
     PUPS.forEach(id => { const a = K.actor(G, id, 140); hideActor(a); });
     K.actor(G, 'ryder', 200);
     G.els.lift = elevatorEl(); Stage.el.appendChild(G.els.lift);
-    G.els.ruler = el('div', '', Stage.el); G.els.ruler.style.position = 'absolute'; G.els.ruler.style.zIndex = 3;
+    G.els.ruler = el('div', 'note', Stage.el); G.els.ruler.style.position = 'absolute';
   },
   drawRuler(G, hi) {
     const r = G.els.ruler; r.innerHTML = '';
@@ -6194,7 +6229,7 @@ defGame({
     const s = K.lines(st), cw = K.L() ? 150 : 124;
     path.forEach(([a, b]) => svg('path', { d: 'M' + (a.x + cw / 2) + ' ' + (a.y) + ' Q' + ((a.x + b.x) / 2 + cw / 2) + ' ' + (Math.min(a.y, b.y) - 90) + ' ' + (b.x + cw / 2) + ' ' + b.y, fill: 'none', stroke: '#E0473A', 'stroke-width': 7, 'stroke-linecap': 'round', 'stroke-dasharray': '10 9' }, s));
     await st.scope.wait(500);
-    const eq = el('div', '', Stage.el); eq.style.position = 'absolute'; eq.style.zIndex = 20; st.els.push(eq);
+    const eq = el('div', 'note', Stage.el); eq.style.position = 'absolute'; st.els.push(eq);
     Object.assign(eq.style, { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 20px', borderRadius: '28px', background: 'rgba(255,248,236,.96)', boxShadow: 'var(--stk-sm)' });
     const plus = svg('svg', { viewBox: '0 0 30 30', width: 34, height: 34 }); svg('path', { d: 'M15 4v22M4 15h22', stroke: '#2B2118', 'stroke-width': 6, 'stroke-linecap': 'round' }, plus);
     const eqs = svg('svg', { viewBox: '0 0 30 30', width: 34, height: 34 }); svg('path', { d: 'M4 10h22M4 20h22', stroke: '#2B2118', 'stroke-width': 6, 'stroke-linecap': 'round' }, eqs);
@@ -6333,7 +6368,7 @@ defGame({
     await this.pour(st, st.answer);
     if (!Session.alive(my)) return;
     Sfx.reveal(); st.frame.classList.add('glow');
-    const g = this.geo(), bar = el('div', '', Stage.el); bar.style.position = 'absolute'; bar.style.zIndex = 9; st.els.push(bar);
+    const g = this.geo(), bar = el('div', 'note', Stage.el); bar.style.position = 'absolute'; st.els.push(bar);
     Object.assign(bar.style, { borderRadius: '22px', background: 'linear-gradient(#FFE06A,#F5B324)', boxShadow: '0 0 0 4px #2B2118, 0 0 26px rgba(255,210,60,.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' });
     const r = box(st.frame); place(bar, r.x, r.y + r.h + 14, r.w, 64); bar.appendChild(UI.qty(q.cap, 52));
     await st.scope.anim(bar, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 480, easing: EASE.pop });
@@ -6345,7 +6380,7 @@ defGame({
     const q = st.q, my = st;
     const added = await this.pour(st, ans);
     if (!Session.alive(my)) return;
-    if (ans < q.need) { const used = new Set(st.peaches.map(p => p.hole)); const empt = []; for (let i = 0; i < q.cap; i++) if (!used.has(i)) { const h = this.holeXY(st, i); const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', zIndex: 7 }); place(d, h.x - 26, h.y - 26); st.els.push(d); empt.push(d); } K.flash(st, empt); }
+    if (ans < q.need) { const used = new Set(st.peaches.map(p => p.hole)); const empt = []; for (let i = 0; i < q.cap; i++) if (!used.has(i)) { const h = this.holeXY(st, i); const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%' }); place(d, h.x - 26, h.y - 26); st.els.push(d); empt.push(d); } K.flash(st, empt); }
     else { const bj = st.G.actors.bajie.root._box(); const extra = added.slice(q.need); await Promise.all(extra.map(e => K.flyTo(st, e, bj.x + bj.w / 2 - 27, bj.y + bj.h * 0.35, 520, 90))); extra.forEach(e => { e.style.visibility = 'hidden'; }); st.G.actors.bajie.react('belly'); }
     await st.scope.wait(700);
   },
@@ -6355,7 +6390,7 @@ defGame({
     st.peaches = st.peaches.filter(p => q.holes.includes(p.hole) && st.peaches.indexOf(p) < q.a);
     const used = new Set(st.peaches.map(p => p.hole));
     let c = 0;
-    for (let i = 0; i < q.cap; i++) { if (used.has(i)) continue; if (!Session.alive(my)) return; c++; const h = this.holeXY(st, i); const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118', zIndex: 8 }); place(d, h.x - 26, h.y - 26); st.els.push(d); await Count.beat(st.scope, 420, c); }
+    for (let i = 0; i < q.cap; i++) { if (used.has(i)) continue; if (!Session.alive(my)) return; c++; const h = this.holeXY(st, i); const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118' }); place(d, h.x - 26, h.y - 26); st.els.push(d); await Count.beat(st.scope, 420, c); }
     st.branches[st.opts.indexOf(q.need)].el.classList.add('glow');
     await Voice.say('还差' + CNQ(q.need) + '个', { tag: 'fix' });
   },
@@ -6386,7 +6421,7 @@ defGame({
     const pts = K.cells(rng, N - h, 5, 2, 0.08), ptsAll = K.cells(rng, N, 5, 2, 0.08);
     return { k: [N, h], N, h, answer: h, opts: numOptions(G, h, 0, 9), pts, ptsAll, hide: rng.shuffle(Array.from({ length: N }, (_, i) => i)).slice(0, h) };
   },
-  geo() { return K.L() ? { ground: { x: 90, y: 360, w: 520, h: 230 }, curtain: { x: 760, y: 130, w: 200, h: 300 }, wk: [120, 330], horse: [700, 700], tang: [560, 690], bajie: [380, 700], ch: [190, 170, 170] } : { ground: { x: 40, y: 500, w: 440, h: 220 }, curtain: { x: 500, y: 230, w: 190, h: 280 }, wk: [100, 470], horse: [630, 1012], tang: [90, 1012], bajie: [330, 1012], ch: [150, 120, 120] }; },
+  geo() { return K.L() ? { ground: { x: 90, y: 360, w: 520, h: 230 }, curtain: { x: 760, y: 130, w: 200, h: 300 }, wk: [120, 330], horse: [945, 700], tang: [820, 695], bajie: [690, 700], ch: [190, 170, 170] } : { ground: { x: 40, y: 500, w: 440, h: 220 }, curtain: { x: 500, y: 230, w: 190, h: 280 }, wk: [100, 470], horse: [630, 1012], tang: [90, 1012], bajie: [330, 1012], ch: [150, 120, 120] }; },
   build(G) {
     K.actor(G, 'wukong', 210); K.actor(G, 'dragon_horse', 190); K.actor(G, 'tangseng', 170); K.actor(G, 'bajie', 170);
     G.els.curtain = curtainEl(G.scope); Stage.el.appendChild(G.els.curtain);
@@ -6498,7 +6533,7 @@ defGame({
     const f = this.frameFor(st), cell = f._cell, fb = box(f);
     const vis = st.clones.filter(c => !c.hidden);
     await Promise.all(vis.map((c, i) => K.flyTo(st, c.a.root, fb.x + 6 + (i % 5) * cell + cell / 2 - c.a.w / 2, fb.y + 6 + Math.floor(i / 5) * cell + cell / 2 - c.a.h * 0.6, 420)));
-    for (let j = 0; j < q.h; j++) { if (!Session.alive(my)) return; const i = vis.length + j; const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: (cell - 12) + 'px', height: (cell - 12) + 'px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118', zIndex: 8 }); place(d, fb.x + 12 + (i % 5) * cell, fb.y + 12 + Math.floor(i / 5) * cell); st.els.push(d); await Count.beat(st.scope, 420, j + 1); }
+    for (let j = 0; j < q.h; j++) { if (!Session.alive(my)) return; const i = vis.length + j; const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: (cell - 12) + 'px', height: (cell - 12) + 'px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118' }); place(d, fb.x + 12 + (i % 5) * cell, fb.y + 12 + Math.floor(i / 5) * cell); st.els.push(d); await Count.beat(st.scope, 420, j + 1); }
     st.cards[st.opts.indexOf(q.h)].classList.add('hi');
     await Voice.say('还差' + CNQ(q.h) + '只', { tag: 'fix' });
   },
@@ -6755,9 +6790,9 @@ defGame({
        lift opens on the platform (above them it would sit on the host's face: spot check 5150, V2 L3 landscape) */
     if (digits()) {
       const tensD = UI.num(Math.floor(q.T / 10), 64), onesD = UI.num(q.T % 10, 64);
-      const cb = box(crates[0].el); const t = el('div', '', Stage.el); t.style.position = 'absolute'; t.style.zIndex = 12; t.appendChild(tensD); st.els.push(t); place(t, cb.x + cb.w / 2 - 24, cb.y + cb.h - 44);
+      const cb = box(crates[0].el); const t = el('div', 'note', Stage.el); t.style.position = 'absolute'; t.appendChild(tensD); st.els.push(t); place(t, cb.x + cb.w / 2 - 24, cb.y + cb.h - 44);
       K.pop(st, t);
-      if (ones.length || q.T % 10 === 0) { const ob = ones.length ? box(ones[0].el) : { x: cb.x + cb.w + 20, y: cb.y, w: 60, h: cb.h }; const o2 = el('div', '', Stage.el); o2.style.position = 'absolute'; o2.style.zIndex = 12; o2.appendChild(onesD); st.els.push(o2); place(o2, ob.x + ob.w / 2 - 24, ob.y + ob.h - 44); K.pop(st, o2, 200); }
+      if (ones.length || q.T % 10 === 0) { const ob = ones.length ? box(ones[0].el) : { x: cb.x + cb.w + 20, y: cb.y, w: 60, h: cb.h }; const o2 = el('div', 'note', Stage.el); o2.style.position = 'absolute'; o2.appendChild(onesD); st.els.push(o2); place(o2, ob.x + ob.w / 2 - 24, ob.y + ob.h - 44); K.pop(st, o2, 200); }
     } else {
       K.bigQty(st, q.T, box(G.els.plat).x + 165, box(G.els.plat).y - 260, 90);
     }
@@ -6941,8 +6976,8 @@ defGame({
   async labels(st) {
     const q = st.q, G = st.G;
     st.g1.classList.add('glow'); Sfx.reveal();
-    const lab = UI.qty(10, 56); lab.style.position = 'absolute'; lab.style.zIndex = 9; Stage.el.appendChild(lab); st.els.push(lab); const b1 = box(st.g1); place(lab, b1.x + 95, b1.y - 64); K.pop(st, lab);
-    if (q.T > 10) { const l2 = UI.qty(q.T - 10, 56); l2.style.position = 'absolute'; l2.style.zIndex = 9; Stage.el.appendChild(l2); st.els.push(l2); const b2 = box(st.g2); place(l2, b2.x + 100, b2.y - 64); K.pop(st, l2, 200); }
+    const lab = UI.qty(10, 56); lab.style.position = 'absolute'; lab.classList.add('note'); Stage.el.appendChild(lab); st.els.push(lab); const b1 = box(st.g1); place(lab, b1.x + 95, b1.y - 64); K.pop(st, lab);
+    if (q.T > 10) { const l2 = UI.qty(q.T - 10, 56); l2.style.position = 'absolute'; l2.classList.add('note'); Stage.el.appendChild(l2); st.els.push(l2); const b2 = box(st.g2); place(l2, b2.x + 100, b2.y - 64); K.pop(st, l2, 200); }
     G.actors.ironman.react('thrust');
     Voice.say('十和' + CN[q.T - 10] + '，' + CN[q.T] + '！', { tag: 'summary' });
     await st.scope.wait(1000);
@@ -7138,7 +7173,7 @@ defGame({
     const dots = UI.dotPos(Math.min(q.n, 10), q.n <= 6 ? 'dice' : 'frame').P;
     const sparks = [];
     for (let i = 0; i < q.n; i++) {
-      const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: '22px', height: '22px', borderRadius: '50%', background: '#FFE06A', boxShadow: '0 0 0 3px #2B2118, 0 0 14px #FFE06A', zIndex: 14 }); st.els.push(d);
+      const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: '22px', height: '22px', borderRadius: '50%', background: '#FFE06A', boxShadow: '0 0 0 3px #2B2118, 0 0 14px #FFE06A' }); st.els.push(d);
       const [u, v] = dots[i % dots.length] || [0.5, 0.5]; place(d, lb.x + 60 + u * 140 + (i >= 10 ? 10 : 0), lb.y + 50 + v * 60 + (i >= 10 ? 30 : 0)); sparks.push(d);
     }
     Sfx.reveal();

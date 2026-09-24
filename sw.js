@@ -10,7 +10,7 @@
    - assets: cache first, then network (and cached)
    VERSION is a hash over index.html, manifest and every asset: tools/gen_sw_list.py rewrites it for every release
    (tests/test_offline.py fails when it is stale). */
-const VERSION = 've14a09ee';
+const VERSION = 'v3f2a0127';
 const CORE = 'ddi-core-' + VERSION;
 const ASSETS = 'ddi-assets-' + VERSION;
 const CORE_FILES = ['./', './index.html', './manifest.webmanifest'];
