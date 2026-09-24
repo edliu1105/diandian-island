@@ -120,7 +120,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cu
 #nosound svg{width:66%;height:66%}
 html.nosound body[data-scr="map"] #nosound{display:flex}
 /* no sound: only the big speaker calls (four pulses); the avatar stays still - one thing at a time */
-html.nosound #avatar .ear{background:#FFE08A;width:52px;height:52px;right:-10px;bottom:-10px}
+html.nosound #avatar .ear{background:#FFE08A;width:46px;height:46px;right:-18px;bottom:-15px}
 #toast{position:absolute;right:calc(20px + var(--sr));bottom:calc(110px + var(--sb));padding:12px 18px;border-radius:var(--r-md);background:#fff;box-shadow:var(--stk-sm);font-size:16px;font-weight:700;display:none}
 #toast.on{display:block;animation:fadeIn .2s both}
 
@@ -155,10 +155,12 @@ html.nosound #avatar .ear{background:#FFE08A;width:52px;height:52px;right:-10px;
 .hud{position:absolute;z-index:40}
 #home{left:calc(14px + var(--sl));top:calc(14px + var(--st));width:96px;height:96px;background:#FFE08A}
 #home img{width:74%;height:74%;object-fit:contain}
-#avatar{left:calc(134px + var(--sl));top:calc(14px + var(--st));width:96px;height:96px;overflow:hidden;background:var(--world)}
-#avatar img{width:100%;height:100%;object-fit:cover}
-#avatar .ear{position:absolute;right:-6px;bottom:-6px;width:40px;height:40px;border-radius:50%;background:#fff;box-shadow:var(--stk-sm);display:flex;align-items:center;justify-content:center}
-#avatar .ear svg{width:26px;height:26px}
+#avatar{left:calc(134px + var(--sl));top:calc(14px + var(--st));width:96px;height:96px;background:var(--world)}
+/* the face fills the round picture (tools/make_thumbs.py puts it up-left of the middle); the speaker badge sits
+   OUTSIDE at the lower right, so it never covers the face and is never cut by the circle */
+#avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+#avatar .ear{position:absolute;right:-13px;bottom:-11px;width:36px;height:36px;border-radius:50%;background:#fff;box-shadow:var(--stk-sm);display:flex;align-items:center;justify-content:center}
+#avatar .ear svg{width:23px;height:23px}
 #tray{right:calc(14px + var(--sr));top:calc(18px + var(--st));display:flex;gap:6px;padding:10px 12px;border-radius:24px;background:rgba(255,248,236,.95);box-shadow:var(--stk-sm)}
 #tray i{width:40px;height:40px;border-radius:50%;background:rgba(43,33,24,.1);box-shadow:inset 0 3px 0 rgba(43,33,24,.08);position:relative}
 #tray i.on{background:none;box-shadow:none}
