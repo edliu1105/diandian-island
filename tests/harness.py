@@ -152,6 +152,13 @@ def step(page, strategy='right'):
     return s, r
 
 
+def step_snap(page, strategy='right'):
+    """one step + the question snapshot taken in the SAME call (a fast question can be submitted, praised and gone
+    before a separate poll sees it)"""
+    return page.evaluate('''(st) => { const s = window.__next(st); if (!s) return null;
+        const r = window.__gesture(s.g, s.p); const q = window.__q; return { s, r, q: q ? JSON.parse(JSON.stringify(q)) : null }; }''', strategy)
+
+
 def answer_question(page, strategy='right', max_steps=40, timeout=15000):
     """drive the current question with `strategy` until it is submitted; returns the question snapshot at submit"""
     st = wait_phase(page, timeout=timeout)
@@ -167,10 +174,13 @@ def answer_question(page, strategy='right', max_steps=40, timeout=15000):
         if cur['phase'] not in ('act', 'ready', 'input'):
             page.wait_for_timeout(15)
             continue
-        s = step(page, 'right' if cur.get('guided') else strategy)   # a guided question is followed, like a child being led
+        s = step_snap(page, 'right' if cur.get('guided') else strategy)   # a guided question is followed, like a child being led
         if s is None:
             page.wait_for_timeout(15)
             continue
+        if s['q'] and s['q']['gen'] == gen and s['q']['submitted']:
+            snap = s['q']
+            break
         page.wait_for_timeout(5)
     if snap is None:
         snap = q(page)
