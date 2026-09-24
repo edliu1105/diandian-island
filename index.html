@@ -241,7 +241,7 @@ svg.lines{left:0;top:0;overflow:visible;pointer-events:none}
 /* ---------- finale ---------- */
 #finale{background:#0B1F5C}
 #finale .fbg{position:absolute;inset:-2%;background-size:cover;background-position:center}
-#finale .crowd{position:absolute;left:0;top:0;transform-origin:0 0}
+#finale .crowd{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:50% 65%}
 #finale canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #finale .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 </style>
@@ -343,7 +343,7 @@ const Loops = {
 };
 let TSEQ = 0;
 class Scope {
-  constructor(parent) { this.timers = new Map(); this.anims = new Set(); this.waits = new Set(); this.fns = []; this.dead = false; this.ff = false; this.paused = false; this.parent = parent || null; this.children = new Set(); if (parent) parent.children.add(this); }
+  constructor(parent) { this.timers = new Map(); this.anims = new Set(); this.waits = new Set(); this.fns = []; this.dead = false; this.ff = false; this.paused = !!(parent && parent.paused); this.parent = parent || null; this.children = new Set(); if (parent) parent.children.add(this); }
   /* timers: a stable handle -> { id (native), fn, iv, ms, due }; pause() keeps the remainder, resume() re-arms it */
   arm(r, ms) {
     if (r.iv) { r.id = setInterval(() => { if (!this.dead) r.fn(); }, r.ms); r.due = now() + r.ms; }
@@ -379,9 +379,12 @@ class Scope {
     this.waits.forEach(w => { if (w.left != null && w.go) { w.go(w.left); w.left = null; } });
     this.anims.forEach(a => { try { if (a._pz) { a._pz = false; a.play(); } } catch (err) {} });
     this.children.forEach(c => c.resume());
+    const h = this.holds; this.holds = null; if (h) h.forEach(r => r());
   }
   /* resolve with p's value only while this scope is alive (for promises the scope does not own: speech, loaders) */
-  guard(p) { if (this.dead) return never(); return Promise.resolve(p).then(v => (this.dead ? never() : v)); }
+  guard(p) { if (this.dead) return never(); return Promise.resolve(p).then(v => (this.dead ? never() : this.paused ? this.held().then(() => (this.dead ? never() : v)) : v)); }
+  /* R4-C02: speech or a loader may settle while the app is in the background - the flow goes on only after resume() */
+  held() { return new Promise(r => { (this.holds || (this.holds = [])).push(r); }); }
   anim(e, kf, opt) {
     if (this.dead) return never();
     if (!e || !e.animate) return Promise.resolve(null);
@@ -464,7 +467,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 /* ---------------------------------------------------------------- storage (versioned, corruption tolerant) */
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
-function defState() { const w = {}; ORDER.forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '' }, finaleSeen: false, finaleDue: false, gate: { cool: 0, last: '' } }; }
+function defState() { const w = {}; ORDER.forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, gate: { cool: 0, last: '' } }; }
 const Store = {
   s: null,
   load() {
@@ -499,6 +502,8 @@ const Store = {
         const k = {};
         if (x.k && typeof x.k === 'object') for (const kk in x.k) if (kid(kk)) k[kk] = Math.round(num(x.k[kk], 0, 0, 1e6));
         t.g[g] = { n: Math.round(num(x.n, 0, 0, 1e6)), c: Math.round(num(x.c, 0, 0, 1e6)), bits: bits(x.bits, 8), k };
+        if (Array.isArray(x.v)) t.g[g].v = x.v.filter(s => s === '-' || (typeof s === 'string' && /^\d{1,2}:\d{1,2}$/.test(s))).slice(-8);   /* H3 splits (R4-C01) */
+        if (k.selfsplit != null) { k.in = Math.max(k.in || 0, k.selfsplit); delete k.selfsplit; }                                       /* old key -> 'in' */
         if (t.g[g].c > t.g[g].n) t.g[g].c = t.g[g].n;
       }
       t.log = Array.isArray(w.log) ? w.log.filter(x => x && gid(x.g)).slice(-40).map(x => ({ g: x.g, k: kid(x.k) ? x.k : '', ok: x.ok ? 1 : 0, ev: x.ev ? 1 : 0, h: x.h ? 1 : 0, gd: x.gd ? 1 : 0, pr: x.pr ? 1 : 0, lv: Math.round(num(x.lv, 1, 1, 4)), t: num(x.t, 0, 0, 9e15) })) : [];
@@ -514,7 +519,7 @@ const Store = {
       if (w.demo && typeof w.demo === 'object') for (const k in w.demo) if (/^[A-Z]\d$/.test(k) && w.demo[k] === true) t.demo[k] = true;
       if (t.level < t.floor) t.level = t.floor;
     });
-    if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; }
+    if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
     return d;
@@ -524,6 +529,8 @@ const Store = {
   reset() { this.s = defState(); this.save(); },
 };
 const digits = () => !Store.s || Store.s.settings.digits;
+/* R4-U01: "看图模式" - for a child who cannot hear (the engine may be fine): what is normally only said is shown */
+const visualMode = () => !!(Store.s && Store.s.settings.visual);
 
 
 /* ================================================================ AUDIO
@@ -951,6 +958,13 @@ const Voice = {
     this.checkWaiters();
   },
   sayNow(text, opt) { this.hush('now'); return this.say(text, opt); },
+  /* R4-I01: a newer number took the MP3 channel - an older synthesized number must not sound after it */
+  dropTag(tag) {
+    this.q = this.q.filter(d => { if (d.tag !== tag) return true; d.done = true; d.resolve('cancel'); return false; });
+    const c = this.cur;
+    if (c && c.tag === tag) { this.cur = null; this.localDoneAt = now(); c.finish && c.finish('cancel'); this.cancelEngine('count'); }
+    this.checkWaiters();
+  },
   /* the child taps the big "no sound" target: resume, and if the engine is idle speak synchronously in this gesture */
   retry(text) {
     const s = this.synth;
@@ -1065,6 +1079,7 @@ const Count = {
   },
   start(buf) {
     const c = Sfx.ctx;
+    if (this.fallbacks) Voice.dropTag('count-fallback');
     if (this.src) { try { this.src.stop(); } catch (e) {} }
     const s = c.createBufferSource(); s.buffer = buf;
     const g = c.createGain(); g.gain.value = 1.15;
@@ -1074,6 +1089,9 @@ const Count = {
     Sfx.duck(buf.duration);
     s.addEventListener('ended', () => { if (this.src === s) this.src = null; });
   },
+  /* R4-I02: a system count (reveal, correction) waits for the number to be said (+60 ms), never less than `min`.
+     A child's quick taps still cut the older number: then only the newest one plays - the child's own tempo */
+  beat(sc, min, n, kind) { this.say(n, kind); const b = this.bufs[this.name(n, kind)]; return sc.wait(Math.max(min, b ? Math.round(b.duration * 1000) + 60 : (n > 10 ? 640 : 0))); },
   fallback(word, owner) { this.fallbacks++; slog('count', word, 'fallback', 'speak'); Voice.say(word, { tag: 'count-fallback', prot: true, latest: true, owner }); },
   /* leaving a session: no number of the old session may sound afterwards */
   stop() { this.req++; if (this.src) { try { this.src.stop(); } catch (e) {} this.src = null; } },
@@ -1557,10 +1575,11 @@ const Fx = {
       an.onfinish = () => d.remove();
     }
   },
-  confetti(n) {
+  confetti(n, sc) {                       /* sc: the question it celebrates - its end fades what is still falling */
     const W = window.innerWidth;
     for (let i = 0; i < (n || 40); i++) {
       const d = el('div', 'spark', this.layer);
+      if (sc) sc.add(() => { if (d.isConnected) d.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, fill: 'forwards' }).onfinish = () => d.remove(); });
       const c = ['#FFC93C', '#FF6B5B', '#4FB3FF', '#5CC46E', '#8E6CFF', '#FF9F43', '#FF7FA8'][i % 7];
       Object.assign(d.style, { left: (Math.random() * W) + 'px', top: '-20px', width: '12px', height: '16px', background: c, borderRadius: '3px', boxShadow: '0 0 0 2px #2B2118' });
       const an = d.animate([{ transform: 'translateY(0) rotate(0)' }, { transform: 'translateY(' + (window.innerHeight + 60) + 'px) rotate(' + (360 + Math.random() * 720) + 'deg) translateX(' + (Math.random() * 120 - 60) + 'px)' }], { duration: T(1600 + Math.random() * 1200) + 1, delay: T(Math.random() * 500), easing: 'cubic-bezier(.3,.1,.6,1)', fill: 'forwards' });
@@ -1725,7 +1744,7 @@ const Mastery = {
       const recent = b7.length ? right7 / b7.length : 0;
       const kinds = REQUIRED[g].map(k => this.kindKey(k)).filter((k, i, a) => a.indexOf(k) === i);
       /* on a device that cannot speak, a required heard kind is met by its seen twin (P4: giveN <- giveNvis) */
-      const alt = k => Voice.silent && SILENT_ALT[k] && (gs.k[SILENT_ALT[k]] || 0) >= 1;
+      const alt = k => (Voice.silent || visualMode()) && SILENT_ALT[k] && (gs.k[SILENT_ALT[k]] || 0) >= 1;
       const kindsOk = kinds.every(k => (gs.k[k] || 0) >= 1 || alt(k));
       /* self-made splits (H3) must vary: among the last 7 right answers >= 3 different cave parts AND >= 2 different
          outside parts - "always send one" and "always keep one outside" both stay shut (R3-J01) */
@@ -1798,6 +1817,7 @@ const Screens = {
     next.classList.add('on');
     document.body.dataset.scr = id;
     next.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(320), easing: EASE.glide });
+    if (id === 'map' || id === 'entry') setTimeout(() => SWU.reloadIfSafe(), 2600);     /* after the star show (R4-F01) */
     if (prev && prev !== next) { prev.animate([{ opacity: 1 }, { opacity: 0 }], { duration: T(320), easing: EASE.glide }); setTimeout(() => { if (Screens.cur !== prev.id) prev.classList.remove('on'); }, T(330) + 10); }
     this.cur = id;
   },
@@ -2017,7 +2037,7 @@ const Session = {
         Sfx.correct();
         if (!st.ff) Voice.say(this.praise(G), { tag: 'praise' });
         this.cheer(G, st);
-        this.streakFx(G);
+        this.streakFx(G, st);
         this.maybeEgg(G);
         /* §3.10: praise + star into the tray <= DUR.celebrate - the praise waits for its own sentence at most
            DUR.praise, the star takes DUR.star (a tap skips it all) */
@@ -2101,29 +2121,35 @@ const Session = {
     list.forEach((a, i) => {
       if (a === host || !hostOn || i === 0) {                     /* the host and the nearest friend look at the answer */
         a.lookAt(at.x, at.y);
-        G.scope.timeout(() => { if (a === host) a.react(); else a.hop(); }, 260 + i * 110);
+        st.scope.timeout(() => { if (a === host) a.react(); else a.hop(); }, 260 + i * 110);
       } else {                                                    /* the others turn to the host celebrating - and join in */
-        G.scope.timeout(() => a.lookAt(host.x, host.y - host.h * 0.6), 180 + i * 90);
-        G.scope.timeout(() => a.hop(), 620 + i * 110);
+        st.scope.timeout(() => a.lookAt(host.x, host.y - host.h * 0.6), 180 + i * 90);
+        st.scope.timeout(() => a.hop(), 620 + i * 110);
       }
     });
   },
   /* three in a row: the host and the nearest friend high-five */
-  highFive(G) {
+  highFive(G, st) {
     const host = G.actors[G.game.host || G.W.host];
     if (!host || host.math || host.x < 0 || host.x > Stage.W) return;
     const mate = Object.values(G.actors).filter(a => a !== host && !a.math && a.x > 0 && a.x < Stage.W).sort((a, b) => Math.abs(a.x - host.x) - Math.abs(b.x - host.x))[0];
     if (!mate) return;
-    const sc = G.scope, d = mate.x > host.x ? 1 : -1, step = Math.min(60, Math.abs(mate.x - host.x) / 3);
+    const sc = st ? st.scope : G.scope, d = mate.x > host.x ? 1 : -1;
     host.lookAt(mate.x, mate.y - mate.h / 2); mate.lookAt(host.x, host.y - host.h / 2);
+    /* R4-D01: they step until their hands meet (bodies ~30 % of their widths apart); too far apart for a step -> they
+       wave to each other instead (no spark in an empty middle) */
+    const gap = Math.abs(mate.x - host.x) - (host.w + mate.w) * 0.3;
+    if (gap > 180) { sc.timeout(() => { host.wave(); mate.wave(); Sfx.hey(); }, 250); return; }
+    const step = Math.max(0, gap / 2);
     /* a step towards each other and back: pure motion (fill none) - positions are never changed */
     const go = (a, dx) => sc.anim(a.root, [{ transform: 'translate(0,0)' }, { transform: 'translate(' + dx + 'px,-6px)', offset: 0.35 }, { transform: 'translate(' + dx + 'px,-6px)', offset: 0.6 }, { transform: 'translate(0,0)' }], { duration: 1000, easing: EASE.glide, fill: 'none' });
     go(host, d * step); go(mate, -d * step);
     sc.timeout(() => { Sfx.mar(1568, 0, 0.25, 0.4); Sfx.mar(2093, 0.06, 0.25, 0.35); Fx.burst((host.x + mate.x) / 2, Math.min(host.y - host.h * 0.55, mate.y - mate.h * 0.55), { n: 12, dist: 60 }); }, 360);
   },
-  streakFx(G) {
-    if (G.streak === 3) { this.highFive(G); Object.values(G.actors).filter(a => !a.math).forEach((a, i) => G.scope.timeout(() => a.cheer(), 900 + i * 60)); Fx.confetti(30); }
-    if (G.streak === 5) { Fx.confetti(60); Fx.burst(Stage.W / 2, Stage.H * 0.3, { n: 24, dist: 200 }); Sfx.fanfare(); }
+  streakFx(G, st) {
+    const sc = st ? st.scope : G.scope;
+    if (G.streak === 3) { this.highFive(G, st); Object.values(G.actors).filter(a => !a.math).forEach((a, i) => sc.timeout(() => a.cheer(), 900 + i * 60)); Fx.confetti(30, st && st.scope); }
+    if (G.streak === 5) { Fx.confetti(60, st && st.scope); Fx.burst(Stage.W / 2, Stage.H * 0.3, { n: 24, dist: 200 }); Sfx.fanfare(); }
   },
   maybeEgg(G) {
     const st = this.st;
@@ -2273,8 +2299,9 @@ const Hints = {
     st.autoDue = 0;
     st.nextAuto = Math.max(due + 1600 * HS(), t + 1000 * HS());
     st.hintLv = 4; this.mark(st, 'auto');
-    const step = st.game.next(st, 'right');
-    if (step) this.showStep(st, step).then(() => { if (Session.alive(st) && ['act', 'ready', 'input'].includes(st.phase)) gesture(step.g, step.p, { system: true }); });
+    const step = st.game.next(st, 'right'), ops = st.childOps;
+    /* R4-U02: a step shown while the child acted is dropped - the child's own move wins */
+    if (step) this.showStep(st, step).then(() => { if (Session.alive(st) && st.childOps === ops && ['act', 'ready', 'input'].includes(st.phase)) gesture(step.g, step.p, { system: true }); });
   },
   glow(st) { (st.game.workEls ? st.game.workEls(st) : []).forEach(e => { e.classList.add('glow'); st.scope.timeout(() => e.classList.remove('glow'), 1400); }); },
   /* the child is thinking: now and then ONE friend (never the host) glances at the child - peripheral life, not a call */
@@ -2339,6 +2366,7 @@ function gesture(name, p, meta) {
   if (!system) {
     st.childOps++;
     Hints.touch(st);
+    if (Hand.busy && !(st.demo && !st.childTook)) Hand.kill();         /* R4-U02: the helper's hand goes at once */
     const db = st.doneBtn; if (db && db.classList.contains('ready')) { db.style.animation = 'none'; void db.offsetWidth; db.style.animation = ''; }
     if (st.demo && !st.childTook) { st.childTook = true; Hand.kill(); }
   }
@@ -2712,7 +2740,7 @@ const Parent = {
       const td = el('td', '', tr); const fs = el('select', '', td);
       for (let l = 1; l <= MAXLV[id]; l++) { const o = el('option', '', fs, { text: 'L' + l, value: l }); if (l === ws.floor) o.selected = true; }
       fs.addEventListener('change', () => { ws.floor = Number(fs.value); if (ws.level < ws.floor) ws.level = ws.floor; Store.save(); });
-      el('td', '', tr, { html: rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（无声设备：看点阵完成，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
+      el('td', '', tr, { html: rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
       el('td', '', tr, { text: ws.stars });
     });
     if (!digits()) el('div', 'mut', sh, { text: '数字显示已关闭：复仇者世界的“解码”只记录点卡映射，不代表已检验数字。' });
@@ -2735,6 +2763,9 @@ const Parent = {
     el('h3', '', sh, { text: '设置' });
     const dg = el('button', 'pbtn', sh, { text: '数字显示：' + (digits() ? '开' : '关') });
     dg.addEventListener('click', () => { Store.s.settings.digits = !Store.s.settings.digits; Store.save(); dg.textContent = '数字显示：' + (digits() ? '开' : '关'); });
+    const vm = el('button', 'pbtn', sh, { text: '看图模式：' + (visualMode() ? '开' : '关') });
+    vm.addEventListener('click', () => { Store.s.settings.visual = !Store.s.settings.visual; Store.save(); vm.textContent = '看图模式：' + (visualMode() ? '开' : '关'); });
+    el('div', 'mut', sh, { text: '看图模式：孩子听不见声音时打开。只靠听的题（佩奇“插蜡烛”）会直接显示点阵，记为“看图完成”，不算“听数取物”。' });
     const ul = el('button', 'pbtn', sh, { text: '全部解锁' });
     ul.addEventListener('click', () => { ORDER.forEach(o => { Store.w(o).unlocked = true; }); Store.save(); ul.textContent = '已全部解锁'; });
     let n = 0;
@@ -2767,8 +2798,8 @@ const Finale = {
       const h = base * [0.2, 0.24, 0.28][r], y = vh * [0.6, 0.72, 0.88][r];
       row.forEach((id, i) => {
         const im = img('assets/chars/' + id + '.png', '', crowd);
-        const x = vw * (0.06 + 0.88 * (i + 0.5) / row.length);
-        Object.assign(im.style, { position: 'absolute', height: h + 'px', left: x + 'px', top: (y - h) + 'px', transform: 'translateX(-50%)', filter: 'drop-shadow(0 6px 0 rgba(0,0,0,.25))' });
+        const x = 6 + 88 * (i + 0.5) / row.length, yp = [60, 72, 88][r];      /* % of the frame: a rotation keeps the picture */
+        Object.assign(im.style, { position: 'absolute', height: h + 'px', left: x + '%', top: 'calc(' + yp + '% - ' + h + 'px)', transform: 'translateX(-50%)', filter: 'drop-shadow(0 6px 0 rgba(0,0,0,.25))' });
         sc.anim(im, [{ transform: 'translateX(-50%) translateY(' + vh + 'px)' }, { transform: 'translateX(-50%) translateY(0)' }], { duration: 700, delay: 60 * (i + r * 4), easing: EASE.pop });
         sc.timeout(() => sc.anim(im, [{ transform: 'translateX(-50%) translateY(0)' }, { transform: 'translateX(-50%) translateY(-14px)' }, { transform: 'translateX(-50%) translateY(0)' }], { duration: 520 + (i % 3) * 90, iterations: Infinity, delay: (i * 97) % 400 }), 1600);
       });
@@ -2948,13 +2979,16 @@ const SWU = {
     if (!reg || this.reg === reg) return;
     this.reg = reg;
     reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') this.maybe(); }); });
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.switching) location.reload(); });
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.switching) { location.reload(); return; } this.stale = true; this.reloadIfSafe(); });
     try { reg.update(); } catch (e) {}
     this.maybe();
   },
   safe() { return Screens.cur === 'entry' || document.hidden; },
   maybe() { if (this.reg && this.reg.waiting && navigator.serviceWorker.controller && this.safe()) this.apply(); },
   apply() { if (!this.reg || !this.reg.waiting || this.switching) return false; this.switching = true; this.reg.waiting.postMessage('skip'); return true; },
+  /* R4-F01: another page of this app switched the version - this page reloads at ITS next safe moment (entry, the map
+     between sessions, or hidden), so an old page never keeps asking the new worker for pictures */
+  reloadIfSafe() { if (this.stale && (Screens.cur === 'entry' || (Screens.cur === 'map' && !Session.G) || document.hidden)) location.reload(); },
 };
 
 function boot() {
@@ -2970,7 +3004,7 @@ function boot() {
   document.body.dataset.scr = 'entry';
   /* a release that finished installing last time: switch to it now, on the entry screen (page + assets together) */
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.getRegistration().then(reg => { if (reg) SWU.watch(reg); }).catch(() => {});
-  document.addEventListener('visibilitychange', () => { if (document.hidden) SWU.maybe(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { SWU.maybe(); SWU.reloadIfSafe(); } });
   window.__swApply = () => SWU.apply();
   /* after the entry screen is up: warm the map pictures, then (a little later) let the service worker precache */
   window.addEventListener('load', () => setTimeout(() => Boot.later(), 1500));
@@ -3874,7 +3908,7 @@ defGame({
     st.doneBtn = K.done(st, 'flame');
     K.reg(st, 'done', st.doneBtn, { hold: 500, tapOk: true, onHoldStart: () => this.ring(st, true), onHoldEnd: () => this.ring(st, false) });
     K.task(st, [[{ qty: q.N, flap: true, open: st.kind === 'match' }], ['assets/props/candle.png', 'arrowR', 'assets/props/cake.png'], [{ node: (() => { const s = el('span'); s.innerHTML = ICONS.flame; s.firstChild.setAttribute('width', 48); s.firstChild.setAttribute('height', 48); return s; })() }]]);
-    if (st.kind === 'giveN' && Voice.silent) { K.openFlap(st, true); st.evKind = 'giveNvis'; }   /* silent device: build what you SEE (R3-U01) */
+    if (st.kind === 'giveN' && (Voice.silent || visualMode())) { K.openFlap(st, true); st.evKind = 'giveNvis'; }   /* silent device / visual mode: build what you SEE (R3-U01, R4-U01) */
     G.actors[q.star].cheer();
     K.say(st, '插' + CNQ(q.N) + '根蜡烛！');
   },
@@ -3924,7 +3958,7 @@ defGame({
   async reveal(st) {
     const q = st.q, my = st, G = st.G;
     st.summary = CNQ(q.N) + '根，正好！';
-    for (let i = 0; i < st.candles.length; i++) { if (!Session.alive(my)) return; this.flameOn(st, st.candles[i]); Count.say(i + 1); await st.scope.wait(380); }
+    for (let i = 0; i < st.candles.length; i++) { if (!Session.alive(my)) return; this.flameOn(st, st.candles[i]); await Count.beat(st.scope, 380, i + 1); }
     if (!st.ff) { Sfx.song(); await st.scope.wait(1100); }          /* the tune plays on while the puffs fly (R3-D02) */
     if (!Session.alive(my)) return;
     G.actors[q.star].cheer(); Sfx.whoosh(0.4);
@@ -3953,8 +3987,8 @@ defGame({
   async correct(st) {
     const N = st.q.N, my = st;
     Voice.say('我们一起数！', { tag: 'fix' });
-    while (st.candles.length < N) { if (!Session.alive(my)) return; this.add(st); Count.say(st.candles.length); await st.scope.wait(480); }
-    for (let i = 0; i < N; i++) { if (!Session.alive(my)) return; K.hop(st, st.candles[i].el, 16); Count.say(i + 1); await st.scope.wait(420); }
+    while (st.candles.length < N) { if (!Session.alive(my)) return; this.add(st); await Count.beat(st.scope, 480, st.candles.length); }
+    for (let i = 0; i < N; i++) { if (!Session.alive(my)) return; K.hop(st, st.candles[i].el, 16); await Count.beat(st.scope, 420, i + 1); }
     await Voice.say(CNQ(N) + '根蜡烛！', { tag: 'fix' });
   },
   cleanup(st) { (st.candles || []).forEach(c => c.el.remove()); },
@@ -4315,7 +4349,7 @@ defGame({
     Voice.say('一样东西一个币', { tag: 'fix' });
     if (st.stacks) { st.stacks.forEach(sk => sk.remove()); st.coins = []; }
     while (st.coins.length < n) { if (!Session.alive(my)) return; this.addCoin(st); await st.scope.wait(300); }
-    for (let i = 0; i < n; i++) { if (!Session.alive(my)) return; const tb = box(st.things[i]), cb = box(st.coins[i]); await K.link(st, s, { x: tb.x + 44, y: tb.y + 88 }, { x: cb.x + 36, y: cb.y }, '#5CC46E'); Count.say(i + 1); await st.scope.wait(200); }
+    for (let i = 0; i < n; i++) { if (!Session.alive(my)) return; const tb = box(st.things[i]), cb = box(st.coins[i]); await K.link(st, s, { x: tb.x + 44, y: tb.y + 88 }, { x: cb.x + 36, y: cb.y }, '#5CC46E'); await Count.beat(st.scope, 200, i + 1); }
     await Voice.say(CN[n] + '样东西' + CN[n] + '个币', { tag: 'fix' });
   },
   next(st, strat) {
@@ -4652,9 +4686,16 @@ defGame({
     const rootLeft = lv <= 2 ? true : rng.chance(0.5);
     return { k: [n, k, rootLeft], n, target: k, answer: k, rootLeft };
   },
-  vine(n) { const L = K.L(); const x0 = L ? 150 : 90, x1 = L ? 900 : 640, y = L ? 250 : 360; return { x0, x1, y, sag: L ? 40 : 30 }; },
+  vine(n) { const L = K.L(); const x0 = L ? 150 : 90, x1 = L ? 900 : 640, y = L ? 250 : 360; return { x0, x1, y, y2: 600, sag: L ? 40 : 30 }; },
+  /* R4-U03: portrait with 5-7 gourds - one row would be 72 px apart; the vine winds back in a second row instead */
+  rows2(st) { return !!(st && st.q && !K.L() && st.q.n >= 5); },
   gourdXY(st, i) {           /* i = 0-based position counted from the ROOT */
     const v = this.vine(), n = st.q.n;
+    if (this.rows2(st)) {
+      const m1 = Math.ceil(n / 2), row = i < m1 ? 0 : 1, j = row ? i - m1 : i, m = row ? n - m1 : m1;
+      const t = (j + 1) / (m + (row ? 1.4 : 0.6)), tt = ((row === 0) === st.q.rootLeft) ? t : 1 - t;   /* row 2 stays near the bend */
+      return { x: v.x0 + (v.x1 - v.x0) * tt, y: (row ? v.y2 : v.y) + Math.sin(tt * Math.PI) * v.sag };
+    }
     const t = (i + 1) / (n + 0.6);
     const tt = st.q.rootLeft ? t : 1 - t;
     const x = v.x0 + (v.x1 - v.x0) * tt, y = v.y + Math.sin(tt * Math.PI) * v.sag;
@@ -4673,12 +4714,21 @@ defGame({
     const rx = rootLeft ? v.x0 - 60 : v.x1 + 60;
     let d = 'M' + rx + ' ' + (L ? 620 : 800) + ' C' + rx + ' ' + (v.y + 120) + ' ' + rx + ' ' + v.y + ' ' + (rootLeft ? v.x0 - 30 : v.x1 + 30) + ' ' + v.y;
     for (let i = 0; i <= 20; i++) { const tt = i / 20; const x = v.x0 + (v.x1 - v.x0) * (rootLeft ? tt : 1 - tt); const y = v.y + Math.sin((rootLeft ? tt : 1 - tt) * Math.PI) * v.sag; d += ' L' + x.toFixed(1) + ' ' + y.toFixed(1); }
+    const two = this.rows2(st);
+    if (two) {                                        /* the far end bends down and the vine comes back */
+      const fx = rootLeft ? v.x1 : v.x0, bx = rootLeft ? Math.min(Stage.W - 14, v.x1 + 56) : Math.max(14, v.x0 - 56);
+      d += ' C' + bx + ' ' + v.y + ' ' + bx + ' ' + v.y2 + ' ' + fx + ' ' + v.y2;
+      for (let i = 0; i <= 20; i++) { const tt = i / 20; const u = rootLeft ? 1 - tt * 0.76 : tt * 0.76; d += ' L' + (v.x0 + (v.x1 - v.x0) * u).toFixed(1) + ' ' + (v.y2 + Math.sin(u * Math.PI) * v.sag).toFixed(1); }
+      /* the vine ENDS here with a curl - well away from the root stem: one way along, never a loop */
+      const ue = rootLeft ? 0.24 : 0.76, ex = v.x0 + (v.x1 - v.x0) * ue, ey = v.y2 + Math.sin(ue * Math.PI) * v.sag, sx = rootLeft ? -1 : 1;
+      d += ' c' + (14 * sx) + ' -4 ' + (26 * sx) + ' -18 ' + (16 * sx) + ' -30 c' + (-8 * sx) + ' -10 ' + (-22 * sx) + ' -2 ' + (-16 * sx) + ' 8';
+    }
     svg('path', { d, fill: 'none', stroke: '#2B2118', 'stroke-width': 18, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
     svg('path', { d, fill: 'none', stroke: '#5DB84A', 'stroke-width': 10, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
-    for (let i = 1; i < 12; i++) { const tt = i / 12; const x = v.x0 + (v.x1 - v.x0) * tt, y = v.y + Math.sin(tt * Math.PI) * v.sag; svg('path', { d: 'M' + x + ' ' + (y - 4) + ' q14 -26 32 -12 q-8 18 -32 12z', fill: '#7BCB5B', stroke: '#2B2118', 'stroke-width': 3 }, s); }
+    for (let i = 1; i < (two ? 24 : 12); i++) { const tt = (i % 12) / 12, y0 = i >= 12 ? v.y2 : v.y; if (i === 12 || (i > 12 && (rootLeft ? tt < 0.3 : tt > 0.7))) continue; const x = v.x0 + (v.x1 - v.x0) * tt, y = y0 + Math.sin(tt * Math.PI) * v.sag; svg('path', { d: 'M' + x + ' ' + (y - 4) + ' q14 -26 32 -12 q-8 18 -32 12z', fill: '#7BCB5B', stroke: '#2B2118', 'stroke-width': 3 }, s); }
     const gw = G.actors.grandpa.w;
     G.actors.grandpa.at(clamp(rootLeft ? v.x0 - 40 : v.x1 + 40, gw / 2 + 6, Stage.W - gw / 2 - 6), L ? 640 : 820);
-    place(G.els.hit, v.x0 - 60, v.y - 60, v.x1 - v.x0 + 120, 240);
+    place(G.els.hit, v.x0 - 60, v.y - 60, v.x1 - v.x0 + 120, two ? v.y2 - v.y + 240 : 240);
     if (st && st.gourds) st.gourds.forEach((g, i) => { const p = this.gourdXY(st, i); place(g, p.x - 45, p.y + 6); });
   },
   relayoutQ(st) { this.layout(st.G); },
@@ -4714,7 +4764,7 @@ defGame({
     g.style.visibility = 'hidden';
     const A = G.actors[BRO[k - 1]];
     showActor(A, b.x + 45, b.y + 180, 150); A.react();
-    for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; const e = i === k - 1 ? A.root : st.gourds[i]; K.hop(st, e, 18); Count.say(i + 1, 'o'); await st.scope.wait(420); }
+    for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; const e = i === k - 1 ? A.root : st.gourds[i]; K.hop(st, e, 18); await Count.beat(st.scope, 420, i + 1, 'o'); }
     const f = UI.flag(k, 60); Stage.el.appendChild(f); st.els.push(f); place(f, b.x + 50, b.y - 40); K.pop(st, f);
     Voice.say(st.summary, { tag: 'summary' });
     await st.scope.wait(900);
@@ -4825,7 +4875,7 @@ defGame({
     const q = st.q, my = st, k = q.target;
     if (q.kind === 'ord') {
       st.summary = '第' + CN[k] + '个只一个';
-      for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; const b = st.bros[i]; b.a.hop(); Count.say(i + 1, 'o'); await st.scope.wait(380); }
+      for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; const b = st.bros[i]; b.a.hop(); await Count.beat(st.scope, 380, i + 1, 'o'); }
       const A = st.bros[k - 1].a, ab = A.root._box(); const f = UI.flag(k, 60); Stage.el.appendChild(f); st.els.push(f); place(f, ab.x + ab.w - 20, ab.y - 40); K.pop(st, f);
       Voice.say(st.summary, { tag: 'summary' });
       await Voice.afterSay(100);
@@ -4836,7 +4886,7 @@ defGame({
     } else {
       st.summary = CNQ(k) + '个娃！';
       const on = st.bros.filter(b => b.on);
-      for (let i = 0; i < on.length; i++) { if (!Session.alive(my)) return; on[i].a.hop(); Count.say(i + 1); await st.scope.wait(360); }
+      for (let i = 0; i < on.length; i++) { if (!Session.alive(my)) return; on[i].a.hop(); await Count.beat(st.scope, 360, i + 1); }
       K.ring(st, on.map(b => b.a.root._box()), 10);
       const c = UI.card(k, 90); Stage.el.appendChild(c); c.style.position = 'absolute'; st.els.push(c); const g = this.geo(); place(c, g.stage.x + g.stage.w / 2 - 45, g.stage.y - 250); K.pop(st, c);
       Voice.say(CNQ(k) + '个娃！', { tag: 'summary' });
@@ -4850,12 +4900,12 @@ defGame({
     if (!Session.alive(my)) return;
     if (q.kind === 'ord') {
       Voice.say('数位置，第' + CN[k] + '个', { tag: 'fix' });
-      for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; st.bros[i].a.hop(); Count.say(i + 1, 'o'); await st.scope.wait(420); }
+      for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; st.bros[i].a.hop(); await Count.beat(st.scope, 420, i + 1, 'o'); }
       st.bros[k - 1].on = true; await this.arrange(st);
       await Voice.say('只有一个站出来', { tag: 'fix' });
     } else {
       Voice.say(CNQ(k) + '个，一起出来', { tag: 'fix' });
-      for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; st.bros[i].on = true; this.arrange(st); Count.say(i + 1); await st.scope.wait(420); }
+      for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; st.bros[i].on = true; this.arrange(st); await Count.beat(st.scope, 420, i + 1); }
       await Voice.say(CNQ(k) + '个娃！', { tag: 'fix' });
     }
   },
@@ -4894,7 +4944,9 @@ defGame({
   id: 'H3', world: 'huluwa', verb: '分！', bg: 'huluwa_cave', props: [], chars: BRO.concat(['grandpa']), host: 'gourd7', icon: 'magicgourd',
   intro: '兵分两路！', kind0: 'in', praise: ['分得真好！'],
   kinds() { return ['in', 'out']; },
-  variety(st) { return st.inCave + ':' + (st.q.N - st.inCave); },  /* the split the child made: cave part : outside part */
+  variety(st) { return st.inCave + ':' + (st.q.N - st.inCave); },
+  /* the cave team in a row in the cave mouth - moved in from the edge when the row would leave the stage (R4-V01) */
+  mouthX(j, n) { const g = this.geo(), half = (n - 1) / 2 * 62 + 52, cx = clamp(g.cave.x + g.cave.w / 2, half + 6, Stage.W - half - 6); return cx + (j - (n - 1) / 2) * 62; },  /* the split the child made: cave part : outside part */
   /* the child splits the team with their own hands: every tapped brother walks INTO the cave and is gone from sight;
      a tap on the cave brings the last one back. The torch closes the split, then: "how many are in the cave?"
      (the whole N is on the task card, the outside part stays visible, the cave part must be kept in mind).
@@ -4930,7 +4982,7 @@ defGame({
     st.bros.forEach((b, i) => {
       if (Math.abs(b.a.h - bh) > 1) b.a.size(bh);
       if (b.cave && lit && (st.kind === 'out' || st.submitted)) {    /* the cave team stands in the cave mouth */
-        const j = insNow.indexOf(b); if (instant) b.a.at(g.cave.x + g.cave.w / 2 + (j - (insNow.length - 1) / 2) * 62, g.cave.y + g.cave.h - 12);
+        const j = insNow.indexOf(b); if (instant) b.a.at(this.mouthX(j, insNow.length), g.cave.y + g.cave.h - 12);
         return;
       }
       if (!b.cave && lit && st.kind === 'out' && !st.patrolBack) return;   /* on patrol, off the picture */
@@ -5001,7 +5053,7 @@ defGame({
       const g = this.geo(), outs = st.bros.filter(b => !b.cave);
       ins.forEach((x, j) => { x.a.root.style.visibility = ''; x.a.root.style.zIndex = '3'; });
       Voice.say('巡山去！', { tag: 'state' });
-      await Promise.all(ins.map((x, j) => x.a.moveTo(g.cave.x + g.cave.w / 2 + (j - (ins.length - 1) / 2) * 62, g.cave.y + g.cave.h - 12, 420, 40))
+      await Promise.all(ins.map((x, j) => x.a.moveTo(this.mouthX(j, ins.length), g.cave.y + g.cave.h - 12, 420, 40))
         .concat(outs.map((x, j) => x.a.moveTo(-120 - j * 70, x.a.y, 900, 20))));
       if (!Session.alive(my)) return 'ok';
       outs.forEach(x => { x.a.root.style.visibility = 'hidden'; });
@@ -5049,7 +5101,7 @@ defGame({
     /* the cave team comes out and lines up in front of the cave */
     ins.forEach((x, j) => { x.a.root.style.visibility = ''; x.a.root.style.zIndex = '3'; });
     Sfx.reveal();
-    await Promise.all(ins.map((x, j) => x.a.moveTo(g.cave.x + g.cave.w / 2 + (j - (ins.length - 1) / 2) * 62, g.cave.y + g.cave.h - 12, 420, 40)));   /* out into the cave mouth */
+    await Promise.all(ins.map((x, j) => x.a.moveTo(this.mouthX(j, ins.length), g.cave.y + g.cave.h - 12, 420, 40)));   /* out into the cave mouth */
     K.ring(st, outs.map(x => x.a.root._box()), 8, '#5CC46E');
     K.ring(st, ins.map(x => x.a.root._box()), 8, '#FFD34D').style.zIndex = '4';     /* bright on the dark cave mouth */
     await st.scope.wait(400);
@@ -5062,25 +5114,25 @@ defGame({
     if (st.kind === 'out') {
       /* count the cave team (they stand in the mouth), then keep counting as the patrol comes back one by one */
       Voice.say('洞口' + CNQ(ins.length) + '个，一共' + CNQ(q.N) + '个', { tag: 'fix' });
-      for (let i = 0; i < ins.length; i++) { ins[i].a.hop(); Count.say(i + 1); await st.scope.wait(420); }
+      for (let i = 0; i < ins.length; i++) { ins[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
       st.patrolBack = true;
       for (let j = 0; j < outs.length; j++) {
         if (!Session.alive(my)) return;
         const x = outs[j], p = this.home(st, st.bros.indexOf(x)); x.a.root.style.visibility = '';
         await x.a.moveTo(p.x, p.y, 380, 30);
-        Count.say(ins.length + j + 1); await st.scope.wait(360);
+        await Count.beat(st.scope, 360, ins.length + j + 1);
       }
       st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
       await Voice.say('巡山的' + CNQ(outs.length) + '个', { tag: 'fix' });
       return;
     }
     Voice.say('外面' + CNQ(outs.length) + '个，一共' + CNQ(q.N) + '个', { tag: 'fix' });
-    for (let i = 0; i < outs.length; i++) { outs[i].a.hop(); Count.say(i + 1); await st.scope.wait(420); }
+    for (let i = 0; i < outs.length; i++) { outs[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
     /* keep counting on: the brothers in the cave peek out one by one */
     for (let j = 0; j < ins.length; j++) {
       const x = ins[j]; x.a.root.style.visibility = ''; x.a.root.style.zIndex = '3';
-      await x.a.moveTo(g.cave.x + g.cave.w / 2 + (j - (ins.length - 1) / 2) * 62, g.cave.y + g.cave.h - 12, 300, 30);
-      Count.say(outs.length + j + 1); await st.scope.wait(360);
+      await x.a.moveTo(this.mouthX(j, ins.length), g.cave.y + g.cave.h - 12, 300, 30);
+      await Count.beat(st.scope, 360, outs.length + j + 1);
     }
     st.cards[st.opts.indexOf(st.inCave)].classList.add('hi');
     await Voice.say('洞里有' + CNQ(st.inCave) + '个', { tag: 'fix' });
@@ -5235,13 +5287,13 @@ defGame({
   async correct(st) {
     const my = st, q = st.q, vis = st.gems.filter(g => !g._gone), a = this.area();
     Voice.say('数到' + CN[q.N], { tag: 'fix' });
-    for (let i = 0; i < vis.length; i++) { if (!Session.alive(my)) return; K.hop(st, vis[i], 16); Count.say(i + 1); await st.scope.wait(400); }
+    for (let i = 0; i < vis.length; i++) { if (!Session.alive(my)) return; K.hop(st, vis[i], 16); await Count.beat(st.scope, 400, i + 1); }
     for (let j = 0; j < q.took; j++) {
       if (!Session.alive(my)) return;
       const gh = el('div', '', Stage.el); gh.style.position = 'absolute'; st.els.push(gh);
       Object.assign(gh.style, { width: '64px', height: '64px', borderRadius: '18px', border: '5px dashed #FFFFFF', zIndex: 6, transform: 'rotate(45deg)' });
       place(gh, a.x + a.w + 20 + (j % 3) * 70, a.y + Math.floor(j / 3) * 70);
-      K.pop(st, gh); Count.say(vis.length + j + 1); await st.scope.wait(420);
+      K.pop(st, gh); await Count.beat(st.scope, 420, vis.length + j + 1);
     }
     st.cards[st.opts.indexOf(q.took)].classList.add('hi');
     await Voice.say('拿了' + CNQ(q.took) + '个', { tag: 'fix' });
@@ -5402,7 +5454,7 @@ defGame({
       while (st.pups.filter(o => o.m === 0).length > q.a) st.pups.find(o => o.m === 0).m = 1;
       await this.arrange(st);
       const flood = st.pups.filter(o => o.m === 1);
-      for (let i = 0; i < flood.length; i++) { if (!Session.alive(my)) return; flood[i].a.hop(); Count.say(i + 1); await st.scope.wait(360); }
+      for (let i = 0; i < flood.length; i++) { if (!Session.alive(my)) return; flood[i].a.hop(); await Count.beat(st.scope, 360, i + 1); }
     }
     Sfx.whoosh(0.5);
     await Promise.all(st.pups.map(p => p.a.moveTo(p.m === 0 ? -120 : Stage.W + 120, p.a.y, 700)));
@@ -5424,7 +5476,7 @@ defGame({
       Voice.say('剩下的数一数', { tag: 'fix' });
       st.pups.forEach((p, i) => { p.m = i < q.a ? 0 : 1; }); await this.arrange(st);
       const flood = st.pups.filter(o => o.m === 1);
-      for (let i = 0; i < flood.length; i++) { if (!Session.alive(my)) return; flood[i].a.hop(); Count.say(i + 1); await st.scope.wait(420); }
+      for (let i = 0; i < flood.length; i++) { if (!Session.alive(my)) return; flood[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
       this.bond(st);
       st.cards[st.opts.indexOf(q.b)].classList.add('hi');
       await Voice.say('洪水要' + CNQ(q.b) + '只', { tag: 'fix' });
@@ -5432,7 +5484,7 @@ defGame({
     }
     Voice.say('火灾' + CNQ(q.a) + '只，洪水' + CNQ(q.b) + '只', { tag: 'fix' });
     st.pups.forEach(p => { p.m = -1; }); await this.arrange(st);
-    for (let i = 0; i < q.n; i++) { if (!Session.alive(my)) return; st.pups[i].m = i < q.a ? 0 : 1; this.arrange(st); Count.say(i < q.a ? i + 1 : i - q.a + 1); await st.scope.wait(420); }
+    for (let i = 0; i < q.n; i++) { if (!Session.alive(my)) return; st.pups[i].m = i < q.a ? 0 : 1; this.arrange(st); await Count.beat(st.scope, 420, i < q.a ? i + 1 : i - q.a + 1); }
     this.bond(st);
     await st.scope.wait(600);
   },
@@ -5459,13 +5511,15 @@ const VEH = [['hovercraft', 'zuma', 'helicopter', 'skye'], ['policecar', 'chase'
 defGame({
   id: 'A2', world: 'paw', verb: '救！', bg: 'paw_beach', props: ['pen', 'hovercraft', 'helicopter', 'policecar', 'firetruck'].concat(ANIMALS), chars: ['ryder', 'zuma', 'skye', 'chase', 'marshall', 'rocky', 'rubble'], host: 'ryder', icon: 'kitten',
   intro: '救小动物！', kind0: 'all', praise: ['一只都没漏！'],
-  kinds(level) { return level >= 4 ? ['on'] : ['all']; },
+  /* L1 'along': the running count is said and shown = teaching (never evidence). From L2 a counted animal gets a plain
+     dot - no number before the answer, the child finds the total (R4-J01) */
+  kinds(level) { return level === 1 ? ['along'] : level >= 4 ? ['on'] : ['all']; },
   gen(G, o) {
     const rng = o.rng, lv = o.level;
     let a, b;
     if (lv === 1) { a = rng.int(1, 2); b = rng.int(1, 3 - a); }
-    else if (lv === 2) { const t = rng.int(4, 5); a = rng.int(1, t - 1); b = t - a; }
-    else if (lv === 3) { const t = 5; a = rng.int(2, 3); b = t - a; }          /* whistle + 5 touches + answer = 7 (budget) */
+    else if (lv === 2) { const t = rng.int(3, 4); a = rng.int(1, t - 1); b = t - a; }
+    else if (lv === 3) { const t = rng.int(4, 5); a = rng.int(1, t - 1); b = t - a; }   /* never "always five"; whistle + <=5 touches + answer <= 7 */
     else { a = 5; b = rng.int(1, 2); }
     const pair = rng.pick(VEH), animal = rng.pick(ANIMALS), animal2 = rng.pick(ANIMALS.filter(x => x !== animal));
     const pts = K.cells(rng, a + b, 3, 2, 0.1);
@@ -5516,6 +5570,7 @@ defGame({
   async present(st) {
     const G = st.G, q = st.q, g = this.geo();
     st.arrived = false; st.counted = 0;
+    if (st.kind === 'along') st.noEvidence = true;      /* the helper said and showed the numbers: teaching */
     G.els.vA.firstChild.src = 'assets/props/' + q.pair[0] + '.png'; G.els.vB.firstChild.src = 'assets/props/' + q.pair[2] + '.png';
     G.els.vB.firstChild.style.transform = 'scaleX(-1)';
     this.layout(G);
@@ -5554,11 +5609,15 @@ defGame({
     if (st.level >= 4 && !an.from && !st.benchDone) { K.wiggle(st, an.el); return 'free'; }
     an.counted = true; st.counted++;
     K.hop(st, an.el, 18);
-    const b = K.badge(st, an.el, st.counted, 0, 0, 40); st.scope.timeout(() => st.scope.anim(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 300, commit: true }), 1100);
-    if (st.level === 1) Count.say(st.counted); else Sfx.count(st.counted);
+    if (st.kind === 'along') {
+      const b = K.badge(st, an.el, st.counted, 0, 0, 40); st.scope.timeout(() => st.scope.anim(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 300, commit: true }), 1100);
+      Count.say(st.counted);
+    } else { this.dot(st, an); Sfx.count(st.counted); }
     this.maybeAsk(st);
     return 'ok';
   },
+  /* "counted": a plain dot on the animal (moves with it) - which ones are done, not how many */
+  dot(st, an) { const d = el('div', '', an.el); Object.assign(d.style, { position: 'absolute', right: '-2px', top: '-2px', width: '22px', height: '22px', borderRadius: '50%', background: '#FFC93C', boxShadow: '0 0 0 3px #2B2118', pointerEvents: 'none' }); st.scope.anim(d, [{ transform: 'scale(0)' }, { transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 200, easing: EASE.pop }); },
   maybeAsk(st) {
     if (st.cards) return;
     if (st.level >= 4 ? !st.benchDone : st.animals.some(an => !an.counted)) return;
@@ -5602,10 +5661,10 @@ defGame({
       Voice.say('五只，接着数', { tag: 'fix' });
       Count.say(5); K.ring(st, st.animals.filter(an => !an.from).map(an => box(an.el)), 6, '#FF9A6C'); await st.scope.wait(600);
       const B = st.animals.filter(an => an.from);
-      for (let i = 0; i < B.length; i++) { if (!Session.alive(my)) return; K.hop(st, B[i].el, 18); Count.say(6 + i); await st.scope.wait(450); }
+      for (let i = 0; i < B.length; i++) { if (!Session.alive(my)) return; K.hop(st, B[i].el, 18); await Count.beat(st.scope, 450, 6 + i); }
     } else {
       Voice.say('从一开始，全部数', { tag: 'fix' });
-      for (let i = 0; i < st.animals.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.animals[i].el, 18); Count.say(i + 1); await st.scope.wait(420); }
+      for (let i = 0; i < st.animals.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.animals[i].el, 18); await Count.beat(st.scope, 420, i + 1); }
     }
     st.cards[st.opts.indexOf(q.n)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.n) + '只', { tag: 'fix' });
@@ -5745,7 +5804,7 @@ defGame({
     const q = st.q, G = st.G, my = st;
     st.summary = this.line(st);
     this.setDisp(G, q.answer);
-    for (let v = q.n0; v !== q.answer;) { if (!Session.alive(my)) return; v += q.kind === 'plus' ? 1 : -1; st.hi = v; this.drawRuler(G, v); Count.say(v); await st.scope.wait(450); }
+    for (let v = q.n0; v !== q.answer;) { if (!Session.alive(my)) return; v += q.kind === 'plus' ? 1 : -1; st.hi = v; this.drawRuler(G, v); await Count.beat(st.scope, 450, v); }
     Sfx.reveal(); K.hop(st, G.els.lift, 20);
     Voice.say(st.summary, { tag: 'summary' });
     await st.scope.wait(900);
@@ -5755,7 +5814,7 @@ defGame({
     const q = st.q, G = st.G, my = st;
     Voice.say('电梯里本来' + CNQ(q.n0) + '只', { tag: 'fix' });
     st.hi = q.n0; this.drawRuler(G, q.n0); this.setDisp(G, q.n0); await Voice.afterSay(100);
-    for (let v = q.n0; v !== q.answer;) { if (!Session.alive(my)) return; v += q.kind === 'plus' ? 1 : -1; st.hi = v; this.drawRuler(G, v); Count.say(v); await st.scope.wait(600); }
+    for (let v = q.n0; v !== q.answer;) { if (!Session.alive(my)) return; v += q.kind === 'plus' ? 1 : -1; st.hi = v; this.drawRuler(G, v); await Count.beat(st.scope, 600, v); }
     st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
     await Voice.say(this.line(st), { tag: 'fix' });
   },
@@ -5872,8 +5931,8 @@ defGame({
     st.summary = '从' + CN[q.k0] + '接着数，' + CN[q.k0 + q.m] + '只！';
     await this.open(st);
     if (!Session.alive(my)) return;
-    Count.say(q.k0); await st.scope.wait(450);
-    for (let i = 0; i < q.m; i++) { if (!Session.alive(my)) return; const kt = st.kits[i]; K.hop(st, kt.el, 18); K.badge(st, kt.el, q.k0 + i + 1, 0, 0, 42); Count.say(q.k0 + i + 1); await st.scope.wait(450); }
+    await Count.beat(st.scope, 450, q.k0);
+    for (let i = 0; i < q.m; i++) { if (!Session.alive(my)) return; const kt = st.kits[i]; K.hop(st, kt.el, 18); K.badge(st, kt.el, q.k0 + i + 1, 0, 0, 42); await Count.beat(st.scope, 450, q.k0 + i + 1); }
     this.setTag(st.G, q.k0 + q.m);
     Sfx.reveal();
     Voice.say(st.summary, { tag: 'summary' });
@@ -5885,8 +5944,8 @@ defGame({
     Voice.say('篮子里本来' + CNQ(q.k0) + '只', { tag: 'fix' });
     await this.open(st);
     await Voice.afterSay(100);
-    Count.say(q.k0); await st.scope.wait(600);
-    for (let i = 0; i < q.m; i++) { if (!Session.alive(my)) return; K.hop(st, st.kits[i].el, 18); K.badge(st, st.kits[i].el, q.k0 + i + 1, 0, 0, 42); Count.say(q.k0 + i + 1); await st.scope.wait(600); }
+    await Count.beat(st.scope, 600, q.k0);
+    for (let i = 0; i < q.m; i++) { if (!Session.alive(my)) return; K.hop(st, st.kits[i].el, 18); K.badge(st, st.kits[i].el, q.k0 + i + 1, 0, 0, 42); await Count.beat(st.scope, 600, q.k0 + i + 1); }
     st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.answer) + '只', { tag: 'fix' });
   },
@@ -6004,7 +6063,7 @@ defGame({
     if (st.level >= 4) { st.len = q.N; this.draw(st); }
     G.actors.wukong.react('flip'); Sfx.whoosh(0.5);
     await st.scope.wait(500);
-    Count.say(q.k0); await st.scope.wait(420);
+    await Count.beat(st.scope, 420, q.k0);
     const S = G.els.staff, rects = S.querySelectorAll('svg rect');
     for (let i = q.k0; i < q.N; i++) {
       if (!Session.alive(my)) return;
@@ -6028,8 +6087,8 @@ defGame({
     const q = st.q, my = st;
     Voice.say('从' + CN[q.k0] + '接着数', { tag: 'fix' });
     st.len = q.k0; this.draw(st); await Voice.afterSay(100);
-    Count.say(q.k0); await st.scope.wait(500);
-    for (let i = q.k0; i < q.N; i++) { if (!Session.alive(my)) return; st.len = i + 1; this.draw(st); Count.say(i + 1); await st.scope.wait(520); }
+    await Count.beat(st.scope, 500, q.k0);
+    for (let i = q.k0; i < q.N; i++) { if (!Session.alive(my)) return; st.len = i + 1; this.draw(st); await Count.beat(st.scope, 520, i + 1); }
     await Voice.say('变到' + CN[q.N] + '节', { tag: 'fix' });
   },
   cleanup(st) { st.G.els.staff.innerHTML = ''; st.G.els.tip.style.display = ''; },
@@ -6149,7 +6208,7 @@ defGame({
     const q = st.q, my = st;
     Voice.say('从' + CN[q.a] + '开始翻', { tag: 'fix' });
     await this.flipTo(st, q.a); await Voice.afterSay(100);
-    for (let i = 1; i <= q.m; i++) { if (!Session.alive(my)) return; await this.flipTo(st, q.a + i); Count.say(q.a + i); await st.scope.wait(300); }
+    for (let i = 1; i <= q.m; i++) { if (!Session.alive(my)) return; await this.flipTo(st, q.a + i); await Count.beat(st.scope, 300, q.a + i); }
     st.clouds[q.a + q.m - 1].classList.add('glow');
     await Voice.say('到' + CN[q.a + q.m] + '！', { tag: 'fix' });
   },
@@ -6172,7 +6231,7 @@ defGame({
 /* ---- X3 装！ fill the basket: which branch makes exactly five / ten ---- */
 function frameEl(n, cell) {
   const cols = 5, rows = n > 5 ? 2 : 1;
-  const d = el('div', ''); d.style.position = 'absolute'; d.style.zIndex = 4;
+  const d = el('div', ''); d.style.position = 'absolute'; d.style.zIndex = 4; d.style.width = (cols * cell + 12) + 'px'; d.style.height = (rows * cell + 12) + 'px';
   const s = svg('svg', { width: cols * cell + 12, height: rows * cell + 12 }, d);
   svg('rect', { x: 3, y: 3, width: cols * cell + 6, height: rows * cell + 6, rx: 14, fill: 'rgba(255,248,236,.85)', stroke: '#2B2118', 'stroke-width': 4 }, s);
   for (let i = 0; i < n; i++) svg('circle', { cx: 6 + (i % cols) * cell + cell / 2, cy: 6 + Math.floor(i / cols) * cell + cell / 2, r: cell * 0.38, fill: 'rgba(43,33,24,.1)', stroke: 'rgba(43,33,24,.35)', 'stroke-width': 2, 'stroke-dasharray': '4 3' }, s);
@@ -6294,7 +6353,7 @@ defGame({
     st.peaches = st.peaches.filter(p => q.holes.includes(p.hole) && st.peaches.indexOf(p) < q.a);
     const used = new Set(st.peaches.map(p => p.hole));
     let c = 0;
-    for (let i = 0; i < q.cap; i++) { if (used.has(i)) continue; if (!Session.alive(my)) return; c++; const h = this.holeXY(st, i); const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118', zIndex: 8 }); place(d, h.x - 26, h.y - 26); st.els.push(d); Count.say(c); await st.scope.wait(420); }
+    for (let i = 0; i < q.cap; i++) { if (used.has(i)) continue; if (!Session.alive(my)) return; c++; const h = this.holeXY(st, i); const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118', zIndex: 8 }); place(d, h.x - 26, h.y - 26); st.els.push(d); await Count.beat(st.scope, 420, c); }
     st.branches[st.opts.indexOf(q.need)].el.classList.add('glow');
     await Voice.say('还差' + CNQ(q.need) + '个', { tag: 'fix' });
   },
@@ -6340,8 +6399,9 @@ defGame({
   relayoutQ(st) { this.layout(st.G); },
   cardSpot() { return K.L() ? { cx: 470, cy: 180 } : { cx: 320, cy: 820 }; },
   placeClones(st, instant) {
-    const g = this.geo(), vis = st.clones.filter(c => !c.hidden);
-    vis.forEach((c, i) => { const [u, v] = st.q.pts[i] || [0.5, 0.5]; place(c.a.root, g.ground.x + u * g.ground.w - 34, g.ground.y + v * g.ground.h - 50); c.a.x = g.ground.x + u * g.ground.w; c.a.y = g.ground.y + v * g.ground.h + 30; });
+    /* R4-V02: until the hiding every clone keeps its cell of the WHOLE; after it the rest takes the rest's layout */
+    const g = this.geo(), all = !st.hidDone, vis = all ? st.clones : st.clones.filter(c => !c.hidden);
+    vis.forEach((c, i) => { const [u, v] = (all ? st.q.ptsAll[c.i] : st.q.pts[i]) || [0.5, 0.5]; place(c.a.root, g.ground.x + u * g.ground.w - 34, g.ground.y + v * g.ground.h - 50); c.a.x = g.ground.x + u * g.ground.w; c.a.y = g.ground.y + v * g.ground.h + 30; });
   },
   async present(st) {
     const G = st.G, q = st.q;
@@ -6360,7 +6420,7 @@ defGame({
       const a = new Actor('wukong', Stage.el, 100, st.scope); a.root.style.zIndex = 5; st.els.push(a.root);
       const [u, v] = q.ptsAll[i]; place(a.root, g.ground.x + u * g.ground.w - 34, g.ground.y + v * g.ground.h - 50);
       a.x = g.ground.x + u * g.ground.w; a.y = g.ground.y + v * g.ground.h + 50;
-      st.clones.push({ a, hidden: q.hide.includes(i) });
+      st.clones.push({ a, hidden: q.hide.includes(i), i });
       Sfx.pop(); K.pop(st, a.root);
       await st.scope.wait(70);
     }
@@ -6379,6 +6439,7 @@ defGame({
     place(mist, g.ground.x - 60, g.ground.y - 80, g.ground.w + 120 + (K.L() ? 380 : 0), g.ground.h + 140);
     Sfx.nz(0, 0.9, 2400, 800, 0.6, 0.12);
     await st.scope.anim(mist, [{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
+    st.hidDone = true;
     st.clones.filter(c => c.hidden).forEach(c => { c.a.root.style.visibility = 'hidden'; });
     this.placeClones(st, true);
     await st.scope.wait(500);
@@ -6435,7 +6496,7 @@ defGame({
     const f = this.frameFor(st), cell = f._cell, fb = box(f);
     const vis = st.clones.filter(c => !c.hidden);
     await Promise.all(vis.map((c, i) => K.flyTo(st, c.a.root, fb.x + 6 + (i % 5) * cell + cell / 2 - c.a.w / 2, fb.y + 6 + Math.floor(i / 5) * cell + cell / 2 - c.a.h * 0.6, 420)));
-    for (let j = 0; j < q.h; j++) { if (!Session.alive(my)) return; const i = vis.length + j; const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: (cell - 12) + 'px', height: (cell - 12) + 'px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118', zIndex: 8 }); place(d, fb.x + 12 + (i % 5) * cell, fb.y + 12 + Math.floor(i / 5) * cell); st.els.push(d); Count.say(j + 1); await st.scope.wait(420); }
+    for (let j = 0; j < q.h; j++) { if (!Session.alive(my)) return; const i = vis.length + j; const d = el('div', '', Stage.el); Object.assign(d.style, { position: 'absolute', width: (cell - 12) + 'px', height: (cell - 12) + 'px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118', zIndex: 8 }); place(d, fb.x + 12 + (i % 5) * cell, fb.y + 12 + Math.floor(i / 5) * cell); st.els.push(d); await Count.beat(st.scope, 420, j + 1); }
     st.cards[st.opts.indexOf(q.h)].classList.add('hi');
     await Voice.say('还差' + CNQ(q.h) + '只', { tag: 'fix' });
   },
@@ -6544,8 +6605,8 @@ defGame({
     const q = st.q, my = st;
     st.summary = '从' + CN[q.a] + '接着数，' + CN[q.a + q.b] + '位！';
     await this.openJet(st);
-    Count.say(q.a); await st.scope.wait(450);
-    for (let i = 0; i < q.b; i++) { if (!Session.alive(my)) return; const a = st.out[i]; a.hop(); K.badge(st, a.root, q.a + i + 1, 0, 0, 44); Count.say(q.a + i + 1); await st.scope.wait(450); }
+    await Count.beat(st.scope, 450, q.a);
+    for (let i = 0; i < q.b; i++) { if (!Session.alive(my)) return; const a = st.out[i]; a.hop(); K.badge(st, a.root, q.a + i + 1, 0, 0, 44); await Count.beat(st.scope, 450, q.a + i + 1); }
     st.out.forEach(a => a.cheer()); Fx.confetti(24); Sfx.reveal();
     this.setDisp(st.G, q.a + q.b);
     Voice.say(st.summary, { tag: 'summary' });
@@ -6556,8 +6617,8 @@ defGame({
     const q = st.q, my = st;
     Voice.say('飞机里本来' + CNQ(q.a) + '位', { tag: 'fix' });
     await this.openJet(st); await Voice.afterSay(100);
-    Count.say(q.a); await st.scope.wait(600);
-    for (let i = 0; i < q.b; i++) { if (!Session.alive(my)) return; st.out[i].hop(); K.badge(st, st.out[i].root, q.a + i + 1, 0, 0, 44); Count.say(q.a + i + 1); await st.scope.wait(600); }
+    await Count.beat(st.scope, 600, q.a);
+    for (let i = 0; i < q.b; i++) { if (!Session.alive(my)) return; st.out[i].hop(); K.badge(st, st.out[i].root, q.a + i + 1, 0, 0, 44); await Count.beat(st.scope, 600, q.a + i + 1); }
     st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.answer) + '位', { tag: 'fix' });
   },
@@ -6709,9 +6770,9 @@ defGame({
     const q = st.q, my = st, g = this.geo();
     Voice.say('一箱是十个', { tag: 'fix' });
     const fr = frameEl(10, 44); Stage.el.appendChild(fr); st.els.push(fr); place(fr, g.plat.x + 20, g.plat.y - 250);
-    for (let i = 0; i < 10; i++) { if (!Session.alive(my)) return; const h = { x: g.plat.x + 20 + 6 + (i % 5) * 44 + 22, y: g.plat.y - 250 + 6 + Math.floor(i / 5) * 44 + 22 }; const c = K.item(Stage.el, 'assets/props/cube.png', 34, 34); c.style.zIndex = 9; st.els.push(c); place(c, h.x - 17, h.y - 17); K.pop(st, c); if (i === 9) Count.say(10); await st.scope.wait(90); }
+    for (let i = 0; i < 10; i++) { if (!Session.alive(my)) return; const h = { x: g.plat.x + 20 + 6 + (i % 5) * 44 + 22, y: g.plat.y - 250 + 6 + Math.floor(i / 5) * 44 + 22 }; const c = K.item(Stage.el, 'assets/props/cube.png', 34, 34); c.style.zIndex = 9; st.els.push(c); place(c, h.x - 17, h.y - 17); K.pop(st, c); if (i === 9) await Count.beat(st.scope, 90, 10); }
     await st.scope.wait(400);
-    for (let j = 1; j <= q.T - 10 && q.T > 10; j++) { if (!Session.alive(my)) return; const c = K.item(Stage.el, 'assets/props/cube.png', 38, 38); c.style.zIndex = 9; st.els.push(c); place(c, g.plat.x + 250 + ((j - 1) % 5) * 42, g.plat.y - 250 + Math.floor((j - 1) / 5) * 44); K.pop(st, c); Count.say(10 + j); await st.scope.wait(450); }
+    for (let j = 1; j <= q.T - 10 && q.T > 10; j++) { if (!Session.alive(my)) return; const c = K.item(Stage.el, 'assets/props/cube.png', 38, 38); c.style.zIndex = 9; st.els.push(c); place(c, g.plat.x + 250 + ((j - 1) % 5) * 42, g.plat.y - 250 + Math.floor((j - 1) / 5) * 44); K.pop(st, c); await Count.beat(st.scope, 450, 10 + j); }
     if (st.cards) st.cards[st.opts.indexOf(q.T)].classList.add('hi');
     await Voice.say(this.line(st), { tag: 'fix' });
   },
@@ -6736,7 +6797,7 @@ defGame({
 
 /* ---- V3 充！ fill the first gauge to ten, the rest goes on: bridging through ten ---- */
 function gaugeEl(lit, color) {
-  const d = el('div', ''); d.style.position = 'absolute'; d.style.zIndex = 4;
+  const d = el('div', ''); d.style.position = 'absolute'; d.style.zIndex = 4; d.style.width = '250px'; d.style.height = '120px';   /* a real box: drops hit it (R4-C03) */
   const s = svg('svg', { viewBox: '0 0 250 120', width: 250, height: 120 }, d);
   svg('rect', { x: 3, y: 3, width: 244, height: 114, rx: 22, fill: '#1F2A44', stroke: '#2B2118', 'stroke-width': 5 }, s);
   d._cells = [];
@@ -6891,13 +6952,13 @@ defGame({
       /* the full gauge is ten at one look, then count on through the second gauge */
       st.scope.anim(st.g1, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 400, fill: 'none' });
       Voice.say('满格是十', { tag: 'fix' }); await st.scope.wait(900);
-      for (let k = 0; k < q.T - 10; k++) { if (!Session.alive(my)) return; const c = st.g2._cells[k]; if (c) st.scope.anim(c, [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 300, fill: 'none' }); Count.say(11 + k); await st.scope.wait(480); }
+      for (let k = 0; k < q.T - 10; k++) { if (!Session.alive(my)) return; const c = st.g2._cells[k]; if (c) st.scope.anim(c, [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 300, fill: 'none' }); await Count.beat(st.scope, 480, 11 + k); }
       st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
       await Voice.say('一共' + CNQ(q.T) + '格', { tag: 'fix' });
       return;
     }
     Voice.say('第一个还差几格？', { tag: 'fix' });
-    for (let i = q.a; i < 10; i++) { if (!Session.alive(my)) return; st.g1._cells[i].setAttribute('fill', '#FFD34D'); Count.say(i - q.a + 1); await st.scope.wait(450); }
+    for (let i = q.a; i < 10; i++) { if (!Session.alive(my)) return; st.g1._cells[i].setAttribute('fill', '#FFD34D'); await Count.beat(st.scope, 450, i - q.a + 1); }
     st.pieces[st.opts.indexOf(q.need)].classList.add('hi');
     await Voice.say('还差' + CNQ(q.need) + '格', { tag: 'fix' });
   },
@@ -7110,7 +7171,7 @@ defGame({
       st.src.forEach(s => { s.in = false; }); await this.arrange(st);
       const order = st.src.slice().sort((a, b) => b.el._val - a.el._val);
       let left = q.n;
-      for (const s of order) { if (!Session.alive(my)) return; if (s.el._val <= left) { s.in = true; left -= s.el._val; this.arrange(st); Count.say(q.n - left); await st.scope.wait(450); } if (!left) break; }
+      for (const s of order) { if (!Session.alive(my)) return; if (s.el._val <= left) { s.in = true; left -= s.el._val; this.arrange(st); await Count.beat(st.scope, 450, q.n - left); } if (!left) break; }
     } else {
       st.targets[st.opts.indexOf(q.n)].classList.add('hi');
     }

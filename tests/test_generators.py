@@ -249,14 +249,14 @@ JS_LIB = r"""
       if (lv <= 2) { if (q.answer !== null || q.opts !== null) E.push(['answer', 'split2 is judged "a,b": answer ' + J(q.answer) + ' opts ' + J(q.opts)]); }
       else { if (q.answer !== q.b) E.push(['answer', 'answer ' + q.answer + ' != b ' + q.b]); numOpt(E, q.opts, q.b, 0, 7); }
     },
-    /* A2 two vehicles, one pen. Generator/DESIGN: L1 a 1-2, total <= 3; L2 total 4-5; L3 total 5 with a 2-3
-       ("whistle + 5 touches + answer = 7 (budget)"); L4 'on': a = 5 on the bench + b 1-2; a, b >= 1; two different
+    /* A2 two vehicles, one pen. Generator/DESIGN (R4-J01): L1 'along' a 1-2, total <= 3; L2 total 3-4; L3 total 4-5
+       with any split (never "always five"; whistle + <=5 touches + answer <= 7); L4 'on': a = 5 on the bench + b 1-2; a, b >= 1; two different
        animals; L1-3 the animals stand on pen cells (3x2 grid), L4 uses the bench (pts unused). */
     A2(q, lv, kind, E) {
       const n = q.a + q.b;
       if (!(inR(q.a, 1, 5) && inR(q.b, 1, 4))) E.push(['parts', 'a ' + q.a + ' b ' + q.b]);
       if (q.n !== n || q.answer !== n) E.push(['answer', 'n ' + q.n + ' answer ' + q.answer + ' != a+b ' + n]);
-      const ok = lv === 1 ? inR(q.a, 1, 2) && n <= 3 : lv === 2 ? inR(n, 4, 5) : lv === 3 ? n === 5 && inR(q.a, 2, 3) : q.a === 5 && inR(q.b, 1, 2);
+      const ok = lv === 1 ? inR(q.a, 1, 2) && n <= 3 : lv === 2 ? inR(n, 3, 4) : lv === 3 ? inR(n, 4, 5) : q.a === 5 && inR(q.b, 1, 2);
       if (!ok) E.push(['level-shape', 'L' + lv + ' a=' + q.a + ' b=' + q.b]);
       if (!VEH.some(v => J(v) === J(q.pair))) E.push(['vehicles', J(q.pair)]);
       if (!(ANIMALS.includes(q.animal) && ANIMALS.includes(q.animal2) && q.animal !== q.animal2)) E.push(['animals', q.animal + '/' + q.animal2]);
@@ -592,7 +592,7 @@ JS_LIB = r"""
     T('brother missing from the team', 'H3', 2, 'selfsplit', q => { q.order.pop(); }, ['order']);
     T('Six took every gem', 'H4', 3, 'hidden', q => { q.took = q.answer = q.N; }, ['took']);
     T('an empty mission', 'A1', 1, 'split2', q => { q.a = 0; q.b = q.n; }, ['parts']);
-    T('L3 total 6', 'A2', 3, 'all', q => { q.b += 1; q.n += 1; q.answer += 1; }, ['level-shape']);
+    T('L3 total 6', 'A2', 3, 'all', q => { q.b = 6 - q.a; q.n = 6; q.answer = 6; }, ['level-shape']);
     T('elevator ends at 0', 'A3', 2, 'minus', q => { q.n0 = 1; q.answer = 0; }, ['result', 'k-range']);
     T('A4 total 12', 'A4', 4, 'on', q => { q.m = 5; q.answer = q.k0 + 5; }, ['range', 'answer']);
     T('staff target beyond k+6', 'X1', 3, 'target', q => { q.k0 = 3; q.d = 8; q.N = q.answer = 11; }, ['unsolvable', 'd-range']);
