@@ -12,7 +12,7 @@
 - 真机验收：`docs/IPAD-CHECKLIST.md`（声音、静音开关、切后台、旋转、离线、手指——自动化测试无法替代的部分）。
 - 更新、回滚、IP 下架：`docs/DEPLOY.md`。
 
-〔待填：部署结果与线上冒烟测试结论〕
+**部署结果（2026-09-24）**：仓库 <https://github.com/edliu1105/diandian-island>（组织 edliu1105 名下的公开仓库），GitHub Pages 从 `main` 根目录发布，**HTTPS 强制**（HSTS），页面 gzip 传输约 135 KB。线上检查：首页 200、未跳转到其他域名；sw.js、manifest、图标、角色、背景、报数 mp3 抽查均 200；WebKit（iPad 引擎）打开 0.3 秒就绪、Service Worker 预缓存全部 228 个素材、六个世界各答一题无破图、零应用报错（Playwright 的 Windows 版 WebKit 无法模拟离线重载，离线从主屏幕启动列入真机清单）。
 
 ## 2. 教什么
 
