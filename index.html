@@ -2521,7 +2521,7 @@ const MapView = {
   },
   recommend() {
     const open = LIVE().filter(id => Store.w(id).unlocked);
-    const notDone = open.filter(id => !Store.w(id).cleared);
+    const notDone = open.filter(id => !passed(id));                 /* R5-1: the new pass rule (played all 4 or 10 stars) */
     return notDone[0] || open[open.length - 1];
   },
   update() {
@@ -2787,12 +2787,12 @@ const Parent = {
       const ws = Store.w(id), rep = Mastery.gateReport(id);
       const tr = el('tr', '', tbl);
       el('td', '', tr, { text: WORLDS[id].name });
-      el('td', '', tr, { text: ws.unlocked ? (ws.cleared ? '已通过' : '开放') : '未开放' });
+      el('td', '', tr, { text: ws.unlocked ? (ws.cleared ? '已掌握' : passed(id) ? '已过关' : '开放') : '未开放' });
       el('td', '', tr, { text: 'L' + ws.level });
       const td = el('td', '', tr); const fs = el('select', '', td);
       for (let l = 1; l <= MAXLV[id]; l++) { const o = el('option', '', fs, { text: 'L' + l, value: l }); if (l === ws.floor) o.selected = true; }
       fs.addEventListener('change', () => { ws.floor = Number(fs.value); if (ws.level < ws.floor) ws.level = ws.floor; Store.save(); });
-      el('td', '', tr, { html: rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
+      el('td', '', tr, { html: '<b>过关（任一）：</b>已玩过 ' + WORLDS[id].games.map(g => g + (played(id, g) ? ' ✓' : ' ·')).join(' ') + '｜星 ' + Math.min(ws.stars, 10) + '/10' + (passed(id) ? ' ✓' : '') + '<br><b>掌握（只作参考）：</b>' + rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
       el('td', '', tr, { text: ws.stars });
     });
     if (!digits()) el('div', 'mut', sh, { text: '数字显示已关闭：复仇者世界的“解码”只记录点卡映射，不代表已检验数字。' });
@@ -2844,6 +2844,7 @@ const Finale = {
     sc.add(() => home.remove());
     const vw = window.innerWidth, vh = window.innerHeight;
     const all = LIVE().flatMap(w => WORLDS[w].chars);
+    const ci = all.indexOf('captain'); if (ci >= 0) { all.splice(ci, 1); all.splice(Math.min(all.length, all.indexOf('widow') + 1), 0, 'captain'); }   /* R5-4: not behind the hammer */
     const rows = [all.slice(0, 13), all.slice(13, 26), all.slice(26)];
     const base = Math.min(vw, vh);
     rows.forEach((row, r) => {
@@ -3005,6 +3006,7 @@ const Entry = {
       Screens.show('map');
       MapView.enter();
       Boot.later();
+      if (Store.s.finaleDue && !Store.s.finaleSeen) setTimeout(() => { if (Screens.cur === 'map' && !Session.G) Finale.play(); }, T(1500));   /* R5-6 */
     });
     tapify($('#nosound'), () => gesture('sound'));
   },
@@ -3930,7 +3932,7 @@ defGame({
     const star = (Session.st && Session.st.G === G) ? Session.st.q.star : 'george';
     const others = ['peppa', 'george', 'daddy_pig', 'mummy_pig'].filter(id => id !== star);
     G.actors[star].size(230).at(L ? c.x + 250 : 600, c.y - 20);
-    const spots = L ? [[c.x - 250, c.y - 10], [c.x - 420, c.y - 10], [-400, -400]] : [[102, c.y - 10], [-400, -400], [-400, -400]];
+    const spots = L ? [[c.x - 250, c.y - 10], [c.x - 420, c.y - 10], [-400, -400]] : [[102, c.y + 6], [-400, -400], [-400, -400]];   /* R5-3: the cut on the table edge */
     others.forEach((id, i) => { const a = G.actors[id]; a.size(L ? 200 : 180).at(spots[i][0], spots[i][1]); a.root.style.clipPath = 'inset(0 0 18% 0)'; });
     const a = G.actors[star], b = a.root._box();
     place(E.hat, b.x + b.w * 0.5 - 35, b.y - 50);
@@ -4184,7 +4186,7 @@ defGame({
           x = pl.x + g.pw / 2 - (cols - 1) * stp / 2 + c * stp - sz / 2; y = pl.y + 110 - stp / 2 + r * stp - sz / 2;
         } else {           /* one item per cell of a 4 x 2 grid over the plate */
           const [u, v] = pos[i];
-          x = pl.x + g.pw / 2 + (u - 0.5) * g.pw * 0.8 - sz / 2; y = pl.y + 112 + (v - 0.5) * 132 - sz / 2;
+          x = pl.x + g.pw / 2 + (u - 0.5) * g.pw * 0.62 - sz / 2; y = pl.y + 112 + (v - 0.5) * 104 - sz / 2;   /* R5-5: inside the rim */
         }
         place(e, Math.round(x), Math.round(y), sz, sz);
       });
