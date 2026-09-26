@@ -477,13 +477,25 @@ const WORLDS = {
   xiyou:    { name: '西游记', color: '#F5B324', color2: '#D63B2F', host: 'wukong', runner: 'wukong', chars: ['wukong', 'bajie', 'shaseng', 'tangseng', 'dragon_horse'], amb: 'falls', games: ['X1', 'X2', 'X3', 'X4'], hi: '俺老孙来也！' },
   avengers: { name: '复仇者', color: '#3A5CC0', color2: '#E23B3B', host: 'captain', runner: 'spiderman', chars: ['ironman', 'captain', 'thor', 'hulk', 'widow', 'hawkeye', 'spiderman', 'miles', 'panther'], amb: 'city', games: ['V1', 'V2', 'V3', 'V4'], hi: '复仇者，集结！' },
 };
-/* unlock chain: a world opens when every world listed here has passed its mastery gate (first two open by default) */
+/* unlock chain: a world opens when every world listed here is passed (first two open by default).
+   Passed = every one of its four games played at least once, OR 10 stars there (client's rule; the mastery gate -
+   ws.cleared - still counts and is still shown in the parent panel) */
 const NEEDS = { peppa: [], bluey: [], huluwa: ['peppa', 'bluey'], paw: ['huluwa'], xiyou: ['paw'], avengers: ['xiyou'] };
 /* IP safety valve (tools/replace_char.py takedown <world>): switched-off worlds vanish from the map, count as passed in
    the unlock chain, and leave the entry screen and the finale */
 const TAKEDOWN = [];
 const LIVE = () => ORDER.filter(w => !TAKEDOWN.includes(w));
-const passed = w => TAKEDOWN.includes(w) || Store.w(w).cleared;
+const played = (w, g) => { const ws = Store.w(w); return (ws.played || []).includes(g) || !!(ws.g && ws.g[g]) || (ws.log || []).some(x => x.g === g); };
+const passed = w => { if (TAKEDOWN.includes(w)) return true; const ws = Store.w(w); return ws.cleared || ws.stars >= 10 || WORLDS[w].games.every(g => played(w, g)); };
+const Unlock = {
+  /* show: the island opens with its cloud show on the map (after a session); false: just open (start-up of an old save) */
+  check(show) {
+    let any = false;
+    LIVE().forEach(o => { const w = Store.w(o); if (!w.unlocked && NEEDS[o].length && NEEDS[o].every(passed)) { w.unlocked = true; if (show) w.justOpened = true; any = true; } });
+    if (LIVE().every(passed) && !Store.s.finaleSeen && !Store.s.finaleDue) { Store.s.finaleDue = true; any = true; }
+    if (any) Store.save();
+  },
+};
 const openByDefault = w => NEEDS[w].every(n => TAKEDOWN.includes(n));
 const CHARS = {
   peppa: ['佩奇', 'hop'], george: ['乔治', 'dino'], daddy_pig: ['猪爸爸', 'belly'], mummy_pig: ['猪妈妈', 'twirl'],
@@ -550,6 +562,7 @@ const Store = {
       t.visits = Math.round(num(w.visits, 0, 0, 1e6)); t.rot = Math.round(num(w.rot, 0, 0, 1e6));
       t.guidedRun = Math.round(num(w.guidedRun, 0, 0, 99));
       t.unlocked = openByDefault(id) || w.unlocked === true; t.cleared = w.cleared === true;
+      t.played = Array.isArray(w.played) ? w.played.filter(gid).slice(0, 8) : [];
       t.lastKey = typeof w.lastKey === 'string' ? w.lastKey.slice(0, 80) : '';
       t.demo = {};
       if (w.demo && typeof w.demo === 'object') for (const k in w.demo) if (/^[A-Z]\d$/.test(k) && w.demo[k] === true) t.demo[k] = true;
@@ -1743,6 +1756,7 @@ const Mastery = {
     G.ev.push(b);
     if (!st.probe) this.adapt(G);
     this.checkGate(G.world);
+    Unlock.check(true);
     Store.save();
     return true;
   },
@@ -1767,6 +1781,7 @@ const Mastery = {
     const ws = G.ws;
     if (G.ev.length >= 4 && G.ev.reduce((s, x) => s + x, 0) / G.ev.length >= 0.75) ws.windows++;
     this.checkGate(G.world);
+    Unlock.check(true);
     Store.save();
   },
   gateReport(wid) {
@@ -1797,8 +1812,6 @@ const Mastery = {
     const ws = Store.w(wid);
     if (!ws.cleared && this.gateReport(wid).ok) {
       ws.cleared = true;
-      LIVE().forEach(o => { const w = Store.w(o); if (!w.unlocked && NEEDS[o].length && NEEDS[o].every(passed)) { w.unlocked = true; w.justOpened = true; } });
-      if (LIVE().every(passed) && !Store.s.finaleSeen) Store.s.finaleDue = true;
     }
   },
 };
@@ -2037,6 +2050,8 @@ const Session = {
       const res = await this.runQ(G, st);
       if (res === 'dead') return 'dead';
       if (res === 'error') { kind = null; level = null; if (++G.errors >= 3) return 'stop'; continue; }
+      if (!G.ws.played) G.ws.played = [];
+      if (!G.ws.played.includes(G.id)) G.ws.played.push(G.id);        /* this game has been played (unlock rule) */
       if (res === 'ok') {
         Mastery.guidedRound(G, guided);
         G.idleQs = st.childOps ? 0 : G.idleQs + 1;
@@ -2520,7 +2535,7 @@ const MapView = {
       lamps.forEach((l, i) => l.classList.toggle('on', i < ones));
       const tens = Math.floor(ws.stars / 10);
       if (I.big.childElementCount !== Math.min(tens, 6)) { I.big.innerHTML = ''; for (let i = 0; i < Math.min(tens, 6); i++) img('assets/props/ui_star.png', '', I.big); }
-      I.flag.classList.toggle('gone', !ws.cleared);
+      I.flag.classList.toggle('gone', !passed(id));
       Story.mapDeco(I, ws);
       I.flag.style.setProperty('--world', WORLDS[id].color);
       I.glow.style.opacity = id === rec ? 1 : 0;
@@ -2709,9 +2724,9 @@ const Parent = {
     return { a, b, ans: a + b };
   },
   open() {
-    if (Date.now() < Store.s.gate.cool) { this.toast('请 30 秒后再试'); return; }
-    this.step = 0;
-    this.ask();
+    /* client: the 1.6 s long press on the small gear is the whole gate (no sums) */
+    this.panel();
+    $('#parent').classList.add('on');
   },
   ask() {
     const P = $('#parent'), sh = $('.sheet', P);
@@ -3032,6 +3047,7 @@ const SWU = {
 
 function boot() {
   Store.load();
+  Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
   Fx.init();
   Stage.init();
   Input.init();
