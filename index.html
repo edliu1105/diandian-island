@@ -2561,7 +2561,7 @@ const MapView = {
       else Object.assign(I.cloud.style, { width: s * 0.86 + 'px', height: s * 0.54 + 'px', top: '62%' });
       Object.assign(I.hit.style, { width: s * 0.95 + 'px', height: s * 0.95 + 'px', left: -s * 0.475 + 'px', top: -s * 0.5 + 'px' });
       Object.assign(I.deco.style, { left: (-s * 0.46) + 'px', top: (s * 0.02) + 'px', height: (s * 0.24) + 'px' });
-      if (I.lan.isConnected) { I.lan.style.left = '0px'; I.lan.style.top = (s * 0.36) + 'px'; I.big.style.left = '0px'; I.big.style.top = (s * 0.36 + 64) + 'px'; I.flag.style.left = (s * 0.3) + 'px'; I.flag.style.top = (-s * 0.55) + 'px'; }
+      if (I.lan.isConnected) { I.lan.style.left = '0px'; I.lan.style.top = (s * 0.36) + 'px'; I.big.style.left = '0px'; I.big.style.top = (s * 0.36 + 64) + 'px'; I.flag.style.left = (s * 0.3) + 'px'; I.flag.style.top = Math.max(-s * 0.55, 24 - y) + 'px'; }
       if (id !== 'gate') pts.push([x, y]);              /* the second sea's path ends at the lantern island */
     });
     const sv = $('#mapsvg'); sv.innerHTML = '';
@@ -2584,7 +2584,7 @@ const MapView = {
     this.ids().forEach(id => {
       const I = this.isl[id], ws = Store.w(id);
       I.d.classList.toggle('locked', !ws.unlocked || !!ws.justOpened);      /* the cloud stays for its show */
-      I.hero.style.opacity = ws.unlocked ? 1 : 0;
+      I.hero.style.opacity = ws.unlocked && !ws.justOpened ? 1 : 0;      /* a new island's host appears when its cloud flies off */
       const lamps = $$('i', I.lan), ones = ws.stars % 10;
       lamps.forEach((l, i) => l.classList.toggle('on', i < ones));
       const tens = Math.floor(ws.stars / 10);
@@ -2727,6 +2727,8 @@ const MapView = {
       const J = this.isl[o];
       J.d.classList.remove('locked');
       J.cloud.animate([{ opacity: 1, transform: 'translate(-50%,-50%)' }, { opacity: 0, transform: 'translate(-50%,-90%) scale(1.4)' }], { duration: T(900) + 1, fill: 'forwards' });
+      J.hero.style.opacity = 1;
+      J.hero.animate([{ transform: 'translateY(24px) scale(.2)', opacity: 0 }, { transform: 'translateY(0) scale(1)', opacity: 1 }], { duration: T(520) + 1, delay: T(380), easing: EASE.pop, fill: 'backwards' });
       Sfx.fanfare(); Voice.say('新小岛开啦！', { tag: 'unlock' });
       Fx.burst(0, 0, { screen: true, n: 1 });
       await new Promise(r => setTimeout(r, T(1000)));
@@ -2744,6 +2746,8 @@ const MapView = {
       if (!live()) return false;
       Store.s.fin2 = 'seen'; Store.save();
       await this.openShow('festival', '灯会开始啦！');
+      if (live()) this.pointAt('festival');
+      await new Promise(r => setTimeout(r, T(2200)));
       if (live()) Finale.play();
       return true;
     }
@@ -3210,7 +3214,8 @@ function boot() {
     LIVE().forEach(w => {
       const ws = Store.w(w);
       WORLDS[w].games.forEach(g => { if (played(w, g)) (ws.gdone || (ws.gdone = {}))[g] = true; });
-      if (ws.cleared || ws.stars >= 10 || WORLDS[w].games.every(g => played(w, g))) { ws.pass = true; ws.allOpen = true; }
+      if (ws.cleared || ws.stars >= 10 || WORLDS[w].games.every(g => played(w, g))) ws.pass = true;
+      if (ws.pass || ws.unlocked) ws.allOpen = true;          /* the old rule had every game of an open island open */
     });
     Store.s.seq1 = true; Store.save();
   }
@@ -8244,8 +8249,8 @@ function w2Game(rule, spec) {
 }
 const PEP = ['peppa', 'george', 'daddy_pig', 'mummy_pig'], BLU = ['bluey', 'bingo', 'bandit', 'chilli'], PJ = ['catboy', 'owlette', 'gekko', 'pj_robot'];
 const PAW = ['ryder', 'chase', 'marshall', 'skye'], HLW = ['grandpa', 'gourd1', 'gourd2', 'gourd3'], XY = ['wukong', 'bajie', 'shaseng', 'tangseng'], AVG = ['captain', 'ironman', 'hulk', 'thor'];
-w2Game(MPattern, { id: 'Q1', world: 'peppa2', bg: 'peppa_school', chars: PEP, host: 'peppa', icon: 'umbrella', items: ['umbrella', 'umbrella_blue', 'umbrella_yellow'] });
-w2Game(MDouble,  { id: 'Q2', world: 'peppa2', bg: 'peppa_beach', chars: ['george', 'peppa', 'mummy_pig'], host: 'george', icon: 'shell', item: 'shell' });
+w2Game(MPattern, { id: 'Q1', world: 'peppa2', bg: 'peppa_beach', chars: PEP, host: 'peppa', icon: 'umbrella', items: ['umbrella', 'umbrella_blue', 'umbrella_yellow'] });
+w2Game(MDouble,  { id: 'Q2', world: 'peppa2', bg: 'peppa_school', chars: ['george', 'peppa', 'mummy_pig'], host: 'george', icon: 'shell', item: 'shell' });
 w2Game(MBalance, { id: 'Q3', world: 'peppa2', bg: 'peppa_playground', chars: ['daddy_pig', 'peppa', 'george'], host: 'daddy_pig', icon: 'block', item: 'block', box: 'schoolbag' });
 w2Game(MShare,   { id: 'C1', world: 'bluey2', bg: 'bluey_picnic', chars: BLU, host: 'chilli', icon: 'sandwich', item: 'sandwich' });
 w2Game(MSort,    { id: 'C2', world: 'bluey2', bg: 'bluey_market', chars: ['bingo', 'bluey'], host: 'bingo', icon: 'orange', items: ['orange', 'pear', 'lemon'] });
@@ -8257,8 +8262,8 @@ w2Game(MSeq,     { id: 'D1', world: 'paw2', bg: 'paw_city', chars: PAW, host: 'r
 w2Game(MDouble,  { id: 'D2', world: 'paw2', bg: 'paw_farm', chars: ['skye', 'chase'], host: 'skye', icon: 'egg', item: 'egg' });
 w2Game(MMeasure, { id: 'D3', world: 'paw2', bg: 'paw_snow', chars: ['marshall', 'ryder'], host: 'marshall', icon: 'firetruck', style: 'hose', blockColor: '#FFD34D' });
 w2Game(MSort,    { id: 'G1', world: 'huluwa2', bg: 'huluwa_bamboo', chars: ['gourd1', 'grandpa'], host: 'gourd1', icon: 'corn', items: ['corn', 'radish', 'chili'] });
-w2Game(MSeq,     { id: 'G2', world: 'huluwa2', bg: 'huluwa_lotus', chars: ['gourd3', 'grandpa'], host: 'gourd3', icon: 'gourd', tileColor: '#7BCB5B' });
-w2Game(MBalance, { id: 'G3', world: 'huluwa2', bg: 'huluwa_village', chars: ['grandpa', 'gourd2'], host: 'grandpa', icon: 'mushroom', item: 'mushroom', box: 'bamboobasket' });
+w2Game(MSeq,     { id: 'G2', world: 'huluwa2', bg: 'huluwa_village', chars: ['gourd3', 'grandpa'], host: 'gourd3', icon: 'gourd', tileColor: '#7BCB5B' });
+w2Game(MBalance, { id: 'G3', world: 'huluwa2', bg: 'huluwa_lotus', chars: ['grandpa', 'gourd2'], host: 'grandpa', icon: 'mushroom', item: 'mushroom', box: 'bamboobasket' });
 w2Game(MMeasure, { id: 'Y1', world: 'xiyou2', bg: 'xiyou_palace', chars: ['wukong', 'bajie'], host: 'wukong', icon: 'cloud', style: 'staff', blockColor: '#FFB3A8' });
 w2Game(MShare,   { id: 'Y2', world: 'xiyou2', bg: 'xiyou_temple', chars: ['wukong', 'bajie', 'shaseng'], host: 'tangseng', icon: 'bun', item: 'bun' });
 w2Game(MBalance, { id: 'Y3', world: 'xiyou2', bg: 'xiyou_river', chars: ['bajie', 'wukong'], host: 'bajie', icon: 'grapes', item: 'grapes', box: 'basket' });
