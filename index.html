@@ -2062,7 +2062,7 @@ const Session = {
     const pr = this.probeFor(G);
     let kind = pr ? pr.kind : null, level = pr ? pr.level : null;
     while (!G.dead) {
-      const guided = err >= 2;
+      const guided = false;          /* client rule: never lead the child to the answer (was: after two wrong answers) */
       const st = this.newQ(G, { guided, retest: err > 0, err, kind, level, probe: !!pr });
       /* R2-J03: after a wrong answer the retest keeps the skill and the kind (new numbers / positions / layout) */
       kind = st.kind; level = st.level;
@@ -2351,10 +2351,13 @@ const Session = {
 /* ================================================================ HINTS
    one clock (Clock.t, paused in the background) and absolute deadlines from the child's last own action:
    5 s the host leans towards the child and says the question again (then the work glows) · 10 s the host waves,
-   then the gesture · 15 s the host yawns, then the hand points · 20 s the helper does one step · then one every 1.6 s.
+   then the gesture (how to act, never the answer) · 15 s a kind word + the question · then now and then again, waiting
+   as long as it takes. CLIENT RULE: the helper never does a step, never shows the answer, and a star is only ever
+   earned by the child's own right answer.
    One thing at a time: a cue first, its hint only after it and only if the child has not acted meanwhile.
    Before the first hint (the child is thinking) a friend now and then glances at the child - never the host.
    Every one of them marks the question as assisted (it can never count as mastery evidence). */
+const CHEER = ['慢慢想，不着急', '你能行的！', '再看一看！', '我们等你哦！'];
 const Hints = {
   arm(st) { this.reset(st); st.hintTimer = st.scope.interval(() => this.tick(st), 100); },
   disarm(st) { if (st && st.hintTimer) { st.scope.clear(st.hintTimer); st.hintTimer = 0; } },
@@ -2377,16 +2380,21 @@ const Hints = {
       return;
     }
     if (st.hintLv < 2) { if (idle >= 10000) { st.hintLv = 2; this.mark(st, 'hint2'); this.cue(st, 'wave', 2, () => { if (st.game.gestureHint) st.game.gestureHint(st, false); }); } return; }
-    if (st.hintLv < 3) { if (idle >= 15000) { st.hintLv = 3; this.mark(st, 'hint3'); this.cue(st, 'yawn', 3, () => { const step = st.game.next(st, 'right'); if (step) this.point(st, step); }); } return; }
-    const due = st.nextAuto || (st.idleFrom + 20000 * HS());      /* anchored: 20 s, then every 1.6 s - never drifting */
-    if (t < due - 20) return;
-    if (Voice.busy()) { if (!st.autoDue) st.autoDue = t; if (t - st.autoDue < 3000 * HS()) return; }   /* let a sentence end (max 3 s) */
-    st.autoDue = 0;
-    st.nextAuto = Math.max(due + 1600 * HS(), t + 1000 * HS());
-    st.hintLv = 4; this.mark(st, 'auto');
-    const step = st.game.next(st, 'right'), ops = st.childOps;
-    /* R4-U02: a step shown while the child acted is dropped - the child's own move wins */
-    if (step) this.showStep(st, step).then(() => { if (Session.alive(st) && st.childOps === ops && ['act', 'ready', 'input'].includes(st.phase)) gesture(step.g, step.p, { system: true }); });
+    if (st.hintLv < 3) { if (idle >= 15000) { st.hintLv = 3; this.mark(st, 'hint3'); this.cue(st, 'wave', 3, () => this.cheerUp(st)); } return; }
+    /* client rule: the helper never does a step and never points at the answer - a kind word and the question again
+       now and then (30 s, then every 20-45 s), and wait as long as it takes */
+    const due = st.nextAuto || (st.idleFrom + 30000 * HS());
+    if (t < due || Voice.busy()) return;
+    st.cheers = (st.cheers || 0) + 1;
+    st.nextAuto = t + (15000 + 5000 * Math.min(st.cheers, 6)) * HS();
+    this.cheerUp(st);
+  },
+  cheerUp(st) {
+    const h = Session.host(st.G); if (h && !fast()) h.wave();
+    Voice.say(CHEER[(st.cheers || 0) % CHEER.length], { tag: 'cheer' });
+    Voice.say(st.prompt || st.game.intro, { tag: 'hint1' });
+    this.retap();
+    st.scope.timeout(() => { if (Session.alive(st)) this.glow(st); }, 900 * HS());
   },
   glow(st) { (st.game.workEls ? st.game.workEls(st) : []).forEach(e => { e.classList.add('glow'); st.scope.timeout(() => e.classList.remove('glow'), 1400); }); },
   /* the child is thinking: now and then ONE friend (never the host) glances at the child - peripheral life, not a call */
@@ -7467,6 +7475,13 @@ const W2 = {
   },
 };
 
+/* a wrong answer is named for what it is - never "you are wrong" (client rule) */
+const W2Say = {
+  notN: n => '不是' + (n === 2 ? '两' : (CN[n] || n)) + '个',                         /* a count */
+  at: n => typeof n === 'number' ? '这里不是' + (CN[n] || n) : '不是这个哦',        /* a number on a path / a picture in a row */
+  line(g, n) { return g.feedback === MDouble.feedback ? this.notN(n) : this.at(n); },   /* g: the game (a copy of its rule) */
+};
+
 /* ---------------------------------------------------------------- small pictures (drawn, no files) */
 const W2P = {
   orb(color) {
@@ -7654,7 +7669,7 @@ const MShare = {
     Voice.say(st.summary, { tag: 'summary' });
     await st.scope.wait(1200);
   },
-  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.notN(ans), { tag: 'wrong' }); await st.scope.wait(350); },
   async correct(st) {
     const q = st.q, my = st;
     Voice.say('数一个盘子！', { tag: 'fix' });
@@ -7671,7 +7686,7 @@ const MShare = {
     return { g: 'tap', p: { id: 'p' + i } };
   },
   workEls(st) { return st.cards || st.plates || []; },
-  gestureHint(st) { const n = this.next(st, 'right'); if (!n) return; const e = this.find(st, n.p.id); if (!e) return; const c = center(e); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+  gestureHint(st) { if (st.cards) return; const n = this.next(st, 'right'); if (!n) return; const e = this.find(st, n.p.id); if (!e) return; const c = center(e); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },   /* shows how to deal, never the answer card */
   snap(st) { return { opts: st.opts || null, counts: (st.on || []).map(l => l.length) }; },
 };
 
@@ -7739,7 +7754,7 @@ const MPattern = {
     Voice.say(st.summary, { tag: 'summary' });
     await st.scope.wait(900);
   },
-  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.line(this, ans), { tag: 'wrong' }); await st.scope.wait(350); },
   async correct(st) {
     const q = st.q, my = st;
     Voice.say('一组一组看！', { tag: 'fix' });
@@ -7842,8 +7857,8 @@ const MBalance = {
     await st.scope.wait(1600);
   },
   async feedback(st, ans) {
-    if (st.q.guess) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); return; }
-    K.flash(st, ans > st.q.need ? [st.panR] : [st.panL]); await st.scope.wait(700);
+    if (st.q.guess) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.notN(ans), { tag: 'wrong' }); await st.scope.wait(350); return; }
+    K.flash(st, ans > st.q.need ? [st.panR] : [st.panL]); Voice.say(ans > st.q.need ? '放多啦' : '还不一样重', { tag: 'wrong' }); await st.scope.wait(700);
   },
   async correct(st) {
     const q = st.q, my = st;
@@ -7934,7 +7949,7 @@ const MSeq = {
     Voice.say(st.summary, { tag: 'summary' });
     await st.scope.wait(800);
   },
-  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.line(this, ans), { tag: 'wrong' }); await st.scope.wait(350); },
   async correct(st) {
     const q = st.q, my = st;
     Voice.say('从头数一数！', { tag: 'fix' });
@@ -8018,7 +8033,7 @@ const MDouble = {
     if (!Session.alive(my)) return;
     await st.scope.wait(1200);
   },
-  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.line(this, ans), { tag: 'wrong' }); await st.scope.wait(350); },
   async correct(st) {
     const my = st, all = st.L.map(o => o.e).concat(st.R.map(o => o.e));
     Voice.say('一个一个数！', { tag: 'fix' });
@@ -8128,8 +8143,8 @@ const MSort = {
   },
   async feedback(st, ans) {
     const q = st.q;
-    if (q.opts) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); }
-    else if (st.heads[ans]) K.wiggle(st, st.heads[ans]);
+    if (q.opts) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.notN(ans), { tag: 'wrong' }); }
+    else { if (st.heads[ans]) K.wiggle(st, st.heads[ans]); Voice.say('不是这一列', { tag: 'wrong' }); }
     await st.scope.wait(350);
   },
   async correct(st) {
@@ -8153,7 +8168,7 @@ const MSort = {
     return { g: 'tap', p: { id: 'col' + c } };
   },
   workEls(st) { return st.cards || (st.asked ? st.heads : st.items.filter(o => o.col == null).map(o => o.e)); },
-  gestureHint(st) { const n = this.next(st, 'right'); if (!n) return; const e = this.find(st, n.p.id); if (!e) return; const c = center(e); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+  gestureHint(st) { if (st.cards || st.asked) return; const n = this.next(st, 'right'); if (!n) return; const e = this.find(st, n.p.id); if (!e) return; const c = center(e); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },   /* how to sort, never the answer */
 };
 
 /* ================================================================ RULE 7 · 量 how many blocks long */
@@ -8218,6 +8233,7 @@ const MMeasure = {
   },
   async feedback(st, ans) {
     const q = st.q;
+    Voice.say(ans > q.len ? '摆多啦，超出来了' : '还没摆到头', { tag: 'wrong' });
     if (ans > q.len) K.flash(st, st.blocks.slice(q.len));
     else { const g = this.geo(), gap = el('div', 'note', Stage.el); Object.assign(gap.style, { position: 'absolute', border: '5px dashed #FF6B5B', borderRadius: '10px' }); place(gap, g.x0 + ans * g.u, g.by, (q.len - ans) * g.u, g.u - 6); st.els.push(gap); K.flash(st, [gap]); }
     await st.scope.wait(800);
