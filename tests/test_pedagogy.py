@@ -138,7 +138,7 @@ def main():
                     if i + 1 >= 2:
                         log.check(page.evaluate('(w) => __state().worlds[w].unlocked', nxt), 'chain: %s opened by itself after %s (kept across a reload)' % (nxt, w))
             s_ = page.evaluate('() => __state()')
-            log.check(s_.get('finaleDue') or s_.get('finaleSeen'), 'chain: all six worlds cleared -> the finale is due / seen')
+            log.check(page.evaluate('W2.open()'), 'chain: all six worlds cleared -> the gate to the second sea opens')
 
         # ---------------------------------------------------------------- TASK: the same position for hundreds of rounds
         if 'hundreds' in PARTS:

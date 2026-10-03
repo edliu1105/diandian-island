@@ -96,6 +96,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cu
 .isl .hit{position:absolute;border-radius:50%;touch-action:none}
 .isl .land{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);transition:filter .6s}
 .isl.locked .land{filter:saturate(.35) brightness(.96)}
+.isl.gate.locked .land{opacity:0}
 .isl .hero{position:absolute;transform-origin:50% 100%}
 .isl .cloudcover{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;transition:opacity .8s,transform .8s}
 .isl:not(.locked) .cloudcover{opacity:0;transform:translate(-50%,-70%) scale(1.3)}
@@ -492,7 +493,6 @@ const Unlock = {
   check(show) {
     let any = false;
     LIVE().forEach(o => { const w = Store.w(o); if (!w.unlocked && NEEDS[o].length && NEEDS[o].every(passed)) { w.unlocked = true; if (show) w.justOpened = true; any = true; } });
-    if (LIVE().every(passed) && !Store.s.finaleSeen && !Store.s.finaleDue) { Store.s.finaleDue = true; any = true; }
     if (any) Store.save();
   },
 };
@@ -572,7 +572,7 @@ const Store = {
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
-    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.mapSet = o.mapSet === 2 ? 2 : 1;
+    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
     return d;
@@ -2313,6 +2313,7 @@ const Session = {
     if (G.W.map === 2) MapView.useSet(2);
     MapView.update();
     if (opened) MapView.openPanel(wid, '新游戏开啦！');     /* 5 stars opened it before the end */
+    else MapView.after(T(400));
   },
   /* first-time demo: the ghost hand plays one easy question; the moment the child acts, the child takes over (D06) */
   async demo(G) {
@@ -2483,49 +2484,37 @@ function tapify(e, fn, opt) {
 
 /* ================================================================ MAP */
 const MAPPOS2 = {
-  land: { peppa2: [13, 33], bluey2: [33, 18], pjmasks: [53, 35], paw2: [76, 20], huluwa2: [86, 60], xiyou2: [63, 75], avengers2: [37, 72] },
-  port: { peppa2: [27, 12], bluey2: [73, 19], pjmasks: [29, 33], paw2: [73, 42], huluwa2: [28, 56], xiyou2: [73, 66], avengers2: [44, 81] },
+  land: { peppa2: [10, 38], bluey2: [29, 18], pjmasks: [50, 15.5], paw2: [71, 18], huluwa2: [90, 38], xiyou2: [76, 71], avengers2: [50, 74], festival: [24, 71], gate: [50, 46] },
+  port: { peppa2: [19, 16], bluey2: [50, 13], pjmasks: [81, 16], paw2: [81, 47], huluwa2: [77, 80], xiyou2: [49, 83], avengers2: [21, 80], festival: [19, 47], gate: [50, 48] },
 };
 const MAPPOS = {
-  land: { peppa: [15, 35], bluey: [37, 19], huluwa: [63, 19], paw: [85, 35], xiyou: [72, 72], avengers: [28, 72], festival: [50, 50] },
-  port: { peppa: [26, 17], bluey: [74, 17], huluwa: [81, 48], paw: [74, 81], xiyou: [26, 81], avengers: [19, 48], festival: [50, 49] },
+  land: { peppa: [15, 35], bluey: [37, 19], huluwa: [63, 19], paw: [85, 35], xiyou: [72, 72], avengers: [28, 72], gate: [50, 50] },
+  port: { peppa: [26, 17], bluey: [74, 17], huluwa: [81, 48], paw: [74, 81], xiyou: [26, 81], avengers: [19, 48], gate: [50, 49] },
 };
 const MapView = {
   isl: {}, built: false, panel: null, set: 1,
-  /* world 1 (six islands + the lantern island) or world 2 (seven islands) */
+  /* world 1 (six islands + the gate) or world 2 (seven islands + the lantern island + the gate) */
   ids() { return this.set === 2 ? ORDER2.slice() : LIVE(); },
   useSet(n) {
     if (n === 2 && !W2.open()) n = 1;
-    if (this.set === n && this.built) { this.switchUI(); return; }
+    if (this.set === n && this.built) { this.tint(); return; }
     this.set = n; if (Store.s) { Store.s.mapSet = n; Store.save(); }
     if (this.built) { this.closePanel(true); $('#islands').innerHTML = ''; this.isl = {}; this.built = false; Loops.sweep(); this.build(); }
-    this.switchUI();
+    this.tint();
   },
-  /* the button that sails to the other sea (bottom left; shows a picture of the other sea's island) */
-  switchUI() {
-    let b = $('#seaswitch');
-    if (!W2.open()) { if (b) b.style.display = 'none'; $('#mapbg').style.filter = ''; return; }
-    if (!b) {
-      b = el('div', 'btn', $('#map')); b.id = 'seaswitch';
-      Object.assign(b.style, { left: 'calc(16px + var(--sl))', bottom: 'calc(16px + var(--sb))', width: '118px', height: '118px', background: '#FFF8EC', zIndex: 25, overflow: 'visible' });
-      img('', '', b).style.cssText = 'width:86%;height:86%;object-fit:contain';
-      const arw = el('span', '', b); arw.innerHTML = ICONS.arrowR; Object.assign(arw.style, { position: 'absolute', right: '-10px', bottom: '-6px', width: '44px', height: '44px', borderRadius: '50%', background: '#FFC93C', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' });
-      tapify(b, () => { Sfx.touch(); const to = this.set === 2 ? 1 : 2; this.useSet(to); this.update(); Voice.sayNow(to === 2 ? '去新的海岛！' : '回到第一片海！', { tag: 'map' }); const r = this.recommend(); if (r) setTimeout(() => this.pointAt(r), T(700)); });
-    }
-    b.style.display = '';
-    $('img', b).src = 'assets/isl/' + (this.set === 2 ? 'festival' : 'pjmasks') + '.png';
-    $('#mapbg').style.filter = this.set === 2 ? 'hue-rotate(58deg) saturate(1.15) brightness(.9)' : '';
-  },
+  /* the second sea is the evening sea */
+  tint() { $('#mapbg').style.filter = this.set === 2 ? 'hue-rotate(58deg) saturate(1.15) brightness(.9)' : ''; },
   build() {
     if (this.built) return;
     this.built = true;
     $('#mapbg').style.backgroundImage = 'url(assets/bg/map_sea.jpg)';
     const root = $('#islands');
-    this.ids().concat(this.set === 1 ? ['festival'] : []).forEach(id => {
+    this.ids().concat(this.set === 2 ? ['festival', 'gate'] : ['gate']).forEach(id => {
+      const sp = id === 'festival' || id === 'gate';
       const d = el('div', 'isl', root);
       const glow = el('div', '', d); Object.assign(glow.style, { position: 'absolute', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,247,190,.95), rgba(255,247,190,0) 68%)', opacity: 0 });
       const land = img('assets/isl/' + ((WORLDS[id] && WORLDS[id].isl) || id) + '.png', 'land', d);
-      const hero = img(id === 'festival' ? 'assets/props/ui_star.png' : 'assets/chars/' + WORLDS[id].host + '.png', 'hero', d);
+      const hero = img(sp ? 'assets/props/ui_star.png' : 'assets/chars/' + WORLDS[id].host + '.png', 'hero', d);
       const cloud = el('div', 'cloudcover', d);
       cloud.innerHTML = '<svg viewBox="0 0 200 120" width="100%" height="100%"><path d="M40 100C18 100 8 86 10 72C12 58 26 50 40 52C42 30 62 16 84 20C98 6 124 6 138 20C160 18 178 34 176 54C192 58 198 72 194 84C190 96 178 102 166 100Z" fill="#FFFFFF" stroke="#2B2118" stroke-width="5" stroke-linejoin="round" opacity=".96"/><path d="M60 64C68 60 76 60 84 64M110 58C118 54 126 54 134 58" stroke="#B9C7D6" stroke-width="5" fill="none" stroke-linecap="round"/></svg>';
       const lan = el('div', 'lantern', d); for (let i = 0; i < 10; i++) el('i', '', lan);
@@ -2535,7 +2524,8 @@ const MapView = {
       const hit = el('div', 'hit', d);
       tapify(hit, () => this.tapIsland(id));
       this.isl[id] = { d, glow, land, hero, cloud, lan, big, flag, hit, deco };
-      if (id === 'festival') { lan.remove(); big.remove(); flag.remove(); }
+      if (sp) { lan.remove(); big.remove(); flag.remove(); }
+      if (id === 'gate') d.classList.add('gate');
     });
     this.layout();
     this.update();
@@ -2548,16 +2538,17 @@ const MapView = {
     const S = Math.round(Math.min(vw, vh) * (port ? 0.27 : 0.25));
     const pts = [];
     Object.keys(this.isl).forEach(id => {
-      const I = this.isl[id], [px, py] = P[id], x = vw * px / 100, y = vh * py / 100, s = id === 'festival' ? S * 0.9 : S;
+      const I = this.isl[id], [px, py] = P[id], x = vw * px / 100, y = vh * py / 100, s = id === 'festival' ? S * 0.9 : id === 'gate' ? S * 0.8 : S, sp = id === 'festival' || id === 'gate';
       Object.assign(I.d.style, { left: x + 'px', top: y + 'px' });
       Object.assign(I.land.style, { width: s + 'px' });
       Object.assign(I.glow.style, { width: s * 1.5 + 'px', height: s * 1.5 + 'px', left: -s * 0.75 + 'px', top: -s * 0.75 + 'px' });
-      Object.assign(I.hero.style, { height: (id === 'festival' ? s * 0.28 : s * 0.46) + 'px', left: (id === 'festival' ? -s * 0.14 : s * 0.02) + 'px', top: (id === 'festival' ? -s * 0.62 : -s * 0.5) + 'px' });
-      Object.assign(I.cloud.style, { width: s * 0.86 + 'px', height: s * 0.54 + 'px', top: '62%' });
+      Object.assign(I.hero.style, { height: (sp ? s * 0.28 : s * 0.46) + 'px', left: (sp ? -s * 0.14 : s * 0.02) + 'px', top: (sp ? -s * 0.62 : -s * 0.5) + 'px' });
+      if (id === 'gate') Object.assign(I.cloud.style, { width: s * 1.1 + 'px', height: s * 0.68 + 'px', top: '50%' });      /* the gate hides under its cloud */
+      else Object.assign(I.cloud.style, { width: s * 0.86 + 'px', height: s * 0.54 + 'px', top: '62%' });
       Object.assign(I.hit.style, { width: s * 0.95 + 'px', height: s * 0.95 + 'px', left: -s * 0.475 + 'px', top: -s * 0.5 + 'px' });
       Object.assign(I.deco.style, { left: (-s * 0.46) + 'px', top: (s * 0.02) + 'px', height: (s * 0.24) + 'px' });
       if (I.lan.isConnected) { I.lan.style.left = '0px'; I.lan.style.top = (s * 0.36) + 'px'; I.big.style.left = '0px'; I.big.style.top = (s * 0.36 + 64) + 'px'; I.flag.style.left = (s * 0.3) + 'px'; I.flag.style.top = (-s * 0.55) + 'px'; }
-      if (id !== 'festival') pts.push([x, y]);
+      if (id !== 'gate') pts.push([x, y]);              /* the second sea's path ends at the lantern island */
     });
     const sv = $('#mapsvg'); sv.innerHTML = '';
     sv.setAttribute('viewBox', '0 0 ' + vw + ' ' + vh);
@@ -2567,8 +2558,8 @@ const MapView = {
     if (this.panel) this.closePanel(true);
   },
   recommend() {
-    if (this.set === 2) { const open = ORDER2.filter(id => Store.w(id).unlocked); return open.find(id => !W2.islandDone(id)) || open[open.length - 1]; }
-    if (LIVE().every(passed) && this.isl.festival) return 'festival';
+    if (this.set === 2) { if (W2.allDone()) return 'festival'; const open = ORDER2.filter(id => Store.w(id).unlocked); return open.find(id => !W2.islandDone(id)) || open[open.length - 1]; }
+    if (LIVE().every(passed)) return 'gate';
     const open = LIVE().filter(id => Store.w(id).unlocked);
     const notDone = open.filter(id => !passed(id));                 /* R5-1: the new pass rule (played all 4 or 10 stars) */
     return notDone[0] || open[open.length - 1];
@@ -2590,9 +2581,11 @@ const MapView = {
       I.glow.style.opacity = id === rec ? 1 : 0;
       I.lan.style.opacity = ws.unlocked ? 1 : 0.35;
     });
-    const F = this.isl.festival, allClear = LIVE().every(passed);
-    if (F) { F.d.classList.toggle('locked', !allClear); F.glow.style.opacity = rec === 'festival' ? 1 : 0; }
-    this.switchUI();
+    const Gt = this.isl.gate, gOpen = W2.open() && !!Store.s.gateShown;
+    if (Gt) { Gt.d.classList.toggle('locked', !gOpen); Gt.hero.style.opacity = gOpen ? 0 : 1; Gt.glow.style.opacity = rec === 'gate' ? 1 : 0; }
+    const F = this.isl.festival;
+    if (F) { F.d.classList.toggle('locked', Store.s.fin2 !== 'seen'); F.glow.style.opacity = rec === 'festival' ? 1 : 0; }
+    this.tint();
   },
   idle() {
     /* heroes breathe and wave now and then (compositor-only transforms) */
@@ -2602,10 +2595,17 @@ const MapView = {
     });
   },
   tapIsland(id) {
-    if (id === 'festival') {
-      if (LIVE().every(passed)) { Finale.play(); return; }
-      Voice.sayNow('大家都在等你！', { tag: 'map' });
-      this.isl.festival.hero.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.3) rotate(20deg)' }, { transform: 'scale(1)' }], { duration: T(500) + 1 });
+    if (id === 'gate' || id === 'festival') {
+      const I = this.isl[id];
+      if (id === 'gate' ? W2.open() : Store.s.fin2) {
+        if (id === 'gate' && Store.s.gateShown) { this.sail(); return; }
+        if (id === 'festival' && Store.s.fin2 === 'seen') { Finale.play(); return; }
+        this.specials(this.liveTok()); return;               /* its show had not played yet */
+      }
+      I.cloud.animate([{ transform: 'translate(-50%,-50%)' }, { transform: 'translate(-56%,-50%)' }, { transform: 'translate(-44%,-50%)' }, { transform: 'translate(-50%,-50%)' }], { duration: T(420) + 1 });
+      I.hero.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.3) rotate(20deg)' }, { transform: 'scale(1)' }], { duration: T(500) + 1 });
+      Voice.sayNow(id === 'gate' ? '这里有惊喜哦！' : '大家都在等你！', { tag: 'map' });
+      const r = this.recommend(); if (r && r !== id) setTimeout(() => this.pointAt(r), T(600));
       return;
     }
     const ws = Store.w(id);
@@ -2684,12 +2684,63 @@ const MapView = {
     const a = p.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }); a.onfinish = () => { p.remove(); Loops.sweep(); };
   },
   enter() {
-    if (W2.open() && !Store.s.w2seen) { Store.s.w2seen = true; Store.save(); this.useSet(2); setTimeout(() => Voice.say('新的海岛开啦！', { tag: 'map' }), T(600)); }
-    else this.useSet(Store.s.mapSet === 2 ? 2 : 1);
-    if (this.set === 2 && Store.s.fin2 === 'due') { Store.s.fin2 = 'seen'; Store.save(); setTimeout(() => { if (Screens.cur === 'map' && !Session.G) Finale.play(); }, T(1500)); }
+    this.useSet(Store.s.mapSet === 2 ? 2 : 1);
     this.update();
-    const r = this.recommend();
-    if (r) setTimeout(() => this.pointAt(r), T(900));
+    this.after(T(900));
+  },
+  /* a show that is due (the gate opening / the lantern island + finale), otherwise the hand shows where to go */
+  after(ms) {
+    const live = this.liveTok();
+    setTimeout(async () => { if (!live() || await this.specials(live) || !live()) return; const r = this.recommend(); if (r) this.pointAt(r); }, ms);
+  },
+  liveTok() { const tok = this.celebTok = (this.celebTok || 0) + 1; return () => this.celebTok === tok && Screens.cur === 'map' && !Session.G; },
+  async specials(live) {
+    if (this.set === 1 && W2.open() && !Store.s.gateShown && this.isl.gate) {
+      if (!live()) return false;
+      Store.s.gateShown = true; Store.save();
+      await this.openShow('gate', '惊喜来啦！');
+      if (live()) this.pointAt('gate');
+      return true;
+    }
+    if (this.set === 2 && Store.s.fin2 === 'due' && this.isl.festival) {
+      if (!live()) return false;
+      Store.s.fin2 = 'seen'; Store.save();
+      await this.openShow('festival', '灯会开始啦！');
+      if (live()) Finale.play();
+      return true;
+    }
+    return false;
+  },
+  async openShow(id, line) {
+    const J = this.isl[id];
+    J.d.classList.remove('locked');
+    J.cloud.animate([{ opacity: 1, transform: 'translate(-50%,-50%)' }, { opacity: 0, transform: 'translate(-50%,-90%) scale(1.4)' }], { duration: T(900) + 1, fill: 'forwards' });
+    J.land.animate([{ transform: 'translate(-50%,-50%) scale(.2)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: T(700) + 1, easing: EASE.pop });
+    Sfx.fanfare(); Voice.say(line, { tag: 'unlock' });
+    Fx.burst(0, 0, { screen: true, n: 1 });
+    await new Promise(r => setTimeout(r, T(1300)));
+    this.update();
+  },
+  /* through the gate: magic light fills the screen, the other sea comes up island by island */
+  async sail() {
+    if (this.sailing) return;
+    this.sailing = true; this.liveTok(); this.closePanel(true);
+    const to = this.set === 2 ? 1 : 2, first = to === 2 && !Store.s.w2seen;
+    Sfx.reveal();
+    this.isl.gate.land.animate([{ transform: 'translate(-50%,-50%) scale(1)' }, { transform: 'translate(-50%,-50%) scale(1.35) rotate(-4deg)' }], { duration: T(560) + 1, easing: EASE.pop, fill: 'forwards' });
+    const ov = el('div', '', $('#map'));
+    Object.assign(ov.style, { position: 'absolute', inset: 0, zIndex: 40, background: 'radial-gradient(circle at 50% 48%, #FFFFFF 0%, #E3D4FF 30%, #8E6CFF 75%, #4B2F9E 100%)' });
+    const wait = (a, ms) => new Promise(r => { a.onfinish = r; setTimeout(r, ms); });
+    await wait(ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(560) + 1, fill: 'forwards' }), T(560) + 80);
+    if (to === 2) { Store.s.w2seen = true; Store.s.gateShown = true; W2.check(false); Store.save(); }
+    this.useSet(to); this.update();
+    Object.keys(this.isl).forEach((id, i) => this.isl[id].d.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: T(420) + 1, delay: T(240 + 70 * i), easing: EASE.pop, fill: 'backwards' }));
+    await wait(ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: T(520) + 1, fill: 'forwards' }), T(520) + 80);
+    ov.remove(); this.sailing = false;
+    if (Screens.cur !== 'map' || Session.G) return;
+    if (first) { Sfx.fanfare(); Fx.confetti(30); }
+    Voice.sayNow(first ? '新的海岛开啦！' : to === 2 ? '去新的海岛！' : '回到第一片海！', { tag: 'map' });
+    this.after(T(1000));
   },
   /* stars fly into the lantern; counting continues from what was already there (count-on for free) */
   async celebrate(wid, n, lvUp) {
@@ -2754,7 +2805,8 @@ const MapView = {
       await new Promise(r => setTimeout(r, T(1000)));
       this.update();
     }
-    if (Store.s.finaleDue && !Store.s.finaleSeen) { await new Promise(r => setTimeout(r, T(600))); if (live()) Finale.play(); }
+    if (!live()) return;
+    if (Store.s.fin2 === 'due' || (W2.open() && !Store.s.gateShown)) { await new Promise(r => setTimeout(r, T(500))); if (live()) await this.specials(live); }
   },
 };
 
@@ -3077,7 +3129,6 @@ const Entry = {
       Screens.show('map');
       MapView.enter();
       Boot.later();
-      if (Store.s.finaleDue && !Store.s.finaleSeen) setTimeout(() => { if (Screens.cur === 'map' && !Session.G) Finale.play(); }, T(1500));   /* R5-6 */
     });
     tapify($('#nosound'), () => gesture('sound'));
   },
@@ -3088,7 +3139,7 @@ const Boot = {
   later() {
     if (this.done) return;
     this.done = true;
-    ['assets/bg/map_sea.jpg'].concat(LIVE().concat(['festival']).map(id => 'assets/isl/' + id + '.png')).forEach(u => { const i = new Image(); i.decoding = 'async'; i.src = u; });
+    ['assets/bg/map_sea.jpg'].concat(LIVE().concat(['gate']).map(id => 'assets/isl/' + id + '.png')).forEach(u => { const i = new Image(); i.decoding = 'async'; i.src = u; });
     if ('serviceWorker' in navigator && location.protocol !== 'file:' && !/[?&]nosw=1/.test(location.search)) {
       setTimeout(() => { navigator.serviceWorker.register('sw.js').then(reg => SWU.watch(reg)).catch(() => {}); }, 2500);
     }

@@ -50,7 +50,17 @@ with sync_playwright() as p, serve() as base:
     page.evaluate("() => { LIVE().forEach(w => { Store.w(w).stars = 10; }); Store.save(); }")
     page.reload(); page.wait_for_function('window.__ready === true', timeout=20000); enter(page)
     st = page.evaluate("() => ({ open: W2.open(), u: ORDER2.map(w => Store.w(w).unlocked), g: ['Q1','Q2','Q3'].map(g => W2.gameOpen('peppa2', g)), set: MapView.set })")
-    log.check(st['open'] and st['u'] == [True] + [False] * 6 and st['g'] == [True, False, False] and st['set'] == 2, 'world 1 passed: world 2 opens with only its first island and first game; the map shows the new sea %s' % st)
+    log.check(st['open'] and st['u'] == [True] + [False] * 6 and st['g'] == [True, False, False] and st['set'] == 1, 'world 1 passed: world 2 opens with only its first island and first game; the map stays on the first sea %s' % st)
+    page.wait_for_function("Store.s.gateShown === true && !document.querySelector('.isl.gate').classList.contains('locked')", timeout=10000)
+    said = page.evaluate("() => JSON.stringify(window.__speechLog).includes('惊喜来啦')")
+    log.check(said and page.evaluate("MapView.recommend()") == 'gate', 'the middle of the first sea: the cloud flies off, "惊喜来啦！", the gate is where the hand points')
+    page.evaluate("MapView.tapIsland('gate')")
+    page.wait_for_function("MapView.set === 2 && !MapView.sailing", timeout=10000)
+    st = page.evaluate("() => ({ said: JSON.stringify(window.__speechLog).includes('新的海岛开啦'), isl: Object.keys(MapView.isl), fest: document.querySelector('.isl:not(.gate) .land[src*=festival]').closest('.isl').classList.contains('locked') })")
+    log.check(st['said'] and 'gate' in st['isl'] and 'festival' in st['isl'] and st['fest'], 'through the gate: the second sea, "新的海岛开啦！", a gate back in its middle, the lantern island waits under its cloud %s' % st)
+    page.evaluate("MapView.tapIsland('gate')"); page.wait_for_function("MapView.set === 1 && !MapView.sailing", timeout=10000)
+    page.evaluate("MapView.tapIsland('gate')"); page.wait_for_function("MapView.set === 2 && !MapView.sailing", timeout=10000)
+    log.check(True, 'the gate sails back to the first sea and over again')
     for g in ('Q1', 'Q2', 'Q3'):
         page.evaluate("([g]) => window.__go('peppa2', g, 0, {noDemo: true, seed: 2})", [g])
         for i in range(8):
@@ -69,6 +79,19 @@ with sync_playwright() as p, serve() as base:
     log.check(st['bluey2'], 'all three games of peppa2 played: bluey2 opens %s' % st)
     st = page.evaluate("() => { Store.w('bluey2').gstars = { C1: 5 }; return W2.gameOpen('bluey2', 'C2'); }")
     log.check(st, '5 stars in C1 open C2 without playing it through')
+    # all seven islands played: the lantern island opens and the finale plays (with the pajama heroes)
+    page.evaluate("() => { ORDER2.forEach(w => { const ws = Store.w(w); ws.unlocked = true; ws.gdone = {}; WORLDS[w].games.forEach(g => { ws.gdone[g] = true; }); }); Store.save(); }")
+    page.evaluate("window.__go('avengers2', 'W3', 0, {noDemo: true, seed: 4})")
+    for i in range(8):
+        try:
+            gen, snap = answer_question(page, 'right', timeout=20000); wait_next_question(page, gen, timeout=20000)
+        except Exception:
+            break
+    page.wait_for_function("Screens.cur === 'finale'", timeout=60000)
+    st = page.evaluate("() => ({ fin2: Store.s.fin2, pj: [...document.querySelectorAll('#finale .crowd img')].some(i => i.src.includes('catboy')) })")
+    log.check(st['fin2'] == 'seen' and st['pj'], 'all of world 2 played: the lantern island opens and the finale plays with the pajama heroes %s' % st)
+    page.evaluate("gesture('home')"); page.wait_for_timeout(300)
+    log.check(page.evaluate("MapView.recommend() === 'festival' && !MapView.isl.festival.d.classList.contains('locked')"), 'afterwards the lantern island stays open (the finale again)')
     log.check(not page.errors, 'progress: zero page errors %s' % page.errors[:3])
     br.close()
 sys.exit(0 if log.close() else 1)
