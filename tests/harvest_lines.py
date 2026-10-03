@@ -24,8 +24,17 @@ def static_lines():
         out.update(re.findall(r"'([^'\\\n]{1,24})'", m.group(1)))
     for m in re.finditer(r"\?\s*'([^'\\\n]{1,24})'\s*:\s*'([^'\\\n]{1,24})'", s):          # a ? 'x' : 'y' sentence choice
         out.update([m.group(1), m.group(2)])
+    for m in re.finditer(r"\|\|\s*'([^'\
+]{2,24})'", s):          # a fallback sentence: say(x || '玩得真开心！')
+        out.add(m.group(1))
     for m in re.finditer(r"(?:const (?:PLACE_SAY|PLACE_WORD) = |W2X\.say\()\{([^}]*)\}", s):   # sentence tables
         out.update(re.findall(r"'([^'\\\n]{1,24})'", m.group(1)))
+    # every complete sentence literal in the code (ends with ！？。) - a sentence passed around in a variable is never missed;
+    # fragments that start with a measure word are pieces of number sentences, not sentences
+    for t in re.findall(r"'([^'\
+]{3,20})'", s):
+        if re.search(r'[！？。]$', t) and not re.search(r'[A-Za-z0-9<>=/{}]', t) and t[0] not in '个只块根格文下点节面小的':
+            out.add(t)
     return {t for t in out if CJK.search(t) and len(t) >= 3}
 
 

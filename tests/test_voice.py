@@ -78,7 +78,7 @@ def main():
         br = getattr(p, ENGINE).launch()
 
         # ------------------------------------------------------------ 1. entry + a normal-speed session
-        page = new_page(br, base, 1180, 820, fast=False, extra_init=CLICK_PROBE, sw='block')   # routes must see the audio requests
+        page = new_page(br, base, 1180, 820, fast=False, extra_init=CLICK_PROBE, sw='block', bank=False)   # routes must see the audio requests
         page.click('#play')
         page.wait_for_function("document.querySelector('#map').classList.contains('on')", timeout=10000)
         cs = calls(page)
@@ -158,7 +158,7 @@ def main():
         stuck = """
         window.__stuck = () => { const S = window.speechSynthesis; S.speak = u => { window.__speechCalls.push({ t: performance.now(), ev: 'speak', text: u.text }); S.speaking = true; }; S.cancel = () => { window.__speechCalls.push({ t: performance.now(), ev: 'cancel' }); }; };
         """
-        page = new_page(br, base, 1180, 820, fast=False, extra_init=stuck)
+        page = new_page(br, base, 1180, 820, fast=False, extra_init=stuck, bank=False)
         enter(page)
         page.wait_for_timeout(1500)
         page.evaluate("() => window.__stuck()")
@@ -176,7 +176,7 @@ def main():
         silent = """
         window.__silent = () => { const S = window.speechSynthesis; S.speak = u => { window.__speechCalls.push({ t: performance.now(), ev: 'speak', text: u.text }); S.speaking = false; S.pending = false; }; };
         """
-        page = new_page(br, base, 1180, 820, fast=False, extra_init=silent)
+        page = new_page(br, base, 1180, 820, fast=False, extra_init=silent, bank=False)
         enter(page)
         page.wait_for_timeout(1200)
         page.evaluate("() => window.__silent()")
@@ -195,7 +195,8 @@ def main():
         page.evaluate("() => window.__go('bluey', 'B1', 1, {noDemo: true, seed: 3})")
         wait_phase(page, timeout=20000)
         anim = page.evaluate("getComputedStyle(document.querySelector('#avatar')).animationName")
-        log.check('breathe' in anim, 'in a game the avatar pulses while sound seems lost (%s)' % anim)
+        ear = page.evaluate("getComputedStyle(document.querySelector('#avatar .ear')).backgroundColor")
+        log.check('breathe' not in anim and 'rgb(255, 224, 138)' in ear, 'in a game the avatar stays still and its ear badge marks the lost sound (one thing at a time; %s, %s)' % (anim, ear))
         page.evaluate("gesture('home')")
         log.check(not page.errors, 'silent engine: zero errors %s' % page.errors[:3])
         page.context.close()
@@ -205,7 +206,7 @@ def main():
         liar = """
         window.__liar = () => { const S = window.speechSynthesis; ['speaking', 'pending'].forEach(k => { try { Object.defineProperty(S, k, { configurable: true, get: () => false, set: () => {} }); } catch (e) {} }); };
         """
-        page = new_page(br, base, 1180, 820, fast=False, extra_init=liar)
+        page = new_page(br, base, 1180, 820, fast=False, extra_init=liar, bank=False)
         enter(page)
         page.wait_for_timeout(1200)
         page.evaluate("() => window.__liar()")
@@ -221,7 +222,7 @@ def main():
         page.context.close()
 
         # ------------------------------------------------------------ 5. a bombard of taps: only the newest narration survives
-        page = new_page(br, base, 1180, 820, fast=False)
+        page = new_page(br, base, 1180, 820, fast=False, bank=False)
         enter(page)
         page.evaluate("() => window.__go('bluey', 'B2', 1, {noDemo: true, seed: 8})")
         wait_phase(page, timeout=20000)

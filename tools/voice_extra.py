@@ -55,6 +55,15 @@ for c in col:
 out |= {'有天线！', '没天线！', '加葡萄，称西瓜！', '两边一样重！'}
 out |= {'西瓜有' + Q(n) + '串重！' for n in range(2, 7)}
 out |= {'颜色和大家一样', '形状和大家一样', '点点和大家一样多', '方向和大家一样', '边数和大家一样'}
+# world 1: 翻 (a + m on the cloud line) and 装 (a and need make cap)
+for a_ in range(0, 20):
+    for m in range(1, 11):
+        if a_ + m <= 20:
+            out.add(CN[a_] + '翻' + CN[m] + '下，到' + CN[a_ + m] + '！')
+for cap in (5, 10):
+    for a_ in range(0, cap + 1):
+        out.add(CN[a_] + '和' + CN[cap - a_] + '，凑成' + CN[cap] + '！')
+out |= {'翻' + Q(m) + '下，到哪朵？' for m in range(1, 11)}
 p = os.path.join(ROOT, 'raw', 'voice_lines.json')
 have = set(json.load(open(p, encoding='utf-8')))
 miss = os.path.join(ROOT, 'raw', 'voice_miss.json')

@@ -90,7 +90,7 @@ SPEECH_INIT = r"""
 """
 
 
-def new_page(browser, base, vw=1180, vh=820, fast=True, no_speech=False, hint_scale=None, extra_init='', sw=None):
+def new_page(browser, base, vw=1180, vh=820, fast=True, no_speech=False, hint_scale=None, extra_init='', sw=None, bank=True):
     ctx = browser.new_context(viewport={'width': vw, 'height': vh}, device_scale_factor=1, has_touch=False,
                               service_workers=('block' if fast else 'allow') if sw is None else sw)
     init = ''
@@ -100,6 +100,8 @@ def new_page(browser, base, vw=1180, vh=820, fast=True, no_speech=False, hint_sc
         init += 'window.__noSpeech = 1;'
     if hint_scale:
         init += 'window.__hintScale = %s;' % hint_scale
+    if not bank:
+        init += 'window.__nobank = 1;'          # the device speech engine path (no recordings)
     ctx.add_init_script(init + SPEECH_INIT + extra_init)
     page = ctx.new_page()
     errors, env = [], []

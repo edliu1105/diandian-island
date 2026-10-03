@@ -62,7 +62,7 @@ def play_session(page, w, g):
 def run(p, eng, base, log):
     E = eng + ': '
     br = getattr(p, eng).launch()
-    page = new_page(br, base, 1180, 820, fast=True, no_speech=True, extra_init=NO_UTTER)
+    page = new_page(br, base, 1180, 820, fast=True, no_speech=True, extra_init=NO_UTTER, bank=False)
     env = page.evaluate(ENV)
     if not log.check(env['synth'] == 'undefined' and env['utter'] == 'undefined' and env['app'] in ('undefined', 'null'),
                      E + 'setup: no speech engine in the page %s' % env):

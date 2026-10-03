@@ -169,7 +169,11 @@ def run(p, eng, base, log):
     fake = page.evaluate("(() => { try { const v = speechSynthesis.getVoices(); return !!(v[0] && v[0].name === 'Test Ting-Ting'); } catch (e) { return null; } })()")
     log.check(af['mapOn'], E + 'map screen switched on inside the click handler')
     log.check(bool(first), E + "speech log has the first sentence (tag 'first', ev 'speak') when the click handler returns: %s" % [e['text'] for e in first])
-    log.check(bool(spoke), E + '%s engine speak() called inside the click dispatch: %s' % ('fake' if fake else 'real', [c.get('text') for c in spoke]))
+    rec = page.evaluate("Bank.on()")
+    if rec:   # recordings: the first sentence is a recording started in the tap; the device engine is NOT touched (iOS audio session)
+        log.check(not spoke, E + 'recordings: the device engine is not used at the entry (it would switch the iOS audio session): %s' % [c.get('text') for c in spoke])
+    else:
+        log.check(bool(spoke), E + '%s engine speak() called inside the click dispatch: %s' % ('fake' if fake else 'real', [c.get('text') for c in spoke]))
     try:
         page.wait_for_function(MAP_SHOWN, polling='raf', timeout=5000)
     except Exception:

@@ -630,7 +630,17 @@ const Sfx = {
     this.log.push({ t: Math.round(now() - T0), ev, why: e ? String(e.name || e.message || e).slice(0, 60) : '', state: this.ctx ? this.ctx.state : 'none', media: this.media ? (this.media.paused ? 'paused' : 'playing') : 'none' });
     if (this.log.length > 30) this.log.shift();
   },
+  /* a context that stopped producing sound (iOS after an interruption) is replaced; the new one starts in this gesture */
+  rebuild() {
+    const old = this.ctx;
+    this.ctx = null; this.out = null; this.amb = null; this.primed = false; this.broken = false; this.ambNodes = []; this.ambKind = null;
+    try { if (old && old.close) old.close(); } catch (e) {}
+    Bank.reset(); Count.bufs = {}; Count.loading = {};
+    this.note('rebuilt');
+    return this.ensure();
+  },
   touch() {
+    if (this.broken || (this.ctx && this.ctx.state === 'closed')) this.rebuild();
     const c = this.ensure();
     if (!c) return;
     if (c.state !== 'running') {
@@ -823,7 +833,15 @@ const FIRST_LINE = '我们去点点岛玩吧！';
 const Bank = {
   set: null, bufs: {}, order: [], fails: {}, loading: {},
   key(text) { let h = 0x811c9dc5; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return ('0000000' + h.toString(16)).slice(-8); },
-  init() { return fetch('assets/voice/bank.json').then(r => (r.ok ? r.json() : [])).then(a => { this.set = new Set(a); }).catch(() => { this.set = new Set(); }); },
+  started: false,
+  init() {
+    if (this.started) return this.p; this.started = true;
+    if (window.__nobank) { this.set = new Set(); return (this.p = Promise.resolve()); }       /* tests of the device-engine path */
+    return (this.p = fetch('assets/voice/bank.json').then(r => (r.ok ? r.json() : [])).then(a => { this.set = new Set(a); }).catch(() => { this.set = new Set(); }));
+  },
+  /* recordings mode: the list is loading or has entries (and Web Audio exists). Then the device engine is never used */
+  on() { return !window.__nobank && !!(window.AudioContext || window.webkitAudioContext) && (this.set ? this.set.size > 0 : this.started); },
+  reset() { this.bufs = {}; this.order = []; this.loading = {}; },
   has(text) { return !!(text && this.set && this.set.has(this.key(text)) && !this.fails[this.key(text)]); },
   ready(text) { return this.bufs[this.key(text)] || null; },
   keep(k, b) { this.bufs[k] = b; this.order.push(k); while (this.order.length > 40) delete this.bufs[this.order.shift()]; },
@@ -932,14 +950,15 @@ const Voice = {
   unlock(text) {
     this.enter('map');
     const s = this.synth;
-    const rec = Bank.ready(text), c = Sfx.ensure();
-    if (rec && c) {
-      if (s) { try { s.resume(); const u = this.utter('。'); u.volume = 0; s.speak(u); } catch (e) {} }   /* iOS: the engine is unlocked in this gesture (fallbacks) */
+    const c = !window.__nobank && Sfx.ensure();
+    if (c) {                                      /* recordings: the device engine is not touched at all (iOS audio session) */
+      Bank.init();
       try { c.resume(); } catch (e) {}
-      const item = { id: ++this.reqSeq, text, tag: 'first', resolve: () => {}, done: false, owner: null };
+      const rec = Bank.ready(text), item = { id: ++this.reqSeq, text, tag: 'first', resolve: () => {}, done: false, owner: null };
       this.first = { item, text, at: now(), ctx: this.ctx.gen, voiceKey: this.voiceKey(), respoken: true };
       this.firstConfirmed = true; this.lastText = text;
-      this.playClip(item, rec);                  /* starts in this gesture; sounds as soon as the audio runs */
+      if (rec) this.playClip(item, rec);         /* starts in this gesture; sounds as soon as the audio runs */
+      else this.say(text, { tag: 'first', owner: null });
       return;
     }
     const item = { id: ++this.reqSeq, text, tag: 'first', resolve: () => {}, done: false, owner: null };
@@ -1038,7 +1057,7 @@ const Voice = {
       } else {
         this.q.push(item);
         const plain = this.q.filter(d => !d.prot);
-        if (plain.length > 3) plain.slice(0, plain.length - 3).forEach(d => { d.done = true; d.resolve('dropped'); this.q.splice(this.q.indexOf(d), 1); });
+        if (plain.length > 3) plain.slice(0, plain.length - 3).forEach(d => { d.done = true; slog('narr', d.text, d.tag, 'dropped'); d.resolve('dropped'); this.q.splice(this.q.indexOf(d), 1); });
       }
       this.schedulePump(0);
     });
@@ -1091,13 +1110,22 @@ const Voice = {
     const gap = 150 - (now() - this.lastCancelAt);
     if (gap > 0) { this.schedulePump(gap + 5); return; }
     const head = this.q[0];
-    if (Bank.has(head.text) && Sfx.ctx) {
-      const b = Bank.ready(head.text);
-      if (b && Sfx.ctx.state === 'running') { this.playClip(this.q.shift(), b); return; }
-      if (!head.waitT) { head.waitT = now(); Bank.load(head.text).then(() => this.schedulePump(0)); }
-      if (now() - head.waitT < (fast() ? 30 : 700)) { this.schedulePump(40); return; }
-      /* not decoded / the audio not running in time: the speech engine says it */
-    } else if (head.text) (window.__vmiss || (window.__vmiss = new Set())).add(head.text);   /* a sentence without a recording (the bank grows from these) */
+    if (Bank.on()) {
+      if (!head.waitT) head.waitT = now();
+      const waited = now() - head.waitT, limit = fast() ? 600 : 1500;
+      if (!Bank.set) { if (waited < limit) { this.schedulePump(40); return; } }        /* the list is still loading */
+      else if (Bank.has(head.text)) {
+        const c = Sfx.ensure(), b = Bank.ready(head.text);
+        if (b && c && c.state === 'running') { this.playClip(this.q.shift(), b); return; }
+        if (!head.loadAsked) { head.loadAsked = true; Bank.load(head.text).then(() => this.schedulePump(0)); }
+        if (c && c.state !== 'running' && !head.resumeAsked) { head.resumeAsked = true; try { const r = c.resume(); if (r && r.then) r.then(() => this.schedulePump(0), () => {}); } catch (e) {} }
+        if (waited < limit) { this.schedulePump(40); return; }
+      } else if (head.text) (window.__vmiss || (window.__vmiss = new Set())).add(head.text);   /* a sentence without a recording */
+      /* recordings mode: never the device engine (it switches the iOS audio session) - the sentence is let go quietly */
+      const d = this.q.shift(); d.done = true; slog('narr', d.text, d.tag, 'skip'); d.resolve('skip');
+      this.schedulePump(0); this.checkWaiters();
+      return;
+    }
     const s = this.synth;
     if (!s) {                          /* no engine: keep the page rhythm without sound */
       const item = this.q.shift();
@@ -1132,7 +1160,9 @@ const Voice = {
     this.bindEnd(item, null, buf.duration);
     s.onended = () => item.finish && item.finish('end');
     Sfx.duck(buf.duration + 0.3);
-    try { s.start(); } catch (e) { item.finish('error'); }
+    try { s.start(); } catch (e) { item.finish('error'); return; }
+    const t0 = c.currentTime;
+    if (!fast()) setTimeout(() => { if (this.cur === item && c === Sfx.ctx && c.state === 'running' && c.currentTime === t0) { Sfx.note('clock-stalled'); Sfx.broken = true; item.finish('stalled'); } }, 450);
   },
   busy() { return !!(this.cur || this.q.length); },
   /* afterSay(minMs): resolves when narration is idle AND at least minMs passed */
