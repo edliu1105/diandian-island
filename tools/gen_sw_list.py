@@ -16,7 +16,7 @@ for base, dirs, names in os.walk(os.path.join(ROOT, 'assets')):
     if rel.split('/')[-1] in SKIP_DIRS:
         continue
     for n in sorted(names):
-        if n.endswith('.json'):
+        if n.endswith('.json') and n != 'bank.json':      # the voice bank list is part of the version (offline voice)
             continue
         files.append('./' + rel + '/' + n)
 files.sort()
