@@ -3294,6 +3294,7 @@ function boot() {
   Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
   W2.check(false);
   if (!Store.s.flags) { Store.s.flags = LIVE().concat(ORDER2).filter(flagged); Store.save(); }
+  else if (Store.s.flags.some(w => !flagged(w))) { Store.s.flags = Store.s.flags.filter(flagged); Store.save(); }   /* an island got a new game: its flag is earned (and planted) again */
   Fx.init();
   Stage.init();
   Input.init();
