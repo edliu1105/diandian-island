@@ -44,7 +44,17 @@ for n in range(1, 14):
     out |= {'一共' + Q(n) + '块！', '不是' + Q(n) + '块'}
 for n in range(0, 10):
     out |= {Q(n) + '个角！', '不是' + Q(n) + '个角', '这个有' + Q(n) + '个角'}
-out |= {'这个没有角', '没油了，走远了', '还有三个角的'}
+out |= {'这个没有角', '没油了，走远了', '还有三个角的', '又见面啦！'}
+# R8: the reasoning reveals say why; the balance weighs; feedback by dimension
+W = {'size': '变小', 'color': '变颜色', 'turn': '转一下', 'count': '变两个', 'fill': '变空心'}
+for ops in (['size'], ['color'], ['turn'], ['size', 'color'], ['count', 'turn'], ['fill', 'size'], ['count', 'color']):
+    out.add('，'.join(W[o] for o in ops) + '！')
+out |= {'那只' + x for x in ('颜色不一样', '图案不一样', '尾巴不一样', '方向不一样')}
+for c in col:
+    out |= {c + '！', '不是' + c + '！'}
+out |= {'有天线！', '没天线！', '加葡萄，称西瓜！', '两边一样重！'}
+out |= {'西瓜有' + Q(n) + '串重！' for n in range(2, 7)}
+out |= {'颜色和大家一样', '形状和大家一样', '点点和大家一样多', '方向和大家一样', '边数和大家一样'}
 p = os.path.join(ROOT, 'raw', 'voice_lines.json')
 have = set(json.load(open(p, encoding='utf-8')))
 miss = os.path.join(ROOT, 'raw', 'voice_miss.json')

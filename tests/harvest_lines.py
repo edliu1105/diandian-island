@@ -16,15 +16,17 @@ CJK = re.compile(r'[一-鿿]')
 def static_lines():
     s = open(os.path.join(ROOT, 'index.html'), encoding='utf-8').read()
     out = set()
-    for m in re.finditer(r"(?:Voice\.say|Voice\.sayNow|\.sayNow|K\.say\(st,|Voice\.unlock)\s*\(?\s*'([^'\\\n]{1,24})'", s):
+    for m in re.finditer(r"(?:Voice\.say|Voice\.sayNow|\.sayNow|K\.say\(st,|Voice\.unlock|W2X\.say|line:)\s*\(?\s*'([^'\\\n]{1,24})'", s):
         out.add(m.group(1))
     for m in re.finditer(r"(?:intro|bye|hi|summary)\s*:\s*'([^'\\\n]{1,24})'", s):
         out.add(m.group(1))
-    for m in re.finditer(r"(?:const (?:PRAISE|CHEER|AGAIN)\s*=|praise\s*:)\s*\[([^\]]*)\]", s):
+    for m in re.finditer(r"(?:const (?:PRAISE|CHEER|AGAIN)\s*=|praise\s*:|why\s*:)\s*\[([^\]]*)\]", s):
         out.update(re.findall(r"'([^'\\\n]{1,24})'", m.group(1)))
     for m in re.finditer(r"\?\s*'([^'\\\n]{1,24})'\s*:\s*'([^'\\\n]{1,24})'", s):          # a ? 'x' : 'y' sentence choice
         out.update([m.group(1), m.group(2)])
-    return {t for t in out if CJK.search(t)}
+    for m in re.finditer(r"(?:const (?:PLACE_SAY|PLACE_WORD) = |W2X\.say\()\{([^}]*)\}", s):   # sentence tables
+        out.update(re.findall(r"'([^'\\\n]{1,24})'", m.group(1)))
+    return {t for t in out if CJK.search(t) and len(t) >= 3}
 
 
 def play(ids):

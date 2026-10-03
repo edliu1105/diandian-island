@@ -2223,7 +2223,7 @@ const Session = {
     return true;
   },
   praise(G) {
-    const pool = PRAISE.concat(G.game.praise || []);
+    const pool = (G.W.map === 2 ? PRAISE.filter(x => x !== '数得真准！') : PRAISE).concat(G.game.praise || []);   /* nothing is counted in many world-2 games (R8-5) */
     let p; do { p = pool[Math.floor(Math.random() * pool.length)]; } while (p === this.lastPraise && pool.length > 1);
     this.lastPraise = p; return p;
   },
@@ -7836,13 +7836,16 @@ const MPattern = {
 /* ================================================================ RULE 3 · 称 make both sides equally heavy */
 const MBalance = {
   kind0: 'build', verb: '称！', intro: '要一样重！', praise: ['两边一样重！'],
-  kinds(level) { return level <= 2 ? ['build'] : ['guess']; },
+  /* R8-4: weighing for real - the big thing on the left weighs W small ones (a watermelon is how many bunches of grapes):
+     the child adds small ones on the right until the beam is level (hands on, the beam tilts) - not world 1's "make the
+     counts equal" (B4). L4 a few small ones lie beside the big one, L5 two big ones and some small ones already right */
+  kinds() { return ['build']; },
   gen(G, o) {
-    const d = o.level, rng = o.rng;
-    const a = d === 1 ? rng.int(2, 4) : d === 2 ? rng.int(3, 6) : d === 3 ? rng.int(4, 7) : d === 4 ? rng.int(5, 9) : rng.int(6, 10);
-    const b = d === 1 ? rng.int(0, 1) : d === 2 ? rng.int(0, 2) : d === 3 ? rng.int(1, 3) : d === 4 ? rng.int(1, 4) : rng.int(2, 5);
-    const need = a - b;
-    return { k: [a, b], a, b, need, answer: need, guess: d >= 3, opts: d >= 3 ? numOptions(G, need, 1, 9) : null };
+    const d = Math.min(5, o.level), rng = o.rng;
+    const big = d >= 5 ? 2 : 1, W = d === 1 ? 2 : d === 2 ? 3 : d === 5 ? rng.int(2, 4) : rng.int(3, 5);
+    const a = d === 4 ? rng.int(1, 2) : d === 5 ? rng.int(0, 2) : 0, b = d === 5 ? rng.int(1, 2) : 0;
+    const need = big * W + a - b;
+    return { k: [big, W, a, b], big, W, a, b, need, answer: need, guess: false, opts: null };
   },
   geo() { const L = K.L(); return L ? { cx: 512, cy: 250, arm: 236, hang: 112, pw: 224, box: { x: 610, y: 520, w: 150, h: 140 } } : { cx: 352, cy: 450, arm: 214, hang: 112, pw: 200, box: { x: 278, y: 760, w: 150, h: 140 } }; },
   /* the check button sits in the lower right: the second watcher stands left of it (landscape) or stays away (portrait) */
@@ -7852,7 +7855,7 @@ const MBalance = {
   },
   cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 800 }; },
   /* the beam tilts to the heavier side; level when equal */
-  angle(st) { return clamp((st.right.length - st.left.length) * 4, -16, 16); },
+  angle(st) { return clamp((st.right.length - st.left.length - (st.q.big || 0) * (st.q.W || 0)) * 4, -16, 16); },
   draw(st) {
     const g = this.geo(), t = (st.theta || 0) * Math.PI / 180;
     const lx = g.cx - g.arm * Math.cos(t), ly = g.cy - g.arm * Math.sin(t), rx = g.cx + g.arm * Math.cos(t), ry = g.cy + g.arm * Math.sin(t);
@@ -7865,6 +7868,7 @@ const MBalance = {
     svg('circle', { cx: g.cx, cy: g.cy, r: 14, fill: '#FF6B5B', stroke: ink, 'stroke-width': 5 }, s);
     [[st.panL, lx, ly], [st.panR, rx, ry]].forEach(([p, x, y]) => place(p, x - g.pw / 2, y + g.hang - 10, g.pw, 40));
     [[st.left, lx, ly], [st.right, rx, ry]].forEach(([list, x, y]) => list.forEach((e, k) => { const r = Math.floor(k / 5), c = k % 5, inRow = Math.min(5, list.length - r * 5); place(e, x - inRow * 21 + c * 42, y + g.hang - 52 - r * 36, 42, 42); }));
+    (st.bigs || []).forEach((e, k) => { const n = st.bigs.length, sx = n > 1 ? (st.left.length ? 0 : 0) : 0; place(e, lx - n * 44 + k * 88 + sx, ly + g.hang - 100 - (st.left.length ? 36 : 0), 88, 88); });
   },
   tilt(st) {
     const to = this.angle(st), from = st.theta || 0, t0 = now(), my = st;
@@ -7881,6 +7885,7 @@ const MBalance = {
     const pan = c => { const p = el('div', '', Stage.el); Object.assign(p.style, { position: 'absolute', borderRadius: '0 0 60px 60px', background: c, boxShadow: '0 0 0 4px #2B2118', zIndex: 4 }); st.els.push(p); return p; };
     st.panL = pan('#FFB3A8'); st.panR = pan('#A8DBFF');
     st.left = Array.from({ length: q.a }, () => this.piece(st)); st.right = Array.from({ length: q.b }, () => this.piece(st)); st.added = [];
+    st.bigs = Array.from({ length: q.big || 0 }, () => { const e = K.item(Stage.el, W2P.src(this.big), 88, 88); e.style.zIndex = 6; st.els.push(e); return e; });
     st.theta = this.angle(st);
     if (!q.guess) {
       st.boxEl = K.item(Stage.el, 'assets/props/' + this.box + '.png', 150, 140); st.boxEl.style.zIndex = 5; st.els.push(st.boxEl);
@@ -7888,10 +7893,9 @@ const MBalance = {
       st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {});
     }
     this.place(st);
-    st.left.concat(st.right).forEach((e, i) => K.pop(st, e, 40 * i));
-    K.task(st, [[{ node: (() => { const n = W2P.icon('scale').node; n.style.transform = 'rotate(-12deg)'; return n; })() }], [W2P.src(this.item)], [W2P.icon('scale')]]);
-    if (q.guess) { K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot())); K.say(st, '还要几个？'); }
-    else K.say(st, '加到一样重！');
+    st.bigs.concat(st.left, st.right).forEach((e, i) => K.pop(st, e, 40 * i));
+    K.task(st, [[W2P.src(this.big)], [W2P.icon('scale')], [W2P.src(this.item)], ['q']]);
+    K.say(st, this.sayLine || '加到一样重！');
   },
   add(st) {
     if (st.added.length >= 9) { K.wiggle(st, st.boxEl); return false; }
@@ -7915,8 +7919,9 @@ const MBalance = {
     const q = st.q;
     if (q.guess) await this.fill(st, q.need);
     if (!Session.alive(st)) return;
-    st.summary = q.guess ? '还要' + CNQ(q.need) + '个！' : '两边一样重！';
-    K.badge(st, st.panL, q.a, 0, 20, 50); await st.scope.wait(400); K.badge(st, st.panR, q.a, 0, 20, 50);
+    st.summary = q.big === 1 && !q.a && !q.b ? (this.bigWord || '它') + '有' + CNQ(q.W) + '串重！' : '两边一样重！';
+    for (let k = 0; k < st.right.length; k++) { if (!Session.alive(st)) return; K.hop(st, st.right[k], 10); await Count.beat(st.scope, 260, k + 1); }
+    K.badge(st, st.panR, st.right.length, 0, 20, 50);
     Sfx.reveal(); this.cheerAll(st);
     Voice.say(st.summary, { tag: 'summary' });
     await st.scope.wait(1600);
@@ -7987,7 +7992,7 @@ const MSeq = {
     this.layout(st.G);
     st.tiles.forEach((e, i) => K.pop(st, e, 60 * i));
     K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot()));
-    const sm = [q.vals[0], q.vals[1]];
+    const f = q.gap >= 2 ? 0 : q.gap + 1, sm = [q.vals[f], q.vals[f + 1]];            /* never the missing one (R8-2) */
     K.task(st, [[{ qty: sm[0] }], [{ qty: sm[1] }], ['q']]);
     K.say(st, '少了哪个数？');
   },
@@ -8582,7 +8587,9 @@ const MTwins = {
     const [a, b] = st.q.answer.split('-').map(Number), s = K.lines(st);
     K.link(st, s, center(st.kites[a]), center(st.kites[b]), '#FFC93C'); [a, b].forEach(i => K.hop(st, st.kites[i], 16)); Sfx.reveal();
     st.summary = '一模一样！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' });
-    await st.scope.wait(1300);
+    const f = st.q.list.findIndex((_, i) => i !== a && i !== b);                       /* and why not the others (R8-8) */
+    if (f >= 0) { await st.scope.guard(Voice.afterSay(200)); if (!Session.alive(st)) return; K.wiggle(st, st.kites[f]); Voice.say('那只' + this.diff(st.q.list[f], st.q.list[a]), { tag: 'summary' }); }
+    await st.scope.wait(1400);
   },
   async feedback(st, ans) { const [a, b] = String(ans).split('-').map(Number); [a, b].forEach(i => st.kites[i] && K.wiggle(st, st.kites[i])); W2X.say(this.diff(st.q.list[a], st.q.list[b])); await st.scope.wait(600); },
   next(st, strat) {
@@ -8777,8 +8784,13 @@ const MClue = {
   },
   onGesture(st, name, p) { const id = p.id || ''; if (name === 'tap' && /^b\d$/.test(id) && !st.picked) { st.picked = true; Session.submit(st, Number(id.slice(1))); return 'ok'; } return false; },
   async reveal(st) {
-    const e = st.botEls[st.q.answer]; K.ring(st, [box(e)], 6, '#FFC93C'); K.hop(st, e, 20); Sfx.reveal();
-    st.summary = '就是它！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+    const e = st.botEls[st.q.answer], chips = $$('.task .it', Stage.el); K.ring(st, [box(e)], 6, '#FFC93C'); Sfx.reveal();
+    for (let i = 0; i < st.q.clues.length; i++) {                                   /* every clue checked on it (R8-8) */
+      if (!Session.alive(st)) return;
+      if (chips[i]) K.flash(st, [chips[i]]); K.hop(st, e, 14); Voice.say(this.words(st.q.clues[i]) + '！', { tag: 'summary' });
+      await st.scope.guard(Voice.afterSay(150));
+    }
+    st.summary = '就是它！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
   },
   async feedback(st, ans) {
     const b = st.q.bots[ans], bad = st.q.clues.find(c => c.not ? b[c.k] === c.v : b[c.k] !== c.v);
@@ -8838,15 +8850,20 @@ const MOddOne = {
     const d = Math.min(5, o.level), rng = o.rng, n = d <= 2 ? 4 : 5;
     const shapes = ['circle', 'tri', 'sq', 'star', 'hex', 'heart'];
     const rule = d === 1 ? 'color' : d === 2 ? 'shape' : d === 3 ? 'dots' : d === 4 ? 'dir' : 'sides';
-    const items = []; const odd = rng.int(0, n - 1);
+    const odd = rng.int(0, n - 1);
     const baseC = rng.int(0, 5), baseS = rng.pick(shapes), baseD = rng.int(1, 3), baseDir = rng.int(0, 3), sides = rng.pick([3, 4]);
+    /* what does not count comes in pairs - no second card stands out on its own (R8-3) */
+    const pairs = vals => { const a = rng.shuffle(vals.slice()).slice(0, 2); return rng.shuffle(Array.from({ length: n }, (_, i) => a[i % 2])); };
+    const nc = rule === 'shape' || rule === 'dir' || rule === 'sides' ? pairs([0, 1, 2, 3, 4, 5]) : Array(n).fill(baseC);
+    const nb = d >= 4 ? pairs([0, 1]) : Array(n).fill(1);
+    const items = [];
     for (let i = 0; i < n; i++) {
-      const it = { kind: d >= 2 && rule !== 'shape' && rule !== 'sides' ? rng.pick(shapes.slice(0, 5)) : baseS, c: d >= 2 && rule !== 'color' ? rng.int(0, 5) : baseC, dots: 0, rot: 0, big: d >= 4 ? rng.int(0, 1) : 1 };
-      if (rule === 'color') { it.kind = baseS; it.c = i === odd ? (baseC + rng.int(1, 5)) % 6 : baseC; }
-      if (rule === 'shape') { it.kind = i === odd ? rng.pick(shapes.filter(s => s !== baseS)) : baseS; }
-      if (rule === 'dots') { it.dots = i === odd ? (baseD % 3) + 1 : baseD; }
+      const it = { kind: baseS, c: nc[i], dots: 0, rot: 0, big: nb[i] };
+      if (rule === 'color') it.c = i === odd ? (baseC + rng.int(1, 5)) % 6 : baseC;
+      if (rule === 'shape') it.kind = i === odd ? rng.pick(shapes.filter(s => s !== baseS)) : baseS;
+      if (rule === 'dots') it.dots = i === odd ? (baseD % 3) + 1 : baseD;          /* one shape, one colour: only the dots differ */
       if (rule === 'dir') { it.kind = 'arrow'; it.rot = (i === odd ? (baseDir + 2) % 4 : baseDir) * 90; }
-      if (rule === 'sides') { const s = i === odd ? 7 - sides : sides; it.kind = 'poly'; it.n = s; it.rot = rng.int(0, 3) * 25; it.stretch = 0.75 + rng() * 0.5; }
+      if (rule === 'sides') { const s = i === odd ? 7 - sides : sides; it.kind = 'poly'; it.n = s; it.rot = rng.int(0, 3) * 25; it.stretch = 0.8 + rng() * 0.4; }
       items.push(it);
     }
     return { k: [rule, d, odd, baseC], rule, items, answer: odd };
@@ -8855,7 +8872,8 @@ const MOddOne = {
     const s = svg('svg', { viewBox: '0 0 100 100', width: size, height: size }), r = it.big ? 34 : 24, col = W2X.pal[it.c];
     if (it.kind === 'poly') { const p = W2X.ngon(it.n, 50, 52, r * 1.15, it.rot).map(([x, y]) => [50 + (x - 50) * it.stretch, y]); svg('polygon', { points: W2X.pts(p), fill: col, stroke: W2X.ink, 'stroke-width': 4, 'stroke-linejoin': 'round' }, s); }
     else W2X.shape(s, it.kind, 50, 52, r, col, it.rot);
-    for (let i = 0; i < it.dots; i++) svg('circle', { cx: 50 + (i - (it.dots - 1) / 2) * 14, cy: 54, r: 5, fill: '#fff', stroke: W2X.ink, 'stroke-width': 2.5 }, s);
+    const dp = [[[50, 54]], [[38, 54], [62, 54]], [[50, 40], [37, 62], [63, 62]]][it.dots - 1] || [];
+    dp.forEach(([x, y]) => svg('circle', { cx: x, cy: y, r: 8, fill: '#fff', stroke: W2X.ink, 'stroke-width': 3 }, s));
     return s;
   },
   cardSpot() { return K.L() ? { cx: 512, cy: 380 } : { cx: 352, cy: 560 }; },
@@ -8873,7 +8891,7 @@ const MOddOne = {
     const c = st.cards[st.q.answer]; c.classList.add('hi'); K.hop(st, c, 18); Sfx.reveal();
     st.summary = this.ruleWord(st.q.rule) + '不一样！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
-  async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W2X.say('它和大家一样'); await st.scope.wait(500); },
+  async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W2X.say({ color: '颜色和大家一样', shape: '形状和大家一样', dots: '点点和大家一样多', dir: '方向和大家一样', sides: '边数和大家一样' }[st.q.rule]); await st.scope.wait(500); },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.items.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
 };
 
@@ -9205,7 +9223,7 @@ const MCoins = {
     return s;
   },
   geo() { const L = K.L(); return L ? { sign: { x: 150, y: 120, w: 220, h: 330 }, mat: { x: 420, y: 150, w: 420, h: 230 }, purse: { y: 500, x0: 210, step: 108 } } : { sign: { x: 60, y: 230, w: 220, h: 320 }, mat: { x: 320, y: 250, w: 340, h: 260 }, purse: { y: 700, x0: 90, step: 104 } }; },
-  decor(G) { const L = K.L(); this.chars.forEach((id, i) => { const a = G.actors[id]; if (i === 0) showActor(a, L ? 940 : 634, L ? 470 : 600, L ? 200 : 160); else if (i === 1) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 170 : 140); else hideActor(a); }); },
+  decor(G) { const L = K.L(); this.chars.forEach((id, i) => { const a = G.actors[id]; if (i === 0) showActor(a, L ? 940 : 400, L ? 470 : 1016, L ? 200 : 150); else if (i === 1) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 170 : 140); else hideActor(a); }); },   /* never behind the mat (R8-7) */
   place(st) {
     const g = this.geo();
     place(st.signEl, g.sign.x, g.sign.y, g.sign.w, g.sign.h); place(st.itemEl, g.sign.x + 20, g.sign.y + 16, g.sign.w - 40, 190); place(st.tag, g.sign.x + 40, g.sign.y + 216, g.sign.w - 80, 90);
@@ -9222,7 +9240,7 @@ const MCoins = {
     st.signEl = W2X.thing(st, 10, 10, 3, ''); Object.assign(st.signEl.style, { borderRadius: '24px', background: 'rgba(255,248,236,.92)', boxShadow: '0 0 0 4px #2B2118' });
     st.itemEl = K.item(Stage.el, W2P.src(q.item), 160, 160); st.itemEl.style.zIndex = 4; st.els.push(st.itemEl);
     st.tag = W2X.thing(st, 140, 90, 4, ''); Object.assign(st.tag.style, { borderRadius: '14px', background: '#FFF3D6', boxShadow: '0 0 0 4px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); st.tag.appendChild(UI.qty(q.price, 62));
-    st.mat = W2X.thing(st, 10, 10, 3, ''); Object.assign(st.mat.style, { borderRadius: '24px', background: 'rgba(214,72,60,.86)', boxShadow: '0 0 0 4px #2B2118', backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 10px, transparent 10px 20px)' });
+    st.mat = W2X.thing(st, 10, 10, 3, ''); Object.assign(st.mat.style, { borderRadius: '24px', background: '#F1D7A8', boxShadow: '0 0 0 4px #2B2118, inset 0 0 0 10px #E2BE83', border: '3px dashed rgba(122,74,28,.45)' });   /* a cloth to lay the coins on */
     K.reg(st, 'mat', st.mat, {});
     st.coins = q.purse.map((v, i) => { const e = W2X.thing(st, 90, 90, 6, ''); e.appendChild(this.coin(v, '100%')); K.reg(st, 'c' + i, e, {}); return { v, e, on: false }; });
     st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {});
@@ -9546,7 +9564,8 @@ const MAnalogy = {
   async reveal(st) {
     const e = st.row[3]; e.innerHTML = ''; e.style.border = ''; e.style.background = '#FFF3C4'; e.appendChild(this.draw(st.q.D, '88%')); K.pop(st, e);
     K.ring(st, [box(st.row[0]), box(st.row[1])], 8, '#FFC93C'); await st.scope.wait(400); K.ring(st, [box(st.row[2]), box(st.row[3])], 8, '#FFC93C');
-    Sfx.reveal(); st.summary = '照着变啦！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+    const W = { size: '变小', color: '变颜色', turn: '转一下', count: '变两个', fill: '变空心' };
+    Sfx.reveal(); st.summary = st.q.ops.map(o => W[o]).join('，') + '！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);   /* what changed (R8-8) */
   },
   async feedback(st, ans) {
     const a = st.q.opts[ans], D = st.q.D; if (st.cards[ans]) K.wiggle(st, st.cards[ans]);
@@ -9768,7 +9787,7 @@ const MTransitive = {
   kind0: 'race', verb: '想！', intro: '谁跑得最快？', praise: ['推理真厉害！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
-    const n = d <= 3 ? 3 : 4, heroes = rng.shuffle(this.pool.slice()).slice(0, n);   /* heroes[0] fastest ... */
+    const n = d <= 4 ? 3 : 4, heroes = rng.shuffle(this.pool.slice()).slice(0, n);   /* heroes[0] fastest ... */
     const pairs = []; for (let i = 0; i < n - 1; i++) pairs.push([heroes[i], heroes[i + 1]]);
     const shown = d === 1 ? pairs : rng.shuffle(pairs.slice());
     const ask = d === 3 ? 'slow' : d === 5 ? 'second' : 'fast';
@@ -9782,10 +9801,14 @@ const MTransitive = {
   pairNode(a, b) {
     const d = el('div'); Object.assign(d.style, { position: 'relative', width: '100%', height: '100%' });
     d.innerHTML = '<svg viewBox="0 0 300 150" width="100%" height="100%" style="position:absolute;left:0;top:0"><rect x="0" y="118" width="300" height="12" fill="#C98B4A"/><path d="M262 30V130" stroke="#2B2118" stroke-width="5"/><rect x="262" y="30" width="22" height="22" fill="#2B2118"/><rect x="262" y="52" width="22" height="22" fill="#fff" stroke="#2B2118" stroke-width="3"/></svg>';
-    const A = img('assets/chars/' + a + '.png', '', d), B = img('assets/chars/' + b + '.png', '', d);
-    Object.assign(A.style, { position: 'absolute', height: '78%', left: '52%', bottom: '14%' }); Object.assign(B.style, { position: 'absolute', height: '70%', left: '14%', bottom: '14%' });
-    const m = el('div', '', d); m.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="22" r="14" fill="#FFC93C" stroke="#2B2118" stroke-width="4"/><path d="M14 4L20 12L26 4" fill="none" stroke="#E8414B" stroke-width="5"/></svg>';
-    Object.assign(m.style, { position: 'absolute', width: '16%', left: '58%', top: '2%' });
+    /* the winner at the finish post with the medal over its head, the loser behind it (explicit widths: the .item img rule
+       would stretch a picture to the whole panel - R8-1) */
+    const A = img('assets/chars/' + a + '.png', '', d), B = img('assets/chars/' + b + '.png', '', d), m = el('div', '', d);
+    const wA = 150 * 0.68 * (META[a] || [300, 496])[0] / (META[a] || [300, 496])[1], wB = 150 * 0.6 * (META[b] || [300, 496])[0] / (META[b] || [300, 496])[1];
+    Object.assign(A.style, { position: 'absolute', width: (wA / 3).toFixed(1) + '%', height: '68%', left: (84 - wA / 3).toFixed(1) + '%', bottom: '14%', objectFit: 'contain' });
+    Object.assign(B.style, { position: 'absolute', width: (wB / 3).toFixed(1) + '%', height: '60%', left: '10%', bottom: '14%', objectFit: 'contain', opacity: 0.92 });
+    m.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="22" r="14" fill="#FFC93C" stroke="#2B2118" stroke-width="4"/><path d="M14 4L20 12L26 4" fill="none" stroke="#E8414B" stroke-width="5"/></svg>';
+    Object.assign(m.style, { position: 'absolute', width: '15%', left: (84 - wA / 6 - 7.5).toFixed(1) + '%', top: '0%' });
     return d;
   },
   place(st) {
@@ -9876,12 +9899,12 @@ w2Game(MTrace,    { id: 'G3', world: 'huluwa2', bg: 'huluwa_lotus', chars: ['gou
 w2Game(MMatrix,   { id: 'G4', world: 'huluwa2', bg: 'huluwa_mountain', chars: ['gourd4', 'grandpa'], host: 'gourd4', iconSrc: IC.matrix, boost: 1 });
 w2Game(MMeasure,  { id: 'Y1', world: 'xiyou2', bg: 'xiyou_palace', chars: ['wukong', 'bajie'], host: 'wukong', icon: 'cloud', style: 'staff', blockColor: '#FFB3A8' });
 w2Game(MRotate,   { id: 'Y2', world: 'xiyou2', bg: 'xiyou_temple', chars: ['wukong', 'bajie'], host: 'wukong', iconSrc: IC.rotate });
-w2Game(MBalance,  { id: 'Y3', world: 'xiyou2', bg: 'xiyou_river', chars: ['bajie', 'wukong'], host: 'bajie', icon: 'grapes', item: 'grapes', box: 'basket' });
+w2Game(MBalance,  { id: 'Y3', world: 'xiyou2', bg: 'xiyou_river', chars: ['bajie', 'wukong'], host: 'bajie', icon: 'watermelon', item: 'grapes', box: 'basket', big: 'watermelon', bigWord: '西瓜', sayLine: '加葡萄，称西瓜！', props: ['watermelon'] });
 w2Game(MAnalogy,  { id: 'Y4', world: 'xiyou2', bg: 'xiyou_clouds', chars: ['wukong'], host: 'wukong', iconSrc: IC.analogy, boost: 1 });
 w2Game(MNumLine,  { id: 'W1', world: 'avengers2', bg: 'avengers_hangar', chars: ['captain', 'thor'], host: 'captain', iconSrc: IC.line });
 w2Game(MClock,    { id: 'W2', world: 'avengers2', bg: 'avengers_space', chars: ['ironman', 'hulk'], host: 'ironman', iconSrc: IC.clock });
 w2Game(MCompose,  { id: 'W3', world: 'avengers2', bg: 'avengers_park', chars: ['hulk'], host: 'hulk', iconSrc: IC.compose });
-w2Game(MTransitive, { id: 'W4', world: 'avengers2', bg: 'avengers_track', chars: ['captain'], host: 'captain', iconSrc: IC.race, pool: ['captain', 'ironman', 'hulk', 'thor', 'spiderman', 'widow', 'hawkeye'], boost: 1 });
+w2Game(MTransitive, { id: 'W4', world: 'avengers2', bg: 'avengers_track', chars: ['captain'], host: 'captain', iconSrc: IC.race, pool: ['captain', 'ironman', 'hulk', 'thor', 'spiderman', 'widow', 'hawkeye'], boost: 0 });   /* L4: three heroes, who is fastest (R8-1) */
 /*@@W2END@@*/
 /*@@MORE@@*/
 boot();</script>
