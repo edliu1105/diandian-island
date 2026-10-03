@@ -1097,7 +1097,7 @@ const Voice = {
       if (!head.waitT) { head.waitT = now(); Bank.load(head.text).then(() => this.schedulePump(0)); }
       if (now() - head.waitT < (fast() ? 30 : 700)) { this.schedulePump(40); return; }
       /* not decoded / the audio not running in time: the speech engine says it */
-    }
+    } else if (head.text) (window.__vmiss || (window.__vmiss = new Set())).add(head.text);   /* a sentence without a recording (the bank grows from these) */
     const s = this.synth;
     if (!s) {                          /* no engine: keep the page rhythm without sound */
       const item = this.q.shift();

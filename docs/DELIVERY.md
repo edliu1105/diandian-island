@@ -26,6 +26,12 @@
 
 之后的用户体验抽查（R7，Fable 5.1 · high，看一关一关开、旗子、惊喜入口、大结局、第二世界新画面）：8/10，1 个中等 + 5 个轻微问题全部修好并逐条验证，见 `docs/REVIEW-R7.md`、`docs/RESPONSE-R7.md`。
 
+## 1c. 自然的语音（委托方：设备语音像机器人）
+
+所有句子都预先用微软神经网络中文语音（zh-CN-XiaoyiNeural，和数数的数字是同一个声音，通过免费的 edge-tts 生成）录成 mp3：`assets/voice/v/`（约 1400 句，7.8 MB），列表 `assets/voice/bank.json`。游戏里说话时直接播放录音，节奏、打断、等待都走原来的同一条队列；万一某句没有录音（或录音还没解码好），才退回设备自带的语音合成。录音和其它资源一起离线缓存，iPad 断网也能用。
+
+新增或改动句子后：`python tests/harvest_lines.py`（把每个游戏各个难度玩一遍，收集所有说过的话 + 静态句子 + 数字模板）、`python tools/voice_extra.py`（人名 × 人名、所有钟点 / 价钱这类组合句）、`python tools/voice_bank.py`（只录新的句子）、`python tools/gen_sw_list.py`。
+
 ## 2. 教什么
 
 十二项早期数感按发展顺序分布在六个世界、24 个小游戏里（详细规格见 `docs/DESIGN.md` §1、§4）：
