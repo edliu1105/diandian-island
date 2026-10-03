@@ -111,7 +111,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cu
 .isl .deco .pen{aspect-ratio:2/3}
 .bigstars img{width:34px;height:34px;filter:drop-shadow(0 3px 0 rgba(43,33,24,.25))}
 .flagpole{position:absolute;width:6px;height:70px;background:var(--ink);border-radius:3px;transform-origin:50% 100%}
-.flagpole::after{content:"";position:absolute;left:5px;top:2px;width:46px;height:30px;background:var(--world);border:3px solid var(--ink);border-radius:4px 14px 14px 4px;animation:flag 1.8s ease-in-out infinite;transform-origin:0 50%}
+.flagpole .cloth{position:absolute;left:4px;top:0;width:60px;height:42px;animation:flag 1.8s ease-in-out infinite;transform-origin:0 50%}
+.flagpole .cloth svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.flagpole .cloth img{position:absolute;left:15px;top:7px;width:28px;height:28px;border-radius:50%;background:#fff;box-shadow:0 0 0 2.5px var(--ink)}
+.flagpole .finial{position:absolute;left:50%;top:-17px;width:24px;height:24px;transform:translateX(-50%)}
 @keyframes flag{0%,100%{transform:skewY(0)}50%{transform:skewY(-8deg) scaleX(.94)}}
 #gear{right:calc(10px + var(--sr));bottom:calc(10px + var(--sb));width:88px;height:88px;background:transparent;border:0;box-shadow:none;border-radius:50%}
 #gear .g{position:absolute;inset:26px;border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 0 0 2px rgba(43,33,24,.35)}
@@ -487,6 +490,15 @@ const NEEDS = { peppa: [], bluey: [], huluwa: ['peppa', 'bluey'], paw: ['huluwa'
 const TAKEDOWN = [];
 const LIVE = () => ORDER.filter(w => !TAKEDOWN.includes(w));
 const played = (w, g) => { const ws = Store.w(w); return (ws.played || []).includes(g) || !!(ws.g && ws.g[g]) || (ws.log || []).some(x => x.g === g); };
+/* an island's flag: all its games played (world 2) / passed (world 1) */
+const flagged = w => W2.isW2(w) ? W2.islandDone(w) : passed(w);
+const FLAG_HTML = id => {
+  const W = WORLDS[id], two = W.map === 2, ink = '#2B2118';
+  const cloth = two ? '<path d="M2 3H58L47 21L58 39H2Z" fill="' + W.color + '" stroke="' + ink + '" stroke-width="3" stroke-linejoin="round"/><path d="M3.5 4.5H10V37.5H3.5Z" fill="' + W.color2 + '"/>'
+    : '<path d="M2 3Q30 -2 58 5Q54 21 58 37Q30 44 2 39Z" fill="' + W.color + '" stroke="' + ink + '" stroke-width="3" stroke-linejoin="round"/><path d="M3.5 31Q30 36 56.5 30.5L57 35.6Q30 42.4 3.5 37.7Z" fill="' + W.color2 + '"/>';
+  return '<div class="cloth"><svg viewBox="0 0 60 42">' + cloth + '</svg><img src="assets/thumbs/' + W.host + '.png" alt=""></div>'
+    + (two ? '<svg class="finial" viewBox="0 0 24 24"><path d="M12 1.5L15 8.6L22.6 9.3L16.8 14.3L18.6 21.8L12 17.8L5.4 21.8L7.2 14.3L1.4 9.3L9 8.6Z" fill="#FFC93C" stroke="' + ink + '" stroke-width="2.2" stroke-linejoin="round"/></svg>' : '');
+};
 const passed = w => { if (TAKEDOWN.includes(w)) return true; const ws = Store.w(w); return ws.cleared || ws.stars >= 10 || WORLDS[w].games.every(g => played(w, g)); };
 const Unlock = {
   /* show: the island opens with its cloud show on the map (after a session); false: just open (start-up of an old save) */
@@ -515,7 +527,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 /* ---------------------------------------------------------------- storage (versioned, corruption tolerant) */
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
-function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, gate: { cool: 0, last: '' } }; }
+function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], gate: { cool: 0, last: '' } }; }
 const Store = {
   s: null,
   load() {
@@ -572,7 +584,7 @@ const Store = {
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
-    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
+    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
     return d;
@@ -2520,6 +2532,7 @@ const MapView = {
       const lan = el('div', 'lantern', d); for (let i = 0; i < 10; i++) el('i', '', lan);
       const big = el('div', 'bigstars', d);
       const flag = el('div', 'flagpole gone', d);
+      if (!sp) flag.innerHTML = FLAG_HTML(id);
       const deco = el('div', 'deco', d);
       const hit = el('div', 'hit', d);
       tapify(hit, () => this.tapIsland(id));
@@ -2569,13 +2582,13 @@ const MapView = {
     const rec = this.recommend();
     this.ids().forEach(id => {
       const I = this.isl[id], ws = Store.w(id);
-      I.d.classList.toggle('locked', !ws.unlocked);
+      I.d.classList.toggle('locked', !ws.unlocked || !!ws.justOpened);      /* the cloud stays for its show */
       I.hero.style.opacity = ws.unlocked ? 1 : 0;
       const lamps = $$('i', I.lan), ones = ws.stars % 10;
       lamps.forEach((l, i) => l.classList.toggle('on', i < ones));
       const tens = Math.floor(ws.stars / 10);
       if (I.big.childElementCount !== Math.min(tens, 6)) { I.big.innerHTML = ''; for (let i = 0; i < Math.min(tens, 6); i++) img('assets/props/ui_star.png', '', I.big); }
-      I.flag.classList.toggle('gone', !(W2.isW2(id) ? W2.islandDone(id) : passed(id)));
+      I.flag.classList.toggle('gone', !((Store.s.flags || []).includes(id) && flagged(id)));      /* planted with its show (specials) */
       Story.mapDeco(I, ws);
       I.flag.style.setProperty('--world', WORLDS[id].color);
       I.glow.style.opacity = id === rec ? 1 : 0;
@@ -2642,11 +2655,11 @@ const MapView = {
     Object.assign(heroA.style, { position: 'absolute', height: S * 0.27 + 'px', left: (cx - S * 0.05) + 'px', top: (cy - S * 0.47) + 'px', pointerEvents: 'none' });
     Loops.run(heroA, [{ transform: 'translateY(0)' }, { transform: 'translateY(-10px)' }, { transform: 'translateY(0)' }], { duration: 1400 });
     const rec = W2.isW2(id) ? (W.games.find(g => W2.gameOpen(id, g) && !W2.gameDone(id, g)) || W.games.filter(g => W2.gameOpen(id, g)).slice(-1)[0]) : this.recGame(id);
-    const M = Math.max(112, Math.round(S * 0.16)), gap = Math.round(M * 0.28);
-    const games = W.games.filter(g => GAMES[g]);
+    const M = Math.max(112, Math.round(S * 0.16)), gap = Math.round(M * 0.28), FS = Math.round(M * 0.72);
+    const games = W.games.filter(g => GAMES[g]), x0 = cx - (games.length * (M + gap) + FS) / 2;
     games.forEach((g, i) => {
-      /* one clear row of four pictures under the island */
-      const x = cx + (i - (games.length - 1) / 2) * (M + gap), y = cy + S * 0.3;
+      /* one clear row of pictures under the island, the island's flag at its end */
+      const x = x0 + i * (M + gap) + M / 2, y = cy + S * 0.3;
       const m = el('div', 'btn', p);
       m.dataset.game = g;
       Object.assign(m.style, { width: M + 'px', height: M + 'px', left: (x - M / 2) + 'px', top: (y - M / 2) + 'px', overflow: 'hidden', background: '#fff' });
@@ -2661,7 +2674,7 @@ const MapView = {
         th.style.filter = ic.style.filter = 'grayscale(1) brightness(.75)';
         const lk = el('span', '', m); lk.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><rect x="9" y="18" width="22" height="17" rx="4" fill="#FFC93C" stroke="#2B2118" stroke-width="3"/><path d="M13 18V13a7 7 0 0 1 14 0v5" fill="none" stroke="#2B2118" stroke-width="3.5"/></svg>';
         Object.assign(lk.style, { position: 'absolute', width: '46%', height: '46%', right: '-6%', bottom: '-6%' });
-      } else if (W2.isW2(id) && W2.gameDone(id, g)) {
+      } else if (W2.isW2(id) ? W2.gameDone(id, g) : played(id, g)) {      /* played: a check */
         const ok = el('span', '', m); ok.innerHTML = ICONS.check; Object.assign(ok.style, { position: 'absolute', width: '38%', height: '38%', right: '-4%', bottom: '-4%', background: '#5CC46E', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118' });
       }
       tapify(m, () => {
@@ -2669,6 +2682,12 @@ const MapView = {
         this.closePanel(true); Session.start(id, g);
       });
     });
+    const has = flagged(id), fs = el('div', 'btn', p);
+    Object.assign(fs.style, { width: FS + 'px', height: FS + 'px', left: (x0 + games.length * (M + gap)) + 'px', top: (cy + S * 0.3 - FS / 2) + 'px', background: has ? '#FFF3C4' : 'rgba(255,255,255,.55)', boxShadow: has ? '0 0 0 4px #2B2118, 0 0 0 10px rgba(255,201,60,.9)' : '0 0 0 4px rgba(43,33,24,.45)', border: has ? '' : '3px dashed rgba(43,33,24,.35)', overflow: 'visible' });
+    const fp = el('div', 'flagpole', fs); fp.innerHTML = FLAG_HTML(id);
+    Object.assign(fp.style, { left: (FS * 0.28) + 'px', top: (FS * 0.5 - 30) + 'px', height: '64px', filter: has ? '' : 'grayscale(1) opacity(.45)' });
+    fs.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: T(320) + 1, delay: T(80 * games.length), easing: EASE.pop, fill: 'backwards' });
+    tapify(fs, () => { fs.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-8deg)' }, { transform: 'rotate(8deg)' }, { transform: 'rotate(0)' }], { duration: T(400) + 1 }); Voice.sayNow(has ? '旗子插好啦！' : '都玩过就有旗子！', { tag: 'map' }); });
   },
   recGame(id) {
     const W = WORLDS[id], ws = Store.w(id);
@@ -2695,6 +2714,24 @@ const MapView = {
   },
   liveTok() { const tok = this.celebTok = (this.celebTok || 0) + 1; return () => this.celebTok === tok && Screens.cur === 'map' && !Session.G; },
   async specials(live) {
+    /* the flag of every island just completed, counted (a collection) */
+    for (const id of this.ids().filter(o => flagged(o) && !(Store.s.flags || []).includes(o))) {
+      if (!live()) return true;
+      (Store.s.flags || (Store.s.flags = [])).push(id); Store.save();
+      await this.plantFlag(id);
+    }
+    for (const o of this.ids().filter(o => Store.w(o).justOpened)) {
+      if (!live()) return true;                                  /* not shown now -> shown the next time this sea is seen */
+      delete Store.w(o).justOpened; Store.save();
+      const J = this.isl[o];
+      J.d.classList.remove('locked');
+      J.cloud.animate([{ opacity: 1, transform: 'translate(-50%,-50%)' }, { opacity: 0, transform: 'translate(-50%,-90%) scale(1.4)' }], { duration: T(900) + 1, fill: 'forwards' });
+      Sfx.fanfare(); Voice.say('新小岛开啦！', { tag: 'unlock' });
+      Fx.burst(0, 0, { screen: true, n: 1 });
+      await new Promise(r => setTimeout(r, T(1000)));
+      this.update();
+    }
+    if (!live()) return true;
     if (this.set === 1 && W2.open() && !Store.s.gateShown && this.isl.gate) {
       if (!live()) return false;
       Store.s.gateShown = true; Store.save();
@@ -2710,6 +2747,16 @@ const MapView = {
       return true;
     }
     return false;
+  },
+  async plantFlag(id) {
+    const I = this.isl[id]; this.update();
+    I.flag.animate([{ transform: 'scaleY(0)' }, { transform: 'scaleY(1.12)', offset: 0.7 }, { transform: 'scaleY(1)' }], { duration: T(560) + 1, easing: EASE.pop });
+    $('.cloth', I.flag).animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: T(420) + 1, delay: T(380), easing: EASE.pop, fill: 'backwards' });
+    const r = I.flag.getBoundingClientRect();
+    Sfx.fanfare(); Fx.burst(r.left + 30, r.top + 16, { screen: true, n: 16 });
+    const n = Store.s.flags.length;
+    Voice.say(n === 1 ? '插上旗子啦！' : CNQ(n) + '面旗子啦！', { tag: 'unlock' });
+    await new Promise(r => setTimeout(r, T(1500)));
   },
   async openShow(id, line) {
     const J = this.isl[id];
@@ -2793,20 +2840,7 @@ const MapView = {
     $('#map').removeEventListener('pointerdown', onTap, { capture: true });
     if (!live()) return;
     this.update();
-    const opened = this.ids().filter(o => Store.w(o).justOpened);
-    for (const o of opened) {
-      if (!live()) return;                                       /* not shown now -> shown after the next session */
-      delete Store.w(o).justOpened; Store.save();
-      const J = this.isl[o];
-      J.d.classList.remove('locked');
-      J.cloud.animate([{ opacity: 1, transform: 'translate(-50%,-50%)' }, { opacity: 0, transform: 'translate(-50%,-90%) scale(1.4)' }], { duration: T(900) + 1, fill: 'forwards' });
-      Sfx.fanfare(); Voice.say('新小岛开啦！', { tag: 'unlock' });
-      Fx.burst(0, 0, { screen: true, n: 1 });
-      await new Promise(r => setTimeout(r, T(1000)));
-      this.update();
-    }
-    if (!live()) return;
-    if (Store.s.fin2 === 'due' || (W2.open() && !Store.s.gateShown)) { await new Promise(r => setTimeout(r, T(500))); if (live()) await this.specials(live); }
+    await this.specials(live);
   },
 };
 
@@ -3173,6 +3207,7 @@ function boot() {
   Store.load();
   Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
   W2.check(false);
+  if (!Store.s.flags) { Store.s.flags = LIVE().concat(ORDER2).filter(flagged); Store.save(); }
   Fx.init();
   Stage.init();
   Input.init();
