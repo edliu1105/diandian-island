@@ -496,7 +496,7 @@ const Unlock = {
     if (any) Store.save();
   },
 };
-const openByDefault = w => NEEDS[w].every(n => TAKEDOWN.includes(n));
+const openByDefault = w => !!NEEDS[w] && NEEDS[w].every(n => TAKEDOWN.includes(n));      /* world 2 opens by its own rule (W2.check) */
 const CHARS = {
   peppa: ['佩奇', 'hop'], george: ['乔治', 'dino'], daddy_pig: ['猪爸爸', 'belly'], mummy_pig: ['猪妈妈', 'twirl'],
   bluey: ['布鲁伊', 'dance'], bingo: ['宾果', 'spin'], bandit: ['爸爸', 'silly'], chilli: ['妈妈', 'laugh'],
@@ -515,7 +515,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 /* ---------------------------------------------------------------- storage (versioned, corruption tolerant) */
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
-function defState() { const w = {}; ORDER.forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, gate: { cool: 0, last: '' } }; }
+function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, gate: { cool: 0, last: '' } }; }
 const Store = {
   s: null,
   load() {
@@ -537,7 +537,7 @@ const Store = {
     const bits = (v, max) => (Array.isArray(v) ? v.filter(x => x === 0 || x === 1).slice(-max) : []);
     const gid = x => typeof x === 'string' && /^[A-Z]\d$/.test(x);
     const kid = x => typeof x === 'string' && /^[a-z][a-z0-9]{0,11}$/i.test(x);
-    ORDER.forEach((id, i) => {
+    ORDER.concat(ORDER2).forEach((id, i) => {
       const w = o.worlds[id] || {}, t = d.worlds[id];
       t.level = Math.round(num(w.level, 1, 1, 4)); t.floor = Math.round(num(w.floor, 1, 1, 4));
       /* level window: [{g, ok}] (which game produced each piece of evidence) */
@@ -563,6 +563,8 @@ const Store = {
       t.guidedRun = Math.round(num(w.guidedRun, 0, 0, 99));
       t.unlocked = openByDefault(id) || w.unlocked === true; t.cleared = w.cleared === true;
       t.played = Array.isArray(w.played) ? w.played.filter(gid).slice(0, 8) : [];
+      t.gstars = {}; t.gdone = {};                                          /* world 2: stars per game, games played through */
+      for (const g of WORLDS[id].games) { if (w.gstars && typeof w.gstars[g] === 'number') t.gstars[g] = Math.round(num(w.gstars[g], 0, 0, 1e6)); if (w.gdone && w.gdone[g] === true) t.gdone[g] = true; }
       t.lastKey = typeof w.lastKey === 'string' ? w.lastKey.slice(0, 80) : '';
       t.demo = {};
       if (w.demo && typeof w.demo === 'object') for (const k in w.demo) if (/^[A-Z]\d$/.test(k) && w.demo[k] === true) t.demo[k] = true;
@@ -570,6 +572,8 @@ const Store = {
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
+    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.mapSet = o.mapSet === 2 ? 2 : 1;
+    d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
     return d;
   },
@@ -1928,7 +1932,7 @@ const Session = {
     if (opt.level) ws.level = clamp(opt.level, 1, MAXLV[worldId]);
     const G = this.G = {
       world: worldId, W, ws, id: gameId, game, scope: new Scope(APP), rng: RNG(seed), seed,
-      level: clamp(Math.max(ws.level, ws.floor), 1, MAXLV[worldId]), actors: {}, els: {}, round: 0, rounds: 5,
+      level: W.map === 2 ? (opt.level ? clamp(opt.level, 1, 5) : W2.level(worldId, gameId)) : clamp(Math.max(ws.level, ws.floor), 1, MAXLV[worldId]), actors: {}, els: {}, round: 0, rounds: 5,
       t0: Clock.t(), ev: [], stars: 0, streak: 0, bags: {}, dead: false, errors: 0, idleQs: 0, probed: false,
     };
     ws.visits++; ws.sessions++; Store.save();
@@ -1956,7 +1960,7 @@ const Session = {
   mount(G) {
     const W = G.W;
     document.documentElement.style.setProperty('--world', W.color);
-    const gm = $('#game'); ORDER.forEach(w => gm.classList.remove('w-' + w)); gm.classList.add('w-' + G.world);
+    const gm = $('#game'); gm.className = gm.className.replace(/\bw-\S+/g, '').trim(); gm.classList.add('w-' + (W.skin || G.world));
     Stage.bg.style.backgroundImage = 'url(assets/bgthumb/' + G.game.bg + '.jpg)';
     const full = new Image(); full.onload = () => { if (this.G === G) Stage.bg.style.backgroundImage = 'url(assets/bg/' + G.game.bg + '.jpg)'; }; full.src = 'assets/bg/' + G.game.bg + '.jpg';
     Stage.el.innerHTML = ''; Hand.el = null;
@@ -1996,7 +2000,7 @@ const Session = {
   newQ(G, opt) {
     opt = opt || {};
     const g = G.game, ws = G.ws;
-    const level = opt.demo ? 1 : (opt.level || G.level);
+    const level = opt.demo ? (G.W.map === 2 ? G.level : 1) : (opt.level || G.level);
     const kinds = g.kinds(level, G);
     let kind = opt.kind && (kinds.includes(opt.kind) || opt.probe) ? opt.kind : null;
     if (!kind) kind = kinds.length > 1 ? bagPick(G, 'kind' + level, kinds) : kinds[0];
@@ -2148,7 +2152,9 @@ const Session = {
     this.lastPraise = p; return p;
   },
   async reward(G, st) {
-    G.stars++; G.ws.stars++; Store.save();
+    G.stars++; G.ws.stars++;
+    if (G.W.map === 2) { const gs = G.ws.gstars || (G.ws.gstars = {}); gs[G.id] = (gs[G.id] || 0) + 1; }
+    Store.save();
     const slots = $$('#tray i');
     const slot = slots[Math.min(G.stars, slots.length) - 1];
     if (!slot) return;
@@ -2257,11 +2263,20 @@ const Session = {
     this.ffOff();
     Mastery.sessionEnd(G);
     const wid = G.world, stars = G.stars, lvUp = !!G.levelUp;
+    let newGame = null;
+    if (G.W.map === 2) {                     /* played through once: the next game (and maybe the next island) opens */
+      const gl = G.W.games, nx = gl[gl.indexOf(G.id) + 1], was = nx && W2.gameOpen(wid, nx);
+      (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;
+      if (nx && !was && W2.gameOpen(wid, nx)) newGame = nx;
+      W2.check(true); Store.save();
+    }
     this.teardown(G);
     Screens.show('map');
     Voice.enter('map');
+    MapView.useSet(W2.isW2(wid) ? 2 : 1);
     MapView.update();
     await MapView.celebrate(wid, stars, lvUp);
+    if (newGame && Screens.cur === 'map' && !this.G) { Voice.say('新游戏开啦！', { tag: 'unlock' }); MapView.openPanel(wid); }
   },
   /* tears down exactly the session it is given; an old flow can never destroy the current one */
   teardown(G) {
@@ -2463,21 +2478,49 @@ function tapify(e, fn, opt) {
 }
 
 /* ================================================================ MAP */
+const MAPPOS2 = {
+  land: { peppa2: [13, 33], bluey2: [33, 18], pjmasks: [53, 35], paw2: [76, 20], huluwa2: [86, 60], xiyou2: [63, 75], avengers2: [37, 72] },
+  port: { peppa2: [27, 12], bluey2: [73, 19], pjmasks: [29, 33], paw2: [73, 42], huluwa2: [28, 56], xiyou2: [73, 66], avengers2: [44, 81] },
+};
 const MAPPOS = {
   land: { peppa: [15, 35], bluey: [37, 19], huluwa: [63, 19], paw: [85, 35], xiyou: [72, 72], avengers: [28, 72], festival: [50, 50] },
   port: { peppa: [26, 17], bluey: [74, 17], huluwa: [81, 48], paw: [74, 81], xiyou: [26, 81], avengers: [19, 48], festival: [50, 49] },
 };
 const MapView = {
-  isl: {}, built: false, panel: null,
+  isl: {}, built: false, panel: null, set: 1,
+  /* world 1 (six islands + the lantern island) or world 2 (seven islands) */
+  ids() { return this.set === 2 ? ORDER2.slice() : LIVE(); },
+  useSet(n) {
+    if (n === 2 && !W2.open()) n = 1;
+    if (this.set === n && this.built) { this.switchUI(); return; }
+    this.set = n; if (Store.s) { Store.s.mapSet = n; Store.save(); }
+    if (this.built) { this.closePanel(true); $('#islands').innerHTML = ''; this.isl = {}; this.built = false; Loops.sweep(); this.build(); }
+    this.switchUI();
+  },
+  /* the button that sails to the other sea (bottom left; shows a picture of the other sea's island) */
+  switchUI() {
+    let b = $('#seaswitch');
+    if (!W2.open()) { if (b) b.style.display = 'none'; $('#mapbg').style.filter = ''; return; }
+    if (!b) {
+      b = el('div', 'btn', $('#map')); b.id = 'seaswitch';
+      Object.assign(b.style, { left: 'calc(16px + var(--sl))', bottom: 'calc(16px + var(--sb))', width: '118px', height: '118px', background: '#FFF8EC', zIndex: 25, overflow: 'visible' });
+      img('', '', b).style.cssText = 'width:86%;height:86%;object-fit:contain';
+      const arw = el('span', '', b); arw.innerHTML = ICONS.arrowR; Object.assign(arw.style, { position: 'absolute', right: '-10px', bottom: '-6px', width: '44px', height: '44px', borderRadius: '50%', background: '#FFC93C', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+      tapify(b, () => { Sfx.touch(); const to = this.set === 2 ? 1 : 2; this.useSet(to); this.update(); Voice.sayNow(to === 2 ? '去新的海岛！' : '回到第一片海！', { tag: 'map' }); const r = this.recommend(); if (r) setTimeout(() => this.pointAt(r), T(700)); });
+    }
+    b.style.display = '';
+    $('img', b).src = 'assets/isl/' + (this.set === 2 ? 'festival' : 'pjmasks') + '.png';
+    $('#mapbg').style.filter = this.set === 2 ? 'hue-rotate(58deg) saturate(1.15) brightness(.9)' : '';
+  },
   build() {
     if (this.built) return;
     this.built = true;
     $('#mapbg').style.backgroundImage = 'url(assets/bg/map_sea.jpg)';
     const root = $('#islands');
-    LIVE().concat(['festival']).forEach(id => {
+    this.ids().concat(this.set === 1 ? ['festival'] : []).forEach(id => {
       const d = el('div', 'isl', root);
       const glow = el('div', '', d); Object.assign(glow.style, { position: 'absolute', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,247,190,.95), rgba(255,247,190,0) 68%)', opacity: 0 });
-      const land = img('assets/isl/' + id + '.png', 'land', d);
+      const land = img('assets/isl/' + ((WORLDS[id] && WORLDS[id].isl) || id) + '.png', 'land', d);
       const hero = img(id === 'festival' ? 'assets/props/ui_star.png' : 'assets/chars/' + WORLDS[id].host + '.png', 'hero', d);
       const cloud = el('div', 'cloudcover', d);
       cloud.innerHTML = '<svg viewBox="0 0 200 120" width="100%" height="100%"><path d="M40 100C18 100 8 86 10 72C12 58 26 50 40 52C42 30 62 16 84 20C98 6 124 6 138 20C160 18 178 34 176 54C192 58 198 72 194 84C190 96 178 102 166 100Z" fill="#FFFFFF" stroke="#2B2118" stroke-width="5" stroke-linejoin="round" opacity=".96"/><path d="M60 64C68 60 76 60 84 64M110 58C118 54 126 54 134 58" stroke="#B9C7D6" stroke-width="5" fill="none" stroke-linecap="round"/></svg>';
@@ -2497,7 +2540,7 @@ const MapView = {
   layout() {
     if (!this.built) return;
     const vw = window.innerWidth, vh = window.innerHeight, port = vh > vw * 1.02;
-    const P = port ? MAPPOS.port : MAPPOS.land;
+    const MP = this.set === 2 ? MAPPOS2 : MAPPOS, P = port ? MP.port : MP.land;
     const S = Math.round(Math.min(vw, vh) * (port ? 0.27 : 0.25));
     const pts = [];
     Object.keys(this.isl).forEach(id => {
@@ -2520,6 +2563,7 @@ const MapView = {
     if (this.panel) this.closePanel(true);
   },
   recommend() {
+    if (this.set === 2) { const open = ORDER2.filter(id => Store.w(id).unlocked); return open.find(id => !W2.islandDone(id)) || open[open.length - 1]; }
     const open = LIVE().filter(id => Store.w(id).unlocked);
     const notDone = open.filter(id => !passed(id));                 /* R5-1: the new pass rule (played all 4 or 10 stars) */
     return notDone[0] || open[open.length - 1];
@@ -2527,7 +2571,7 @@ const MapView = {
   update() {
     if (!this.built) { this.build(); return; }
     const rec = this.recommend();
-    LIVE().forEach(id => {
+    this.ids().forEach(id => {
       const I = this.isl[id], ws = Store.w(id);
       I.d.classList.toggle('locked', !ws.unlocked);
       I.hero.style.opacity = ws.unlocked ? 1 : 0;
@@ -2535,18 +2579,19 @@ const MapView = {
       lamps.forEach((l, i) => l.classList.toggle('on', i < ones));
       const tens = Math.floor(ws.stars / 10);
       if (I.big.childElementCount !== Math.min(tens, 6)) { I.big.innerHTML = ''; for (let i = 0; i < Math.min(tens, 6); i++) img('assets/props/ui_star.png', '', I.big); }
-      I.flag.classList.toggle('gone', !passed(id));
+      I.flag.classList.toggle('gone', !(W2.isW2(id) ? W2.islandDone(id) : passed(id)));
       Story.mapDeco(I, ws);
       I.flag.style.setProperty('--world', WORLDS[id].color);
       I.glow.style.opacity = id === rec ? 1 : 0;
       I.lan.style.opacity = ws.unlocked ? 1 : 0.35;
     });
     const F = this.isl.festival, allClear = LIVE().every(passed);
-    F.d.classList.toggle('locked', !allClear);
+    if (F) F.d.classList.toggle('locked', !allClear);
+    this.switchUI();
   },
   idle() {
     /* heroes breathe and wave now and then (compositor-only transforms) */
-    LIVE().concat(['festival']).forEach((id, i) => {
+    Object.keys(this.isl).forEach((id, i) => {
       const h = this.isl[id].hero;
       h.animate([{ transform: 'translateY(0) rotate(-2deg)' }, { transform: 'translateY(-6px) rotate(2deg)' }, { transform: 'translateY(0) rotate(-2deg)' }], { duration: 2600 + i * 170, iterations: Infinity, easing: 'ease-in-out' });
     });
@@ -2585,13 +2630,13 @@ const MapView = {
     tapify(p, () => this.closePanel(), { silent: true });
     const vw = window.innerWidth, vh = window.innerHeight, S = Math.min(vw, vh);
     const cx = vw / 2, cy = vh / 2;
-    const land = img('assets/isl/' + id + '.png', '', p);
+    const land = img('assets/isl/' + (W.isl || id) + '.png', '', p);
     Object.assign(land.style, { position: 'absolute', width: S * 0.44 + 'px', left: (cx - S * 0.22) + 'px', top: (cy - S * 0.36) + 'px', pointerEvents: 'none' });
     land.animate([{ transform: 'scale(.5)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: T(360) + 1, easing: EASE.pop });
     const heroA = img('assets/chars/' + W.host + '.png', '', p);
     Object.assign(heroA.style, { position: 'absolute', height: S * 0.27 + 'px', left: (cx - S * 0.05) + 'px', top: (cy - S * 0.47) + 'px', pointerEvents: 'none' });
     Loops.run(heroA, [{ transform: 'translateY(0)' }, { transform: 'translateY(-10px)' }, { transform: 'translateY(0)' }], { duration: 1400 });
-    const rec = this.recGame(id);
+    const rec = W2.isW2(id) ? (W.games.find(g => W2.gameOpen(id, g) && !W2.gameDone(id, g)) || W.games.filter(g => W2.gameOpen(id, g)).slice(-1)[0]) : this.recGame(id);
     const M = Math.max(112, Math.round(S * 0.16)), gap = Math.round(M * 0.28);
     const games = W.games.filter(g => GAMES[g]);
     games.forEach((g, i) => {
@@ -2602,11 +2647,22 @@ const MapView = {
       Object.assign(m.style, { width: M + 'px', height: M + 'px', left: (x - M / 2) + 'px', top: (y - M / 2) + 'px', overflow: 'hidden', background: '#fff' });
       const th = img('assets/bgthumb/' + GAMES[g].bg + '.jpg', '', m);
       Object.assign(th.style, { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' });
-      const ic = img('assets/props/' + (GAMES[g].icon || 'ui_star') + '.png', '', m);
+      const ic = img(GAMES[g].iconSrc || ('assets/props/' + (GAMES[g].icon || 'ui_star') + '.png'), '', m);
       Object.assign(ic.style, { position: 'absolute', width: '62%', height: '62%', left: '19%', top: '19%', objectFit: 'contain', filter: 'drop-shadow(0 4px 0 rgba(43,33,24,.3))' });
       if (g === rec) { m.style.boxShadow = '0 0 0 4px #2B2118, 0 0 0 12px rgba(255,236,140,.95), 0 12px 30px rgba(255,210,60,.8)'; Loops.run(m, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 1200, iterations: Infinity }); }
       m.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: T(320) + 1, delay: T(80 * i), easing: EASE.pop, fill: 'backwards' });
-      tapify(m, () => { this.closePanel(true); Session.start(id, g); });
+      const locked = W2.isW2(id) && !W2.gameOpen(id, g);
+      if (locked) {                         /* world 2: a game opens when the one before it was played through */
+        th.style.filter = ic.style.filter = 'grayscale(1) brightness(.75)';
+        const lk = el('span', '', m); lk.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><rect x="9" y="18" width="22" height="17" rx="4" fill="#FFC93C" stroke="#2B2118" stroke-width="3"/><path d="M13 18V13a7 7 0 0 1 14 0v5" fill="none" stroke="#2B2118" stroke-width="3.5"/></svg>';
+        Object.assign(lk.style, { position: 'absolute', width: '46%', height: '46%', right: '-6%', bottom: '-6%' });
+      } else if (W2.isW2(id) && W2.gameDone(id, g)) {
+        const ok = el('span', '', m); ok.innerHTML = ICONS.check; Object.assign(ok.style, { position: 'absolute', width: '38%', height: '38%', right: '-4%', bottom: '-4%', background: '#5CC46E', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118' });
+      }
+      tapify(m, () => {
+        if (locked) { m.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-10px)' }, { transform: 'translateX(10px)' }, { transform: 'translateX(0)' }], { duration: T(360) + 1 }); Voice.sayNow('先玩亮着的！', { tag: 'map' }); return; }
+        this.closePanel(true); Session.start(id, g);
+      });
     });
   },
   recGame(id) {
@@ -2623,12 +2679,16 @@ const MapView = {
     const a = p.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }); a.onfinish = () => { p.remove(); Loops.sweep(); };
   },
   enter() {
+    if (W2.open() && !Store.s.w2seen) { Store.s.w2seen = true; Store.save(); this.useSet(2); setTimeout(() => Voice.say('新的海岛开啦！', { tag: 'map' }), T(600)); }
+    else this.useSet(Store.s.mapSet === 2 ? 2 : 1);
+    if (this.set === 2 && Store.s.fin2 === 'due') { Store.s.fin2 = 'seen'; Store.save(); setTimeout(() => { if (Screens.cur === 'map' && !Session.G) Finale.play(); }, T(1500)); }
     this.update();
     const r = this.recommend();
     if (r) setTimeout(() => this.pointAt(r), T(900));
   },
   /* stars fly into the lantern; counting continues from what was already there (count-on for free) */
   async celebrate(wid, n, lvUp) {
+    this.useSet(W2.isW2(wid) ? 2 : 1);
     this.build();
     const tok = this.celebTok = (this.celebTok || 0) + 1;
     const live = () => this.celebTok === tok && Screens.cur === 'map' && !Session.G;   /* a new session ends the show */
@@ -2677,7 +2737,7 @@ const MapView = {
     $('#map').removeEventListener('pointerdown', onTap, { capture: true });
     if (!live()) return;
     this.update();
-    const opened = LIVE().filter(o => Store.w(o).justOpened);
+    const opened = this.ids().filter(o => Store.w(o).justOpened);
     for (const o of opened) {
       if (!live()) return;                                       /* not shown now -> shown after the next session */
       delete Store.w(o).justOpened; Store.save();
@@ -2795,6 +2855,12 @@ const Parent = {
       el('td', '', tr, { html: '<b>过关（任一）：</b>已玩过 ' + WORLDS[id].games.map(g => g + (played(id, g) ? ' ✓' : ' ·')).join(' ') + '｜星 ' + Math.min(ws.stars, 10) + '/10' + (passed(id) ? ' ✓' : '') + '<br><b>掌握（只作参考）：</b>' + rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
       el('td', '', tr, { text: ws.stars });
     });
+    if (W2.open()) {
+      el('h3', '', sh, { text: '第二片海（每个小游戏玩完一次或拿 5 颗星，开下一个）' });
+      const t2 = el('table', '', sh); t2.innerHTML = '<tr><th>岛</th><th>开放</th><th>小游戏（✓ 已过 · 星）</th><th>难度</th></tr>';
+      ORDER2.forEach(id => { const ws = Store.w(id), tr = el('tr', '', t2); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: ws.unlocked ? (W2.islandDone(id) ? '已过关' : '开放') : '未开放' });
+        el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
+    }
     if (!digits()) el('div', 'mut', sh, { text: '数字显示已关闭：复仇者世界的“解码”只记录点卡映射，不代表已检验数字。' });
     /* offline readiness: the service worker writes its list only after EVERY asset is in the cache */
     el('h3', '', sh, { text: '离线' });
@@ -2819,7 +2885,7 @@ const Parent = {
     vm.addEventListener('click', () => { Store.s.settings.visual = !Store.s.settings.visual; Store.save(); vm.textContent = '看图模式：' + (visualMode() ? '开' : '关'); });
     el('div', 'mut', sh, { text: '看图模式：孩子听不见声音时打开。只靠听的题（佩奇“插蜡烛”）会直接显示点阵，记为“看图完成”，不算“听数取物”。' });
     const ul = el('button', 'pbtn', sh, { text: '全部解锁' });
-    ul.addEventListener('click', () => { ORDER.forEach(o => { Store.w(o).unlocked = true; }); Store.save(); ul.textContent = '已全部解锁'; });
+    ul.addEventListener('click', () => { ORDER.concat(ORDER2).forEach(o => { Store.w(o).unlocked = true; }); Store.s.w2 = true; Store.s.w2all = true; Store.save(); ul.textContent = '已全部解锁'; });
     let n = 0;
     const rs = el('button', 'pbtn warn', sh, { text: '清空进度' });
     rs.addEventListener('click', () => { n++; if (n === 1) rs.textContent = '确定清空？再按一次'; else if (n === 2) rs.textContent = '最后确认：清空全部进度'; else { Store.reset(); rs.textContent = '已清空'; MapView.update(); } });
@@ -2843,7 +2909,7 @@ const Finale = {
     tapify(home, () => { this.stop(); Screens.show('map'); MapView.update(); });
     sc.add(() => home.remove());
     const vw = window.innerWidth, vh = window.innerHeight;
-    const all = LIVE().flatMap(w => WORLDS[w].chars);
+    const all = LIVE().flatMap(w => WORLDS[w].chars).concat(W2.allDone() ? ['catboy', 'owlette', 'gekko'] : []);
     const ci = all.indexOf('captain'); if (ci >= 0) { all.splice(ci, 1); all.splice(Math.min(all.length, all.indexOf('widow') + 1), 0, 'captain'); }   /* R5-4: not behind the hammer */
     const rows = [all.slice(0, 13), all.slice(13, 26), all.slice(26)];
     const base = Math.min(vw, vh);
@@ -3050,6 +3116,7 @@ const SWU = {
 function boot() {
   Store.load();
   Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
+  W2.check(false);
   Fx.init();
   Stage.init();
   Input.init();
@@ -3161,7 +3228,7 @@ function boot() {
     }
     return { pts: pts.map(S), hold, id };
   };
-  window.__go = (world, game, level, opt) => { opt = opt || {}; if (level) { const ws = Store.w(world); ws.level = level; ws.unlocked = true; } Session.start(world, game, opt); return true; };
+  window.__go = (world, game, level, opt) => { opt = opt || {}; if (level && WORLDS[world].map === 2) opt.level = opt.level || level; if (level) { const ws = Store.w(world); ws.level = level; ws.unlocked = true; } Session.start(world, game, opt); return true; };
   window.__res = () => {
     let timers = 0, anims = 0, waits = 0, scopes = 0;
     const walk = s => { scopes++; timers += s.timers.size; anims += s.anims.size; waits += s.waits.size; s.children.forEach(walk); };
@@ -7250,6 +7317,840 @@ defGame({
   snap(st) { return { opts: st.opts || null, count: st.src ? this.count(st) : null }; },
 });
 
+/*@@W2@@*/
+/* ================================================================ WORLD 2 · a second sea of islands (client, after the
+   child finished world 1): the six islands again plus PJ Masks, 21 new games built from 7 new rules - none of them is a
+   rule of world 1. Each island has three games; a pair of islands shares exactly one rule (a 7-3-1 design), the islands
+   later on the path start harder. Progress (client): only the first island and its first game are open; a game opens the
+   next when it was played through once or earned 5 stars; an island opens the next when all its games were played. */
+const ORDER2 = ['peppa2', 'bluey2', 'pjmasks', 'paw2', 'huluwa2', 'xiyou2', 'avengers2'];
+Object.assign(WORLDS, {
+  peppa2:    { map: 2, isl: 'peppa', skin: 'peppa', base: 1, name: '佩奇·新岛', color: '#FF8DB3', color2: '#9A6433', host: 'peppa', runner: 'peppa', chars: ['peppa', 'george', 'daddy_pig', 'mummy_pig'], amb: 'rain', games: ['Q1', 'Q2', 'Q3'], hi: '佩奇又来啦！' },
+  bluey2:    { map: 2, isl: 'bluey', skin: 'bluey', base: 1, name: 'Bluey·新岛', color: '#6BB9F2', color2: '#F59A4A', host: 'bluey', runner: 'bingo', chars: ['bluey', 'bingo', 'bandit', 'chilli'], amb: 'crickets', games: ['C1', 'C2', 'C3'], hi: '再玩一次吧！' },
+  pjmasks:   { map: 2, isl: 'pjmasks', skin: 'pjmasks', base: 2, name: '睡衣小英雄', color: '#2E4BB8', color2: '#E23B3B', host: 'catboy', runner: 'gekko', chars: ['catboy', 'owlette', 'gekko', 'pj_robot', 'luna_girl', 'romeo'], amb: 'city', games: ['J1', 'J2', 'J3'], hi: '睡衣小英雄！' },
+  paw2:      { map: 2, isl: 'paw', skin: 'paw', base: 2, name: '汪汪队·新岛', color: '#E8554A', color2: '#2E6FD8', host: 'ryder', runner: 'chase', chars: ['ryder', 'chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble'], amb: 'waves', games: ['D1', 'D2', 'D3'], hi: '汪汪队出发！' },
+  huluwa2:   { map: 2, isl: 'huluwa', skin: 'huluwa', base: 3, name: '葫芦娃·新岛', color: '#46C27A', color2: '#E0473A', host: 'grandpa', runner: 'gourd3', chars: ['grandpa', 'gourd1', 'gourd2', 'gourd3', 'gourd4'], amb: 'wind', games: ['G1', 'G2', 'G3'], hi: '葫芦娃来啦！' },
+  xiyou2:    { map: 2, isl: 'xiyou', skin: 'xiyou', base: 3, name: '西游记·新岛', color: '#F5B324', color2: '#D63B2F', host: 'wukong', runner: 'wukong', chars: ['wukong', 'bajie', 'shaseng', 'tangseng'], amb: 'falls', games: ['Y1', 'Y2', 'Y3'], hi: '俺老孙又来了！' },
+  avengers2: { map: 2, isl: 'avengers', skin: 'avengers', base: 4, name: '复仇者·新岛', color: '#3A5CC0', color2: '#E23B3B', host: 'captain', runner: 'spiderman', chars: ['captain', 'ironman', 'hulk', 'thor'], amb: 'city', games: ['W1', 'W2', 'W3'], hi: '复仇者集结！' },
+});
+ORDER2.forEach(w => { MAXLV[w] = 5; WORLDS[w].games.forEach(g => { REQUIRED[g] = []; }); });
+Object.assign(CHARS, { catboy: ['猫小子', 'hop'], owlette: ['猫头鹰女', 'flip'], gekko: ['壁虎侠', 'squash'], pj_robot: ['机器人', 'nod'], luna_girl: ['月亮女孩', 'spin'], romeo: ['罗密欧', 'silly'] });
+Object.assign(META, { catboy: [275, 496, []], owlette: [377, 496, []], gekko: [252, 496, []], pj_robot: [510, 496, []], luna_girl: [352, 496, []], romeo: [288, 496, []] });
+(() => { const s = document.createElement('style'); s.textContent = '#game.w-pjmasks{--mat1:#EEF1FF;--mat2:#D3DCFF;--rim:#2E4BB8;--card:#FBFCFF;--cardrim:#C9D4FF}'; document.head.appendChild(s); })();
+
+const W2 = {
+  isW2: w => !!(WORLDS[w] && WORLDS[w].map === 2),
+  /* world 2 opens when world 1 is passed (or a parent opened everything) */
+  open() { return LIVE().every(passed) || !!Store.s.w2; },
+  stars(w, g) { const ws = Store.w(w); return (ws.gstars && ws.gstars[g]) || 0; },
+  gameDone(w, g) { const ws = Store.w(w); return !!(ws.gdone && ws.gdone[g]) || this.stars(w, g) >= 5; },
+  gameOpen(w, g) { const gs = WORLDS[w].games, i = gs.indexOf(g); return !!Store.s.w2all || i <= 0 || this.gameDone(w, gs[i - 1]); },
+  islandDone(w) { return WORLDS[w].games.every(g => this.gameDone(w, g)); },
+  allDone() { return ORDER2.every(w => this.islandDone(w)); },
+  /* the difficulty of this game now: the island's start + one step for every 5 stars earned in it */
+  level(w, g) { return clamp(WORLDS[w].base + Math.floor(this.stars(w, g) / 5), 1, 5); },
+  /* opens what is due; show: the map plays the cloud show for a new island */
+  check(show) {
+    let any = false;
+    ORDER2.forEach((id, i) => {
+      const ws = Store.w(id);
+      if (ws.unlocked) return;
+      if (Store.s.w2all || (i === 0 ? this.open() : this.islandDone(ORDER2[i - 1]))) { ws.unlocked = true; if (show) ws.justOpened = true; any = true; }
+    });
+    if (this.allDone() && !Store.s.fin2) { Store.s.fin2 = 'due'; any = true; }
+    if (any) Store.save();
+  },
+};
+
+/* ---------------------------------------------------------------- small pictures (drawn, no files) */
+const W2P = {
+  orb(color) {
+    const s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="' + color + '" opacity=".35"/><circle cx="40" cy="40" r="25" fill="' + color + '" stroke="#2B2118" stroke-width="5"/><circle cx="32" cy="31" r="7" fill="#fff" opacity=".75"/></svg>';
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(s);
+  },
+  src(k) { return k.startsWith('orb:') ? this.orb(k.slice(4)) : 'assets/props/' + k + '.png'; },
+  mini(srcs, q) {           /* a row of tiny pictures (and a "?") for the task card */
+    const d = el('span', ''); d.style.display = 'flex'; d.style.gap = '3px'; d.style.alignItems = 'center';
+    srcs.forEach(s => { const i = img(s, '', d); i.style.height = '34px'; i.style.width = '34px'; i.style.objectFit = 'contain'; });
+    if (q) { const s = el('span', '', d); s.innerHTML = ICONS.q; s.firstChild.setAttribute('width', 34); s.firstChild.setAttribute('height', 34); }
+    return d;
+  },
+  icon(kind) {               /* the rule of the game as a small drawing */
+    const s = svg('svg', { viewBox: '0 0 90 50', width: 90, height: 50 });
+    const ink = '#2B2118';
+    if (kind === 'scale') {
+      svg('path', { d: 'M45 10V44M30 44H60', stroke: ink, 'stroke-width': 5, 'stroke-linecap': 'round' }, s);
+      svg('path', { d: 'M12 14H78', stroke: ink, 'stroke-width': 5, 'stroke-linecap': 'round' }, s);
+      [[12, '#FF6B5B'], [78, '#4FB3FF']].forEach(([x, c]) => svg('path', { d: 'M' + (x - 11) + ' 26H' + (x + 11) + 'L' + (x + 6) + ' 34H' + (x - 6) + 'Z', fill: c, stroke: ink, 'stroke-width': 3, 'stroke-linejoin': 'round' }, s));
+    } else if (kind === 'mirror') {
+      svg('path', { d: 'M45 4V46', stroke: ink, 'stroke-width': 4, 'stroke-dasharray': '5 5' }, s);
+      [[20, 16], [30, 32], [70, 16], [60, 32]].forEach(([x, y]) => svg('circle', { cx: x, cy: y, r: 7, fill: '#FFC93C', stroke: ink, 'stroke-width': 3 }, s));
+    } else if (kind === 'bars') {
+      [[14, 30], [38, 14], [62, 38]].forEach(([x, y]) => svg('rect', { x, y, width: 16, height: 46 - y, rx: 4, fill: '#5CC46E', stroke: ink, 'stroke-width': 3 }, s));
+    } else if (kind === 'ruler') {
+      svg('rect', { x: 4, y: 8, width: 82, height: 12, rx: 6, fill: '#FFC93C', stroke: ink, 'stroke-width': 3 }, s);
+      for (let i = 0; i < 4; i++) svg('rect', { x: 4 + i * 20.5, y: 26, width: 18, height: 18, rx: 3, fill: '#8EDBFF', stroke: ink, 'stroke-width': 3 }, s);
+    } else if (kind === 'share') {
+      [[14, '#FF6B5B'], [45, '#4FB3FF'], [76, '#5CC46E']].forEach(([x, c]) => { svg('ellipse', { cx: x, cy: 38, rx: 13, ry: 6, fill: '#fff', stroke: ink, 'stroke-width': 3 }, s); svg('circle', { cx: x - 4, cy: 30, r: 5, fill: c, stroke: ink, 'stroke-width': 2 }, s); svg('circle', { cx: x + 5, cy: 30, r: 5, fill: c, stroke: ink, 'stroke-width': 2 }, s); });
+    }
+    return { node: s };
+  },
+  tile(v, size, color, q) {  /* a numbered stepping stone */
+    const d = el('div', 'item');
+    Object.assign(d.style, { width: size + 'px', height: size + 'px', borderRadius: '30%', background: color, boxShadow: '0 0 0 4px #2B2118, 0 7px 0 4px rgba(43,33,24,.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+    if (q) { d.innerHTML = ICONS.q; d.firstChild.setAttribute('width', size * 0.6); d.firstChild.setAttribute('height', size * 0.6); }
+    else { const w = el('div', '', d); Object.assign(w.style, { background: '#fff', borderRadius: '22%', padding: '4px 6px', display: 'flex' }); w.appendChild(UI.qty(v, size * 0.42)); }
+    return d;
+  },
+  bar(style, len) {          /* a thing to measure: one svg, `len` long, 44 high */
+    const s = svg('svg', { width: len, height: 44, viewBox: '0 0 ' + len + ' 44' });
+    const ink = '#2B2118';
+    if (style === 'staff') {
+      svg('rect', { x: 2, y: 12, width: len - 4, height: 20, rx: 10, fill: '#FFC93C', stroke: ink, 'stroke-width': 4 }, s);
+      svg('rect', { x: 2, y: 9, width: 34, height: 26, rx: 8, fill: '#D63B2F', stroke: ink, 'stroke-width': 4 }, s);
+      svg('rect', { x: len - 36, y: 9, width: 34, height: 26, rx: 8, fill: '#D63B2F', stroke: ink, 'stroke-width': 4 }, s);
+    } else if (style === 'hose') {
+      svg('rect', { x: 2, y: 13, width: len - 30, height: 18, rx: 9, fill: '#E8554A', stroke: ink, 'stroke-width': 4 }, s);
+      svg('path', { d: 'M' + (len - 32) + ' 10L' + (len - 4) + ' 4V40L' + (len - 32) + ' 34Z', fill: '#FFC93C', stroke: ink, 'stroke-width': 4, 'stroke-linejoin': 'round' }, s);
+    } else if (style === 'beam') {
+      svg('rect', { x: 2, y: 8, width: len - 4, height: 28, rx: 14, fill: '#8EF0FF', opacity: 0.5 }, s);
+      svg('rect', { x: 2, y: 14, width: len - 4, height: 16, rx: 8, fill: '#3FD2FF', stroke: ink, 'stroke-width': 4 }, s);
+    } else {
+      svg('rect', { x: 2, y: 13, width: len - 4, height: 18, rx: 9, fill: '#C98B4A', stroke: ink, 'stroke-width': 4 }, s);
+    }
+    return s;
+  },
+};
+/* answer cards that are pictures (not numbers) */
+function w2PicCards(st, keys, opt) {
+  const size = 136, gap = 34, total = keys.length * size + (keys.length - 1) * gap;
+  const cx = opt.cx, cy = opt.cy;
+  st.cards = keys.map((k, i) => {
+    const c = el('div', 'card', Stage.el); c.style.position = 'absolute';
+    const im = img(W2P.src(k), '', c); Object.assign(im.style, { width: '76%', height: '76%', objectFit: 'contain' });
+    place(c, Math.round(cx - total / 2 + i * (size + gap)), Math.round(cy - size / 2), size, size);
+    K.reg(st, 'card' + i, c, {}); st.els.push(c);
+    st.scope.anim(c, [{ transform: 'scale(0) rotate(-8deg)' }, { transform: 'scale(1)' }], { duration: 320, delay: 60 * i, easing: EASE.pop, fill: 'backwards' });
+    return c;
+  });
+  st.opts = keys.slice();
+}
+
+/* ---------------------------------------------------------------- the base of every world-2 game */
+const W2Base = {
+  /* the two friends who watch (bottom corners); share puts its friends to work instead */
+  decor(G) {
+    const L = K.L(), cast = this.chars;
+    cast.forEach((id, i) => {
+      const a = G.actors[id];
+      if (i === 0) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 190 : 150);
+      else if (i === 1) showActor(a, L ? 944 : 634, L ? 698 : 1016, L ? 180 : 145);
+      else hideActor(a);
+    });
+  },
+  build(G) { this.chars.forEach(id => K.actor(G, id, 180)); },
+  layout(G) { this.decor(G); const st = Session.st && Session.st.G === G ? Session.st : null; if (st && st.q) this.place(st); },
+  relayoutQ(st) { this.layout(st.G); },
+  place() {},
+  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 800 }; },
+  workEls(st) { return st.cards || []; },
+  snap(st) { return { opts: st.opts || null }; },
+  cheerAll(st) { this.chars.slice(0, 2).forEach(id => { const a = st.G.actors[id]; if (a && a.x > 0) a.cheer(); }); },
+};
+
+/* ================================================================ RULE 1 · 分 share fairly (division by dealing) */
+const MShare = {
+  kind0: 'share', verb: '分！', intro: '分给大家！', praise: ['分得真公平！'],
+  gen(G, o) {
+    const d = o.level;
+    const f = d <= 2 ? 2 : 3;
+    const per = d === 1 ? bagPick(G, 'sh1', [2, 3]) : d === 2 ? bagPick(G, 'sh2', [3, 4, 5]) : d === 3 ? bagPick(G, 'sh3', [2, 3]) : d === 4 ? bagPick(G, 'sh4', [3, 4]) : bagPick(G, 'sh5', [4, 5]);
+    return { k: [f, per], f, per, n: f * per, answer: per, opts: numOptions(G, per, 1, 9) };
+  },
+  geo(st) {
+    const L = K.L(), f = st.q.f;
+    return {
+      xs: L ? (f === 2 ? [320, 704] : [196, 512, 828]) : (f === 2 ? [190, 514] : [118, 352, 586]),
+      fy: L ? 590 : 900, pw: L ? 236 : 210, ah: L ? 200 : 170,
+      tray: L ? { x: 232, y: 104, w: 560, h: 220 } : { x: 92, y: 226, w: 520, h: 260 },
+    };
+  },
+  decor(G) {
+    const st = Session.st && Session.st.G === G ? Session.st : null;
+    const f = st && st.q ? st.q.f : 2, g = st && st.q ? this.geo(st) : null;
+    this.chars.forEach((id, i) => { const a = G.actors[id]; if (g && i < f) showActor(a, g.xs[i], g.fy - 34, g.ah); else hideActor(a); });
+  },
+  cardSpot(st) { const t = this.geo(st).tray; return { cx: t.x + t.w / 2, cy: t.y + t.h / 2 }; },
+  traySpot(st, i) { const t = this.geo(st).tray, cols = 6, s = 60, n = st.q.n, rows = Math.ceil(n / cols); const r = Math.floor(i / cols), c = i % cols, inRow = Math.min(cols, n - r * cols); return { x: t.x + t.w / 2 - inRow * s / 2 + c * s + 2, y: t.y + t.h / 2 - rows * s / 2 + r * s + 2 }; },
+  plateSpot(st, p, k) { const g = this.geo(st), x = g.xs[p], cols = 3, r = Math.floor(k / cols), c = k % cols; return { x: x - 81 + c * 54, y: g.fy - 46 - r * 38 }; },
+  place(st) {
+    const g = this.geo(st);
+    st.plates.forEach((pl, i) => place(pl, g.xs[i] - g.pw / 2, g.fy - 78, g.pw, g.pw * 0.62));
+    if (st.trayEl) { place(st.trayEl, g.tray.x, g.tray.y, g.tray.w, g.tray.h); st.trayEl.style.visibility = st.cards ? 'hidden' : ''; }
+    st.pile.forEach((e, i) => { const p = this.traySpot(st, i); place(e, p.x, p.y); });
+    st.on.forEach((list, p) => list.forEach((e, k) => { const s = this.plateSpot(st, p, k); place(e, s.x, s.y); }));
+  },
+  async present(st) {
+    const G = st.G, q = st.q;
+    st.on = Array.from({ length: q.f }, () => []);
+    st.plates = Array.from({ length: q.f }, (_, i) => { const p = K.item(Stage.el, 'assets/props/plate.png', 200, 130); p.style.zIndex = 6; st.els.push(p); K.reg(st, 'p' + i, p, {}); return p; });
+    st.trayEl = el('div', '', Stage.el); Object.assign(st.trayEl.style, { position: 'absolute', borderRadius: '28px', background: 'rgba(255,248,236,.82)', boxShadow: '0 0 0 4px #2B2118', zIndex: 3 }); st.els.push(st.trayEl);
+    st.pile = Array.from({ length: q.n }, () => { const e = K.item(Stage.el, W2P.src(this.item), 56, 56); e.style.zIndex = 7; st.els.push(e); return e; });
+    this.layout(G);
+    st.pile.forEach((e, i) => K.pop(st, e, 30 * i));
+    K.task(st, [[W2P.src(this.item)], [W2P.icon('share')], ['q']]);
+    K.say(st, '分得一样多！');
+  },
+  onCharTap(st, id) { const i = this.chars.indexOf(id); if (i >= 0 && i < st.q.f && !st.cards) { gesture('tap', { id: 'p' + i }); return true; } return false; },
+  deal(st, i) {
+    if (!st.pile.length || st.cards) return false;
+    const e = st.pile.pop(); st.on[i].push(e);
+    const s = this.plateSpot(st, i, st.on[i].length - 1);
+    K.flyTo(st, e, s.x, s.y, 300, 50); Sfx.place();
+    if (st.level <= 2) Count.say(st.on[i].length); else Sfx.count(st.on[i].length);
+    if (!st.pile.length) st.scope.timeout(() => this.allDealt(st), 380);
+    return 'ok';
+  },
+  async allDealt(st) {
+    if (!Session.alive(st) || st.cards) return;
+    const counts = st.on.map(l => l.length), q = st.q;
+    if (counts.every(c => c === q.per)) {
+      if (st.trayEl) st.trayEl.style.visibility = 'hidden';
+      K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot(st)));
+      K.say(st, '每人几个？');
+      return;
+    }
+    /* not fair: the extras glow, fly back, and the child deals them again (this question is helped now) */
+    Hints.mark(st, 'unfair');
+    Voice.say('不一样多哦！', { tag: 'fix' });
+    const extra = []; st.on.forEach(l => { while (l.length > q.per) extra.push(l.pop()); });
+    K.flash(st, extra);
+    await st.scope.wait(900);
+    if (!Session.alive(st)) return;
+    extra.forEach(e => { st.pile.push(e); const p = this.traySpot(st, st.pile.length - 1); K.flyTo(st, e, p.x, p.y, 360, 40); });
+    Sfx.back();
+  },
+  onGesture(st, name, p) {
+    const id = p.id || '';
+    if (/^p\d$/.test(id) && name === 'tap') return this.deal(st, Number(id.slice(1)));
+    const i = K.cardIndex(id);
+    if (name === 'tap' && i >= 0 && st.cards) { Session.submit(st, st.opts[i]); return 'ok'; }
+    return false;
+  },
+  async reveal(st) {
+    const q = st.q;
+    st.summary = '每人' + CNQ(q.per) + '个！';
+    st.plates.forEach(pl => K.badge(st, pl, q.per, 0, -20, 50));
+    K.ring(st, st.on.map(l => l.map(e => box(e))).flat(), 12);
+    Sfx.reveal(); this.chars.slice(0, q.f).forEach(id => st.G.actors[id].cheer());
+    Voice.say(st.summary, { tag: 'summary' });
+    await st.scope.wait(1000);
+  },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async correct(st) {
+    const q = st.q, my = st;
+    Voice.say('数一个盘子！', { tag: 'fix' });
+    await Voice.afterSay(100);
+    for (let k = 0; k < st.on[0].length; k++) { if (!Session.alive(my)) return; K.hop(st, st.on[0][k], 18); await Count.beat(st.scope, 450, k + 1); }
+    st.plates.forEach(pl => K.badge(st, pl, q.per, 0, -20, 50));
+    await Voice.say('每人' + CNQ(q.per) + '个', { tag: 'fix' });
+  },
+  next(st, strat) {
+    if (st.cards) return K.cardNext(st, strat);
+    if (!st.pile.length) return null;
+    let i = 0, m = 1e9;                                      /* (a wrong answer happens at the cards) */
+    st.on.forEach((l, k) => { if (l.length < m) { m = l.length; i = k; } });
+    return { g: 'tap', p: { id: 'p' + i } };
+  },
+  workEls(st) { return st.cards || st.plates || []; },
+  gestureHint(st) { const n = this.next(st, 'right'); if (!n) return; const e = this.find(st, n.p.id); if (!e) return; const c = center(e); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+  snap(st) { return { opts: st.opts || null, counts: (st.on || []).map(l => l.length) }; },
+};
+
+/* ================================================================ RULE 2 · 排 what comes next (patterns) */
+const MPattern = {
+  kind0: 'pattern', verb: '排！', intro: '找规律！', praise: ['规律找对啦！'],
+  gen(G, o) {
+    const d = o.level, rng = o.rng;
+    if (d >= 5) {
+      const step = bagPick(G, 'pt5', [1, 2]), s = step === 1 ? rng.int(1, 3) : 2;
+      const seq = [0, 1, 2, 3].map(i => s + i * step), answer = s + 4 * step;
+      return { k: ['num', s, step], num: true, seq, answer, opts: numOptions(G, answer, 1, 12) };
+    }
+    const unit = d === 1 ? 'AB' : d === 2 ? bagPick(G, 'pt2', ['AAB', 'ABB']) : d === 3 ? 'ABC' : bagPick(G, 'pt4', ['AABB', 'ABAC']);
+    const keys = rng.shuffle(this.items.slice()), map = { A: keys[0], B: keys[1], C: keys[2] };
+    const m = Math.min(8, unit.length * 2 + rng.int(0, unit.length - 1));
+    const seq = Array.from({ length: m }, (_, i) => map[unit[i % unit.length]]);
+    const answer = map[unit[m % unit.length]];
+    return { k: [unit, m, keys.join()], unit, seq, answer, opts: rng.shuffle(keys) };
+  },
+  geo(st) {
+    const L = K.L(), n = st.q.seq.length + 1;
+    const step = L ? Math.min(104, 880 / n) : Math.min(80, 664 / n), sz = L ? 76 : 64;
+    const x0 = (L ? 512 : 352) - (n - 1) * step / 2, y = L ? 300 : 440;
+    return { step, sz, x0, y, n };
+  },
+  cardSpot() { return K.L() ? { cx: 512, cy: 560 } : { cx: 352, cy: 760 }; },
+  slotXY(st, i) { const g = this.geo(st); return { x: g.x0 + i * g.step - g.sz / 2, y: g.y - g.sz / 2 }; },
+  place(st) {
+    const g = this.geo(st);
+    st.slots.forEach((e, i) => { const p = this.slotXY(st, i); place(e, p.x, p.y, g.sz, g.sz); });
+    if (st.string) { place(st.string, g.x0 - g.step / 2, g.y - 40, g.step * g.n, 12); }
+    if (st.cards) K.cardsPlace(st, this.cardSpot());
+  },
+  pic(st, v) {
+    if (st.q.num) { const d = el('div', 'item'); d.appendChild(UI.dots(v, 60, { layout: v <= 6 ? 'dice' : 'frame' })); return d; }
+    return K.item(Stage.el, W2P.src(v), 64, 64);
+  },
+  async present(st) {
+    const q = st.q;
+    st.string = el('div', '', Stage.el); Object.assign(st.string.style, { position: 'absolute', borderRadius: '6px', background: '#C98B4A', boxShadow: '0 0 0 3px #2B2118', zIndex: 2 }); st.els.push(st.string);
+    st.slots = q.seq.map(v => { const e = this.pic(st, v); Stage.el.appendChild(e); e.style.position = 'absolute'; e.style.zIndex = 5; st.els.push(e); return e; });
+    const blank = el('div', 'item', Stage.el); Object.assign(blank.style, { position: 'absolute', borderRadius: '50%', border: '5px dashed #2B2118', background: 'rgba(255,255,255,.7)', zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' });
+    blank.innerHTML = ICONS.q; blank.firstChild.setAttribute('width', 40); blank.firstChild.setAttribute('height', 40); st.els.push(blank); st.slots.push(blank); st.blank = blank;
+    this.place(st);
+    st.slots.forEach((e, i) => K.pop(st, e, 70 * i));
+    if (q.num) K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot()));
+    else w2PicCards(st, q.opts, this.cardSpot());
+    K.task(st, [[{ node: W2P.mini(q.num ? [] : q.seq.slice(0, 3).map(k => W2P.src(k)), true) }]]);
+    K.say(st, '下一个是谁？');
+  },
+  onGesture(st, name, p) { const i = K.cardIndex(p.id); if (name === 'tap' && i >= 0) { Session.submit(st, st.opts[i]); return 'ok'; } return false; },
+  async reveal(st) {
+    const q = st.q, my = st, g = this.geo(st);
+    st.summary = '规律找到啦！';
+    const e = this.pic(st, q.answer); Stage.el.appendChild(e); e.style.position = 'absolute'; e.style.zIndex = 6; st.els.push(e);
+    const b = box(st.blank); place(e, b.x, b.y, g.sz, g.sz); st.blank.style.visibility = 'hidden'; K.pop(st, e);
+    Sfx.reveal();
+    if (q.num) { for (let i = 0; i < q.seq.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.slots[i], 14); await st.scope.wait(220); } }
+    else {
+      const u = q.unit.length, all = st.slots.slice(0, -1).concat([e]);
+      for (let s = 0; s + u <= all.length; s += u) { if (!Session.alive(my)) return; K.ring(st, all.slice(s, s + u).map(x => box(x)), 6, '#FFC93C'); all.slice(s, s + u).forEach(x => K.hop(st, x, 14)); Sfx.mar(Sfx.SCALE[Math.min(9, s / u * 2)], 0, 0.4, 0.4); await st.scope.wait(360); }
+    }
+    this.cheerAll(st);
+    Voice.say(st.summary, { tag: 'summary' });
+    await st.scope.wait(900);
+  },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async correct(st) {
+    const q = st.q, my = st;
+    Voice.say('一组一组看！', { tag: 'fix' });
+    const u = q.num ? 1 : q.unit.length;
+    for (let i = 0; i < st.slots.length - 1; i++) { if (!Session.alive(my)) return; K.hop(st, st.slots[i], 16); Sfx.mar(Sfx.SCALE[i % u * 2], 0, 0.35, 0.35); await st.scope.wait(q.num ? 420 : 330); }
+    if (!Session.alive(my)) return;
+    const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi');
+    K.hop(st, st.blank, 20);
+    await st.scope.wait(600);
+  },
+  next(st, strat) { return K.cardNext(st, strat); },
+};
+
+/* ================================================================ RULE 3 · 称 make both sides equally heavy */
+const MBalance = {
+  kind0: 'build', verb: '称！', intro: '要一样重！', praise: ['两边一样重！'],
+  kinds(level) { return level <= 2 ? ['build'] : ['guess']; },
+  gen(G, o) {
+    const d = o.level, rng = o.rng;
+    const a = d === 1 ? rng.int(2, 4) : d === 2 ? rng.int(3, 6) : d === 3 ? rng.int(4, 7) : d === 4 ? rng.int(5, 9) : rng.int(6, 10);
+    const b = d === 1 ? rng.int(0, 1) : d === 2 ? rng.int(0, 2) : d === 3 ? rng.int(1, 3) : d === 4 ? rng.int(1, 4) : rng.int(2, 5);
+    const need = a - b;
+    return { k: [a, b], a, b, need, answer: need, guess: d >= 3, opts: d >= 3 ? numOptions(G, need, 1, 9) : null };
+  },
+  geo() { const L = K.L(); return L ? { cx: 512, cy: 250, arm: 236, hang: 112, pw: 224, box: { x: 610, y: 520, w: 150, h: 140 } } : { cx: 352, cy: 450, arm: 214, hang: 112, pw: 200, box: { x: 278, y: 760, w: 150, h: 140 } }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 800 }; },
+  /* the beam tilts to the heavier side; level when equal */
+  angle(st) { return clamp((st.right.length - st.left.length) * 4, -16, 16); },
+  draw(st) {
+    const g = this.geo(), t = (st.theta || 0) * Math.PI / 180;
+    const lx = g.cx - g.arm * Math.cos(t), ly = g.cy - g.arm * Math.sin(t), rx = g.cx + g.arm * Math.cos(t), ry = g.cy + g.arm * Math.sin(t);
+    const s = st.svg; s.setAttribute('width', Stage.W); s.setAttribute('height', Stage.H); s.innerHTML = '';
+    const ink = '#2B2118';
+    svg('path', { d: 'M' + g.cx + ' ' + g.cy + 'L' + (g.cx - 50) + ' ' + (g.cy + 230) + 'H' + (g.cx + 50) + 'Z', fill: '#B98552', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s);
+    [[lx, ly], [rx, ry]].forEach(([x, y]) => { svg('path', { d: 'M' + x + ' ' + y + 'L' + (x - g.pw / 2 + 14) + ' ' + (y + g.hang) + 'M' + x + ' ' + y + 'L' + (x + g.pw / 2 - 14) + ' ' + (y + g.hang), stroke: ink, 'stroke-width': 4 }, s); });
+    svg('path', { d: 'M' + lx + ' ' + ly + 'L' + rx + ' ' + ry, stroke: ink, 'stroke-width': 16, 'stroke-linecap': 'round' }, s);
+    svg('path', { d: 'M' + lx + ' ' + ly + 'L' + rx + ' ' + ry, stroke: '#FFC93C', 'stroke-width': 8, 'stroke-linecap': 'round' }, s);
+    svg('circle', { cx: g.cx, cy: g.cy, r: 14, fill: '#FF6B5B', stroke: ink, 'stroke-width': 5 }, s);
+    [[st.panL, lx, ly], [st.panR, rx, ry]].forEach(([p, x, y]) => place(p, x - g.pw / 2, y + g.hang - 10, g.pw, 40));
+    [[st.left, lx, ly], [st.right, rx, ry]].forEach(([list, x, y]) => list.forEach((e, k) => { const r = Math.floor(k / 5), c = k % 5, inRow = Math.min(5, list.length - r * 5); place(e, x - inRow * 21 + c * 42, y + g.hang - 52 - r * 36, 42, 42); }));
+  },
+  tilt(st) {
+    const to = this.angle(st), from = st.theta || 0, t0 = now(), my = st;
+    if (fast()) { st.theta = to; this.draw(st); return; }
+    clearInterval(st.tw);
+    st.tw = setInterval(() => { if (!Session.alive(my)) { clearInterval(st.tw); return; } const k = Math.min(1, (now() - t0) / 420); st.theta = from + (to - from) * (1 - Math.pow(1 - k, 3)); this.draw(st); if (k >= 1) clearInterval(st.tw); }, 16);
+    st.scope.add(() => clearInterval(st.tw));
+  },
+  place(st) { const g = this.geo(); if (st.boxEl) place(st.boxEl, g.box.x, g.box.y, g.box.w, g.box.h); this.draw(st); if (st.cards) K.cardsPlace(st, this.cardSpot()); },
+  piece(st) { const e = K.item(Stage.el, W2P.src(this.item), 42, 42); e.style.zIndex = 6; st.els.push(e); return e; },
+  async present(st) {
+    const q = st.q;
+    st.svg = svg('svg', { class: 'lines scene' }, Stage.el); st.svg.style.position = 'absolute'; st.svg.style.left = '0px'; st.svg.style.top = '0px'; st.svg.style.zIndex = 2; st.els.push(st.svg);
+    const pan = c => { const p = el('div', '', Stage.el); Object.assign(p.style, { position: 'absolute', borderRadius: '0 0 60px 60px', background: c, boxShadow: '0 0 0 4px #2B2118', zIndex: 4 }); st.els.push(p); return p; };
+    st.panL = pan('#FFB3A8'); st.panR = pan('#A8DBFF');
+    st.left = Array.from({ length: q.a }, () => this.piece(st)); st.right = Array.from({ length: q.b }, () => this.piece(st)); st.added = [];
+    st.theta = this.angle(st);
+    if (!q.guess) {
+      st.boxEl = K.item(Stage.el, 'assets/props/' + this.box + '.png', 150, 140); st.boxEl.style.zIndex = 5; st.els.push(st.boxEl);
+      K.reg(st, 'box', st.boxEl, {}); K.reg(st, 'pan', st.panR, {});
+      st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {});
+    }
+    this.place(st);
+    st.left.concat(st.right).forEach((e, i) => K.pop(st, e, 40 * i));
+    K.task(st, [[{ node: (() => { const n = W2P.icon('scale').node; n.style.transform = 'rotate(-12deg)'; return n; })() }], [W2P.src(this.item)], [W2P.icon('scale')]]);
+    if (q.guess) { K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot())); K.say(st, '还要几个？'); }
+    else K.say(st, '加到一样重！');
+  },
+  add(st) {
+    if (st.added.length >= 9) { K.wiggle(st, st.boxEl); return false; }
+    const e = this.piece(st), b = box(st.boxEl); place(e, b.x + 50, b.y + 40);
+    st.right.push(e); st.added.push(e); Sfx.place();
+    if (st.level === 1) Count.say(st.added.length); else Sfx.count(st.added.length);
+    this.tilt(st); st.doneBtn.classList.add('ready');
+    return 'ok';
+  },
+  remove(st) { if (!st.added.length) return false; const e = st.added.pop(); st.right.splice(st.right.indexOf(e), 1); e.remove(); Sfx.back(); this.tilt(st); return 'ok'; },
+  onGesture(st, name, p) {
+    const id = p.id || '';
+    if (st.q.guess) { const i = K.cardIndex(id); if (name === 'tap' && i >= 0) { Session.submit(st, st.opts[i]); return 'ok'; } return false; }
+    if (id === 'box' && name === 'tap') return this.add(st);
+    if (id === 'pan' && name === 'tap') return this.remove(st);
+    if (id === 'done' && name === 'tap') { Session.submit(st, st.added.length); return 'ok'; }
+    return false;
+  },
+  async fill(st, n) { const my = st; for (let i = 0; i < n; i++) { if (!Session.alive(my)) return; const e = this.piece(st); const g = this.geo(); place(e, g.cx - 21, g.cy + 120); st.right.push(e); st.added.push(e); this.draw(st); Sfx.place(); await Count.beat(st.scope, 380, i + 1); } this.tilt(st); await st.scope.wait(460); },
+  async reveal(st) {
+    const q = st.q;
+    if (q.guess) await this.fill(st, q.need);
+    if (!Session.alive(st)) return;
+    st.summary = q.guess ? '还要' + CNQ(q.need) + '个！' : '两边一样重！';
+    K.badge(st, st.panL, q.a, 0, 20, 50); K.badge(st, st.panR, q.a, 0, 20, 50);
+    Sfx.reveal(); this.cheerAll(st);
+    Voice.say(st.summary, { tag: 'summary' });
+    await st.scope.wait(1000);
+  },
+  async feedback(st, ans) {
+    if (st.q.guess) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); return; }
+    K.flash(st, ans > st.q.need ? [st.panR] : [st.panL]); await st.scope.wait(700);
+  },
+  async correct(st) {
+    const q = st.q, my = st;
+    if (q.guess) {
+      Voice.say('一个一个加！', { tag: 'fix' });
+      await this.fill(st, q.need);
+    } else {
+      Voice.say('看看哪边重！', { tag: 'fix' });
+      while (st.added.length > q.need) { if (!Session.alive(my)) return; this.remove(st); await st.scope.wait(320); }
+      while (st.added.length < q.need) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(420); }
+    }
+    if (!Session.alive(my)) return;
+    await Voice.say('一样重啦', { tag: 'fix' });
+  },
+  next(st, strat) {
+    const q = st.q;
+    if (q.guess) return K.cardNext(st, strat);
+    const want = strat === 'wrong' ? q.need + 1 : q.need, n = st.added.length;
+    if (n < want) return { g: 'tap', p: { id: 'box' } };
+    if (n > want) return { g: 'tap', p: { id: 'pan' } };
+    return { g: 'tap', p: { id: 'done' } };
+  },
+  workEls(st) { return st.q.guess ? (st.cards || []) : [st.boxEl, st.panR]; },
+  gestureHint(st) { if (st.q.guess) return; const c = center(st.boxEl); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+  snap(st) { return { opts: st.opts || null, added: st.added ? st.added.length : null }; },
+};
+
+/* ================================================================ RULE 4 · 接 the missing number on the path */
+const MSeq = {
+  kind0: 'seq', verb: '接！', intro: '数字排排队！', praise: ['一个都不差！'],
+  gen(G, o) {
+    const d = o.level, rng = o.rng;
+    let s, step = 1, n = 6;
+    if (d === 1) { n = 5; s = rng.int(1, 3); }
+    else if (d === 2) s = rng.int(2, 6);
+    else if (d === 3) s = rng.int(5, 12);
+    else if (d === 4) { step = -1; s = rng.int(6, 10); }
+    else { const t = bagPick(G, 'sq5', ['two', 'down', 'teen']); if (t === 'two') { step = 2; s = 2; } else if (t === 'down') { step = -1; s = rng.int(12, 20); } else s = rng.int(10, 15); }
+    const vals = Array.from({ length: n }, (_, i) => s + i * step);
+    const k = rng.int(1, n - 1), answer = vals[k];
+    return { k: [s, step, k], vals, gap: k, step, answer, opts: numOptions(G, answer, 1, 20) };
+  },
+  geo(st) { const L = K.L(), n = st.q.vals.length; const sz = L ? 104 : 90, x0 = L ? 140 : 70, x1 = L ? 884 : 634; return { sz, x0, step: (x1 - x0) / (n - 1), y: L ? 330 : 470 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 800 }; },
+  tileXY(st, i) { const g = this.geo(st); return { x: g.x0 + i * g.step - g.sz / 2, y: g.y - g.sz / 2 + (i % 2 ? 26 : -12) }; },
+  place(st) {
+    const g = this.geo(st);
+    st.tiles.forEach((e, i) => { const p = this.tileXY(st, i); place(e, p.x, p.y, g.sz, g.sz); });
+    const a = st.G.actors[this.chars[0]], i = st.at || 0, p = this.tileXY(st, i);
+    if (a) showActor(a, p.x + g.sz / 2, p.y + 6, K.L() ? 130 : 112);
+    if (st.cards) K.cardsPlace(st, this.cardSpot());
+  },
+  decor(G) {
+    const L = K.L();
+    this.chars.forEach((id, i) => { const a = G.actors[id]; if (i === 1) showActor(a, L ? 944 : 634, L ? 698 : 1016, L ? 180 : 145); else if (i > 1) hideActor(a); });
+  },
+  async present(st) {
+    const q = st.q;
+    st.at = 0;
+    st.tiles = q.vals.map((v, i) => { const e = W2P.tile(v, 100, this.tileColor, i === q.gap); Stage.el.appendChild(e); e.style.position = 'absolute'; e.style.zIndex = 4; st.els.push(e); return e; });
+    this.layout(st.G);
+    st.tiles.forEach((e, i) => K.pop(st, e, 60 * i));
+    K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot()));
+    const sm = [q.vals[0], q.vals[1]];
+    K.task(st, [[{ qty: sm[0] }], [{ qty: sm[1] }], ['q']]);
+    K.say(st, '少了哪个数？');
+  },
+  onGesture(st, name, p) { const i = K.cardIndex(p.id); if (name === 'tap' && i >= 0) { Session.submit(st, st.opts[i]); return 'ok'; } return false; },
+  async walk(st, upto) {
+    const my = st, a = st.G.actors[this.chars[0]], g = this.geo(st);
+    for (let i = 0; i <= upto; i++) {
+      if (!Session.alive(my)) return;
+      const p = this.tileXY(st, i);
+      if (i) { st.at = i; await a.moveTo(p.x + g.sz / 2, p.y + 6, 300, 40); }
+      K.hop(st, st.tiles[i], 10);
+      await Count.beat(st.scope, 360, st.q.vals[i]);
+    }
+  },
+  async reveal(st) {
+    const q = st.q;
+    const t = st.tiles[q.gap], nt = W2P.tile(q.answer, 100, this.tileColor, false); Stage.el.appendChild(nt); nt.style.position = 'absolute'; nt.style.zIndex = 5; st.els.push(nt);
+    const b = box(t); place(nt, b.x, b.y, b.w, b.h); t.style.visibility = 'hidden'; st.tiles[q.gap] = nt; K.pop(st, nt);
+    Sfx.reveal();
+    await this.walk(st, q.vals.length - 1);
+    if (!Session.alive(st)) return;
+    st.summary = '排好队啦！';
+    this.cheerAll(st);
+    Voice.say(st.summary, { tag: 'summary' });
+    await st.scope.wait(800);
+  },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async correct(st) {
+    const q = st.q, my = st;
+    Voice.say('从头数一数！', { tag: 'fix' });
+    await Voice.afterSay(100);
+    await this.walk(st, q.gap - 1);
+    if (!Session.alive(my)) return;
+    K.hop(st, st.tiles[q.gap], 24);
+    const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi');
+    await Count.beat(st.scope, 600, q.answer);
+  },
+  next(st, strat) { return K.cardNext(st, strat); },
+  workEls(st) { return (st.cards || []).concat(st.tiles ? [st.tiles[st.q.gap]] : []); },
+};
+
+/* ================================================================ RULE 5 · 照 the mirror side, then both together (doubles) */
+const MDouble = {
+  kind0: 'double', verb: '照！', intro: '照镜子！', praise: ['一模一样！'],
+  gen(G, o) {
+    const d = o.level, rng = o.rng;
+    const n = d === 1 ? rng.int(1, 3) : d === 2 ? rng.int(2, 4) : d === 3 ? rng.int(3, 5) : d === 4 ? rng.int(4, 6) : rng.int(2, 5);
+    const extra = d >= 5 ? 1 : 0;
+    const cells = rng.shuffle([0, 1, 2, 3, 4, 5]);
+    const left = cells.slice(0, n).sort((a, b) => a - b), more = extra ? [cells[n]] : [];
+    const total = 2 * n + extra;
+    return { k: [n, extra, left.join()], n, extra, left, more, total, answer: total, opts: numOptions(G, total, 2, 13) };
+  },
+  geo() { const L = K.L(); return L ? { x: 182, y: 104, w: 660, h: 330, cell: 100 } : { x: 42, y: 236, w: 620, h: 360, cell: 96 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 600 } : { cx: 352, cy: 790 }; },
+  cellXY(c, right) {
+    const g = this.geo(), col = c % 3, row = Math.floor(c / 3), half = g.w / 2;
+    const cx = g.x + half / 2 + (col - 1) * g.cell * 1.02, cy = g.y + g.h / 2 + (row - 0.5) * g.cell * 1.25;
+    return { x: right ? g.x + g.w - (cx - g.x) : cx, y: cy };
+  },
+  place(st) {
+    const g = this.geo();
+    place(st.board, g.x, g.y, g.w, g.h);
+    place(st.line, g.x + g.w / 2 - 3, g.y + 10, 6, g.h - 20);
+    st.L.forEach(o => { const p = this.cellXY(o.c, false); place(o.e, p.x - 34, p.y - 34, 68, 68); });
+    st.R.forEach(o => { const p = this.cellXY(o.c, true); place(o.ghost, p.x - 46, p.y - 46, 92, 92); if (o.e) place(o.e, p.x - 34, p.y - 34, 68, 68); });
+    if (st.cards) K.cardsPlace(st, this.cardSpot());
+  },
+  async present(st) {
+    const q = st.q;
+    st.board = el('div', '', Stage.el); Object.assign(st.board.style, { position: 'absolute', borderRadius: '32px', background: 'rgba(255,248,236,.86)', boxShadow: '0 0 0 4px #2B2118, 0 8px 0 4px rgba(43,33,24,.18)', zIndex: 2 }); st.els.push(st.board);
+    st.line = el('div', '', Stage.el); Object.assign(st.line.style, { position: 'absolute', backgroundImage: 'repeating-linear-gradient(#2B2118 0 14px, transparent 14px 26px)', zIndex: 3 }); st.els.push(st.line);
+    st.L = q.left.map(c => { const e = K.item(Stage.el, W2P.src(this.item), 68, 68); e.style.zIndex = 5; st.els.push(e); return { c, e }; });
+    st.R = q.left.concat(q.more).map((c, i) => {
+      const ghost = el('div', 'item', Stage.el); Object.assign(ghost.style, { position: 'absolute', borderRadius: '50%', border: '5px dashed ' + (i >= q.n ? '#FF6B5B' : '#2B2118'), background: 'rgba(255,255,255,.55)', zIndex: 4 });
+      st.els.push(ghost); K.reg(st, 'g' + i, ghost, {}); return { c, ghost, e: null };
+    });
+    this.place(st);
+    st.L.forEach((o, i) => K.pop(st, o.e, 60 * i));
+    K.task(st, [[W2P.icon('mirror')], ['q']]);
+    K.say(st, q.extra ? '多摆一个！' : '摆成一样的！');
+  },
+  fill(st, i) {
+    const o = st.R[i]; if (!o || o.e || st.cards) return false;
+    o.e = K.item(Stage.el, W2P.src(this.item), 68, 68); o.e.style.zIndex = 5; st.els.push(o.e);
+    const p = this.cellXY(o.c, true); place(o.e, p.x - 34, p.y - 34, 68, 68); K.pop(st, o.e); Sfx.place();
+    o.ghost.style.visibility = 'hidden';
+    if (st.R.every(x => x.e)) st.scope.timeout(() => { if (!Session.alive(st) || st.cards) return; K.cards(st, st.q.opts, Object.assign({ layout: 'frame' }, this.cardSpot())); K.say(st, '一共几个？'); }, 420);
+    return 'ok';
+  },
+  onGesture(st, name, p) {
+    const id = p.id || '';
+    if (/^g\d$/.test(id) && name === 'tap') return this.fill(st, Number(id.slice(1)));
+    const i = K.cardIndex(id); if (name === 'tap' && i >= 0 && st.cards) { Session.submit(st, st.opts[i]); return 'ok'; }
+    return false;
+  },
+  async reveal(st) {
+    const q = st.q, my = st;
+    const s = K.lines(st);
+    st.L.forEach((o, i) => { const a = center(o.e), b = center(st.R[i].e); K.link(st, s, a, b, '#FFC93C'); });
+    K.badge(st, st.L[0].e, q.n, 0, -24, 46); K.badge(st, st.R[0].e, q.n + q.extra, 0, -24, 46);
+    Sfx.reveal();
+    st.summary = CN[q.n] + '和' + CN[q.n + q.extra] + '，' + CNQ(q.total) + '个！';
+    this.cheerAll(st);
+    Voice.say(st.summary, { tag: 'summary' });
+    if (!Session.alive(my)) return;
+    await st.scope.wait(1100);
+  },
+  async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
+  async correct(st) {
+    const my = st, all = st.L.map(o => o.e).concat(st.R.map(o => o.e));
+    Voice.say('一个一个数！', { tag: 'fix' });
+    await Voice.afterSay(100);
+    for (let i = 0; i < all.length; i++) { if (!Session.alive(my)) return; K.hop(st, all[i], 16); await Count.beat(st.scope, 420, i + 1); }
+    const k = st.opts.indexOf(st.q.total); if (st.cards[k]) st.cards[k].classList.add('hi');
+  },
+  next(st, strat) {
+    if (st.cards) return K.cardNext(st, strat);
+    const i = st.R.findIndex(o => !o.e); return i >= 0 ? { g: 'tap', p: { id: 'g' + i } } : null;
+  },
+  workEls(st) { return st.cards || (st.R || []).filter(o => !o.e).map(o => o.ghost); },
+  gestureHint(st) { const n = this.next(st, 'right'); if (!n || st.cards) return; const c = center(this.find(st, n.p.id)); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+};
+
+/* ================================================================ RULE 6 · 归 sort into columns, read the graph */
+const MSort = {
+  kind0: 'sort', verb: '归！', intro: '分一分！', praise: ['分得清清楚楚！'],
+  gen(G, o) {
+    const d = o.level, rng = o.rng;
+    const ask = d <= 2 ? 'most' : d === 3 ? 'least' : d === 4 ? 'diff' : 'total';
+    const kk = (d === 1 || d === 4) ? 2 : 3;
+    let counts;
+    for (let t = 0; t < 200; t++) {
+      counts = Array.from({ length: kk }, () => rng.int(d === 4 ? 2 : 1, d === 4 ? 7 : 5));
+      const mx = Math.max(...counts), mn = Math.min(...counts);
+      if (ask === 'most' && counts.filter(c => c === mx).length === 1 && mx - [...counts].sort((a, b) => b - a)[1] >= (d === 1 ? 2 : 1)) break;
+      if (ask === 'least' && counts.filter(c => c === mn).length === 1) break;
+      if (ask === 'diff' && mx !== mn && mx - mn <= 4) break;
+      if (ask === 'total' && counts.reduce((a, b) => a + b, 0) <= 13 && counts.reduce((a, b) => a + b, 0) >= 6) break;
+    }
+    const kinds = rng.shuffle(this.items.slice()).slice(0, kk);
+    const total = counts.reduce((a, b) => a + b, 0), mx = Math.max(...counts), mn = Math.min(...counts);
+    const answer = ask === 'most' ? counts.indexOf(mx) : ask === 'least' ? counts.indexOf(mn) : ask === 'diff' ? mx - mn : total;
+    const list = rng.shuffle(counts.flatMap((c, i) => Array(c).fill(i)));
+    return { k: [counts.join(), ask], kinds, counts, ask, list, answer, opts: ask === 'diff' ? numOptions(G, answer, 0, 6) : ask === 'total' ? numOptions(G, answer, 4, 15) : null };
+  },
+  geo(st) {
+    const L = K.L(), kk = st.q.kinds.length;
+    return L ? { area: { x: 80, y: 110, w: 420, h: 540 }, cx: c => 560 + c * 128 + (kk === 2 ? 64 : 0), hy: 600, hs: 96 }
+      : { area: { x: 50, y: 220, w: 604, h: 300 }, cx: c => 352 + (c - (kk - 1) / 2) * 170, hy: 900, hs: 96 };
+  },
+  /* landscape: the left half is the heap, the right half the columns - one watcher stands at the far right */
+  decor(G) {
+    const L = K.L();
+    this.chars.forEach((id, i) => { const a = G.actors[id]; if (L) { if (i === 0) showActor(a, 962, 698, 160); else hideActor(a); } else if (i === 0) showActor(a, 72, 1016, 150); else if (i === 1) showActor(a, 634, 1016, 145); else hideActor(a); });
+  },
+  cardSpot(st) { const a = this.geo(st).area; return { cx: a.x + a.w / 2, cy: a.y + a.h / 2 }; },
+  stackXY(st, c, k) { const g = this.geo(st); return { x: g.cx(c) - 28, y: g.hy - 62 - k * 50 }; },
+  place(st) {
+    const g = this.geo(st);
+    st.heads.forEach((h, c) => place(h, g.cx(c) - g.hs / 2, g.hy, g.hs, g.hs));
+    st.items.forEach(o => { if (o.col == null) place(o.e, o.x, o.y, 58, 58); else { const p = this.stackXY(st, o.v, o.k); place(o.e, p.x, p.y, 56, 56); } });
+    if (st.cards) K.cardsPlace(st, this.cardSpot(st));
+  },
+  async present(st) {
+    const q = st.q, g = this.geo(st);
+    st.heads = q.kinds.map((k, c) => {
+      const h = el('div', 'card', Stage.el); h.style.position = 'absolute'; h.style.zIndex = 3;
+      const im = img(W2P.src(k), '', h); Object.assign(im.style, { width: '70%', height: '70%', objectFit: 'contain' });
+      st.els.push(h); K.reg(st, 'col' + c, h, {}); return h;
+    });
+    const pts = K.scatter(st.G.rng, q.list.length, { x: g.area.x + 30, y: g.area.y + 30, w: g.area.w - 60, h: g.area.h - 60 }, 68);
+    st.n = [0, 0, 0];
+    st.items = q.list.map((v, i) => { const e = K.item(Stage.el, W2P.src(q.kinds[v]), 58, 58); e.style.zIndex = 5; st.els.push(e); K.reg(st, 'it' + i, e, {}); const p = pts[i] || { x: g.area.x + 40, y: g.area.y + 40 }; return { e, v, x: p.x - 29, y: p.y - 29, col: null }; });
+    this.place(st);
+    st.items.forEach((o, i) => K.pop(st, o.e, 30 * i));
+    K.task(st, [[{ node: W2P.mini(q.kinds.map(k => W2P.src(k)), false) }], [W2P.icon('bars')], ['q']]);
+    K.say(st, '把它们分开！');
+  },
+  file(st, i) {
+    const o = st.items[i]; if (!o || o.col != null) return false;
+    o.col = o.v; o.k = st.n[o.v]++;
+    const p = this.stackXY(st, o.v, o.k); K.flyTo(st, o.e, p.x, p.y, 320, 40); Sfx.place(); Sfx.count(o.k + 1);
+    if (st.items.every(x => x.col != null)) st.scope.timeout(() => this.ask(st), 420);
+    return 'ok';
+  },
+  ask(st) {
+    if (!Session.alive(st) || st.asked) return;
+    st.asked = true;
+    const q = st.q;
+    if (q.opts) { K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot(st))); K.say(st, q.ask === 'diff' ? '多几个？' : '一共几个？'); }
+    else { st.heads.forEach(h => h.classList.add('tgt')); K.say(st, q.ask === 'most' ? '哪个最多？' : '哪个最少？'); }
+  },
+  onGesture(st, name, p) {
+    const id = p.id || '';
+    if (/^it\d+$/.test(id) && name === 'tap') return this.file(st, Number(id.slice(2)));
+    if (/^col\d$/.test(id) && name === 'tap' && st.asked && !st.q.opts) { Session.submit(st, Number(id.slice(3))); return 'ok'; }
+    const i = K.cardIndex(id); if (name === 'tap' && i >= 0 && st.cards) { Session.submit(st, st.opts[i]); return 'ok'; }
+    return false;
+  },
+  colEls(st, c) { return st.items.filter(o => o.col === c).map(o => o.e); },
+  async reveal(st) {
+    const q = st.q;
+    q.kinds.forEach((k, c) => { const top = this.colEls(st, c).slice(-1)[0] || st.heads[c]; K.badge(st, top, q.counts[c], 0, -18, 46); });
+    if (q.ask === 'most' || q.ask === 'least') { K.ring(st, this.colEls(st, q.answer).concat([st.heads[q.answer]]).map(e => box(e)), 10, '#FFC93C'); st.heads[q.answer].classList.add('hi'); }
+    st.summary = q.ask === 'most' ? '这一列最多！' : q.ask === 'least' ? '这一列最少！' : q.ask === 'diff' ? '多' + CNQ(q.answer) + '个！' : '一共' + CNQ(q.answer) + '个！';
+    Sfx.reveal(); this.cheerAll(st);
+    Voice.say(st.summary, { tag: 'summary' });
+    await st.scope.wait(1000);
+  },
+  async feedback(st, ans) {
+    const q = st.q;
+    if (q.opts) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); }
+    else if (st.heads[ans]) K.wiggle(st, st.heads[ans]);
+    await st.scope.wait(350);
+  },
+  async correct(st) {
+    const q = st.q, my = st;
+    Voice.say('每列数一数！', { tag: 'fix' });
+    await Voice.afterSay(100);
+    for (let c = 0; c < q.kinds.length; c++) {
+      const els = this.colEls(st, c);
+      for (let k = 0; k < els.length; k++) { if (!Session.alive(my)) return; K.hop(st, els[k], 12); await Count.beat(st.scope, 330, k + 1); }
+      K.badge(st, els[els.length - 1] || st.heads[c], q.counts[c], 0, -18, 46);
+      await st.scope.wait(250);
+    }
+    if (q.opts) { const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi'); } else st.heads[q.answer].classList.add('hi');
+  },
+  next(st, strat) {
+    const i = st.items.findIndex(o => o.col == null);
+    if (i >= 0) return { g: 'tap', p: { id: 'it' + i } };
+    if (st.q.opts) return st.cards ? K.cardNext(st, strat) : null;
+    if (!st.asked) return null;
+    const c = strat === 'wrong' ? (st.q.answer + 1) % st.q.kinds.length : st.q.answer;
+    return { g: 'tap', p: { id: 'col' + c } };
+  },
+  workEls(st) { return st.cards || (st.asked ? st.heads : st.items.filter(o => o.col == null).map(o => o.e)); },
+  gestureHint(st) { const n = this.next(st, 'right'); if (!n) return; const e = this.find(st, n.p.id); if (!e) return; const c = center(e); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+};
+
+/* ================================================================ RULE 7 · 量 how many blocks long */
+const MMeasure = {
+  kind0: 'measure', verb: '量！', intro: '量一量！', praise: ['量得真准！'],
+  gen(G, o) {
+    const d = o.level, rng = o.rng;
+    const len = d === 1 ? rng.int(3, 5) : d === 2 ? rng.int(4, 6) : d === 3 ? rng.int(5, 8) : d === 4 ? rng.int(6, 9) : rng.int(7, 10);
+    return { k: [len], len, answer: len };
+  },
+  geo() { const L = K.L(); return L ? { u: 72, x0: 152, y: 220, by: 286, box: { x: 60, y: 470, w: 150, h: 140 } } : { u: 56, x0: 72, y: 380, by: 436, box: { x: 92, y: 700, w: 150, h: 140 } }; },
+  decor(G) {
+    const L = K.L();
+    this.chars.forEach((id, i) => { const a = G.actors[id]; if (i === 0) showActor(a, L ? 800 : 480, L ? 698 : 1016, L ? 190 : 150); else if (i === 1) showActor(a, L ? 640 : 640, L ? 698 : 1016, L ? 170 : 140); else hideActor(a); });
+  },
+  blockXY(k) { const g = this.geo(); return { x: g.x0 + k * g.u + 3, y: g.by }; },
+  place(st) {
+    const g = this.geo(), q = st.q;
+    place(st.obj, g.x0, g.y, q.len * g.u, 44);
+    st.obj.innerHTML = ''; st.obj.appendChild(W2P.bar(this.style, q.len * g.u));
+    place(st.boxEl, g.box.x, g.box.y, g.box.w, g.box.h);
+    place(st.row, g.x0 - 10, g.by - 26, (q.len + 3) * g.u + 20, g.u + 46);
+    st.blocks.forEach((e, k) => { const p = this.blockXY(k); place(e, p.x, p.y, g.u - 6, g.u - 6); });
+  },
+  block(st) { const g = this.geo(), e = el('div', 'item', Stage.el); Object.assign(e.style, { position: 'absolute', borderRadius: '10px', background: this.blockColor, boxShadow: 'inset 0 -6px 0 rgba(43,33,24,.18), 0 0 0 4px #2B2118', zIndex: 6 }); st.els.push(e); place(e, 0, 0, g.u - 6, g.u - 6); return e; },
+  async present(st) {
+    st.blocks = [];
+    st.obj = el('div', '', Stage.el); st.obj.style.position = 'absolute'; st.obj.style.zIndex = 4; st.els.push(st.obj);
+    st.boxEl = K.item(Stage.el, 'assets/props/crate.png', 150, 140); st.boxEl.style.zIndex = 5; st.els.push(st.boxEl);
+    st.row = el('div', '', Stage.el); st.row.style.position = 'absolute'; st.row.style.zIndex = 7; st.els.push(st.row);
+    K.reg(st, 'box', st.boxEl, {}); K.reg(st, 'row', st.row, {});
+    st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {});
+    this.place(st);
+    K.pop(st, st.obj);
+    K.task(st, [[W2P.icon('ruler')], ['q']]);
+    K.say(st, '摆到头，几块？');
+  },
+  add(st) {
+    if (st.blocks.length >= st.q.len + 3) { K.wiggle(st, st.boxEl); return false; }
+    const e = this.block(st), b = box(st.boxEl); place(e, b.x + 40, b.y + 30, this.geo().u - 6, this.geo().u - 6);
+    const p = this.blockXY(st.blocks.length); st.blocks.push(e); K.flyTo(st, e, p.x, p.y, 320, 50); Sfx.place();
+    if (st.level <= 2) Count.say(st.blocks.length); else Sfx.count(st.blocks.length);
+    st.doneBtn.classList.add('ready');
+    return 'ok';
+  },
+  remove(st) { if (!st.blocks.length) return false; const e = st.blocks.pop(); e.remove(); Sfx.back(); return 'ok'; },
+  onGesture(st, name, p) {
+    const id = p.id || '';
+    if (id === 'box' && name === 'tap') return this.add(st);
+    if (id === 'row' && name === 'tap') return this.remove(st);
+    if (id === 'done' && name === 'tap') { Session.submit(st, st.blocks.length); return 'ok'; }
+    return false;
+  },
+  async reveal(st) {
+    const my = st, q = st.q;
+    for (let k = 0; k < st.blocks.length; k++) { if (!Session.alive(my)) return; K.hop(st, st.blocks[k], 12); await Count.beat(st.scope, 300, k + 1); }
+    K.badge(st, st.blocks[st.blocks.length - 1], q.len, 0, -20, 50);
+    st.summary = CNQ(q.len) + '块长！';
+    Sfx.reveal(); this.cheerAll(st);
+    Voice.say(st.summary, { tag: 'summary' });
+    await st.scope.wait(900);
+  },
+  async feedback(st, ans) {
+    const q = st.q;
+    if (ans > q.len) K.flash(st, st.blocks.slice(q.len));
+    else { const g = this.geo(), gap = el('div', 'note', Stage.el); Object.assign(gap.style, { position: 'absolute', border: '5px dashed #FF6B5B', borderRadius: '10px' }); place(gap, g.x0 + ans * g.u, g.by, (q.len - ans) * g.u, g.u - 6); st.els.push(gap); K.flash(st, [gap]); }
+    await st.scope.wait(800);
+  },
+  async correct(st) {
+    const q = st.q, my = st;
+    Voice.say('从头摆到尾！', { tag: 'fix' });
+    while (st.blocks.length > q.len) { if (!Session.alive(my)) return; this.remove(st); await st.scope.wait(260); }
+    while (st.blocks.length < q.len) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(360); }
+    for (let k = 0; k < st.blocks.length; k++) { if (!Session.alive(my)) return; K.hop(st, st.blocks[k], 12); await Count.beat(st.scope, 330, k + 1); }
+  },
+  next(st, strat) {
+    const want = strat === 'wrong' ? st.q.len + 1 : st.q.len, n = st.blocks.length;
+    if (n < want) return { g: 'tap', p: { id: 'box' } };
+    if (n > want) return { g: 'tap', p: { id: 'row' } };
+    return { g: 'tap', p: { id: 'done' } };
+  },
+  workEls(st) { return [st.boxEl]; },
+  gestureHint(st) { const c = center(st.boxEl); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+  snap(st) { return { blocks: st.blocks ? st.blocks.length : 0 }; },
+};
+
+/* ---------------------------------------------------------------- the 21 games: a rule + an island's things */
+function w2Game(rule, spec) {
+  const g = defGame(Object.assign({}, W2Base, rule, spec));
+  g.props = (spec.props || []).concat((spec.item && !spec.item.startsWith('orb:')) ? [spec.item] : []).concat(spec.items ? spec.items.filter(k => !k.startsWith('orb:')) : []).concat(spec.box ? [spec.box] : []).concat(rule === MShare ? ['plate'] : []).concat(rule === MMeasure ? ['crate'] : []);
+  g.props = g.props.filter((p, i, a) => a.indexOf(p) === i);
+  return g;
+}
+const PEP = ['peppa', 'george', 'daddy_pig', 'mummy_pig'], BLU = ['bluey', 'bingo', 'bandit', 'chilli'], PJ = ['catboy', 'owlette', 'gekko', 'pj_robot'];
+const PAW = ['ryder', 'chase', 'marshall', 'skye'], HLW = ['grandpa', 'gourd1', 'gourd2', 'gourd3'], XY = ['wukong', 'bajie', 'shaseng', 'tangseng'], AVG = ['captain', 'ironman', 'hulk', 'thor'];
+w2Game(MPattern, { id: 'Q1', world: 'peppa2', bg: 'peppa_porch', chars: PEP, host: 'peppa', icon: 'boots', items: ['boots', 'boots_blue', 'boots_yellow'] });
+w2Game(MDouble,  { id: 'Q2', world: 'peppa2', bg: 'peppa_bedroom', chars: ['george', 'peppa', 'mummy_pig'], host: 'george', icon: 'duck', item: 'duck' });
+w2Game(MBalance, { id: 'Q3', world: 'peppa2', bg: 'peppa_garden', chars: ['daddy_pig', 'peppa', 'george'], host: 'daddy_pig', icon: 'ball', item: 'ball', box: 'toybox' });
+w2Game(MShare,   { id: 'C1', world: 'bluey2', bg: 'bluey_kitchen', chars: BLU, host: 'chilli', icon: 'cookie', item: 'cookie' });
+w2Game(MSort,    { id: 'C2', world: 'bluey2', bg: 'bluey_shop', chars: ['bingo', 'bluey'], host: 'bingo', icon: 'apple', items: ['apple', 'banana', 'strawberry'] });
+w2Game(MDouble,  { id: 'C3', world: 'bluey2', bg: 'bluey_yard', chars: ['bluey', 'bingo'], host: 'bluey', icon: 'watermelon', item: 'watermelon' });
+w2Game(MSeq,     { id: 'J1', world: 'pjmasks', bg: 'pj_city', chars: PJ, host: 'catboy', iconSrc: 'assets/thumbs/catboy.png', tileColor: '#4F7BFF' });
+w2Game(MPattern, { id: 'J2', world: 'pjmasks', bg: 'pj_hq', chars: ['owlette', 'gekko', 'pj_robot'], host: 'owlette', iconSrc: 'assets/thumbs/owlette.png', items: ['orb:#3F6BFF', 'orb:#E8414B', 'orb:#3DBE4E'] });
+w2Game(MShare,   { id: 'J3', world: 'pjmasks', bg: 'pj_park', chars: ['catboy', 'owlette', 'gekko'], host: 'gekko', iconSrc: 'assets/thumbs/gekko.png', item: 'ui_star' });
+w2Game(MSeq,     { id: 'D1', world: 'paw2', bg: 'paw_tower', chars: PAW, host: 'ryder', icon: 'policecar', tileColor: '#FF9A6C' });
+w2Game(MDouble,  { id: 'D2', world: 'paw2', bg: 'paw_control', chars: ['skye', 'chase'], host: 'skye', icon: 'kitten', item: 'kitten' });
+w2Game(MMeasure, { id: 'D3', world: 'paw2', bg: 'paw_rooftops', chars: ['marshall', 'ryder'], host: 'marshall', icon: 'firetruck', style: 'hose', blockColor: '#FFD34D' });
+w2Game(MSort,    { id: 'G1', world: 'huluwa2', bg: 'huluwa_treasure', chars: ['gourd1', 'grandpa'], host: 'gourd1', icon: 'magicgourd', items: ['gourd', 'gem', 'magicgourd'] });
+w2Game(MSeq,     { id: 'G2', world: 'huluwa2', bg: 'huluwa_vine', chars: ['gourd3', 'grandpa'], host: 'gourd3', icon: 'gourd', tileColor: '#7BCB5B' });
+w2Game(MBalance, { id: 'G3', world: 'huluwa2', bg: 'huluwa_meadow', chars: ['grandpa', 'gourd2'], host: 'grandpa', icon: 'gem', item: 'gem', box: 'chest' });
+w2Game(MMeasure, { id: 'Y1', world: 'xiyou2', bg: 'xiyou_peak', chars: ['wukong', 'bajie'], host: 'wukong', icon: 'cloud', style: 'staff', blockColor: '#FFB3A8' });
+w2Game(MShare,   { id: 'Y2', world: 'xiyou2', bg: 'xiyou_peachgarden', chars: ['wukong', 'bajie', 'shaseng'], host: 'tangseng', icon: 'peach', item: 'peach' });
+w2Game(MBalance, { id: 'Y3', world: 'xiyou2', bg: 'xiyou_sky', chars: ['bajie', 'wukong'], host: 'bajie', icon: 'basket', item: 'peach', box: 'basket' });
+w2Game(MSort,    { id: 'W1', world: 'avengers2', bg: 'avengers_vault', chars: ['hulk', 'captain'], host: 'hulk', icon: 'crystal', items: ['crystal', 'cube', 'coin'] });
+w2Game(MPattern, { id: 'W2', world: 'avengers2', bg: 'avengers_lab', chars: ['ironman', 'thor'], host: 'ironman', icon: 'cube', items: ['crystal', 'cube', 'gem'] });
+w2Game(MMeasure, { id: 'W3', world: 'avengers2', bg: 'avengers_rooftop', chars: ['thor', 'captain'], host: 'thor', icon: 'jet', style: 'beam', blockColor: '#B78CFF' });
+
+/*@@W2END@@*/
 /*@@MORE@@*/
 boot();</script>
 </body>

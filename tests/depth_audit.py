@@ -17,7 +17,9 @@ from playwright.sync_api import sync_playwright
 from harness import serve, new_page, enter, answer_question, wait_next_question, Log, ROOT
 
 WORLDS = [('peppa', ['P1', 'P2', 'P3', 'P4'], 3), ('bluey', ['B1', 'B2', 'B3', 'B4'], 3), ('huluwa', ['H1', 'H2', 'H3', 'H4'], 4),
-          ('paw', ['A1', 'A2', 'A3', 'A4'], 4), ('xiyou', ['X1', 'X2', 'X3', 'X4'], 4), ('avengers', ['V1', 'V2', 'V3', 'V4'], 4)]
+          ('paw', ['A1', 'A2', 'A3', 'A4'], 4), ('xiyou', ['X1', 'X2', 'X3', 'X4'], 4), ('avengers', ['V1', 'V2', 'V3', 'V4'], 4),
+          ('peppa2', ['Q1', 'Q2', 'Q3'], 5), ('bluey2', ['C1', 'C2', 'C3'], 5), ('pjmasks', ['J1', 'J2', 'J3'], 5), ('paw2', ['D1', 'D2', 'D3'], 5),
+          ('huluwa2', ['G1', 'G2', 'G3'], 5), ('xiyou2', ['Y1', 'Y2', 'Y3'], 5), ('avengers2', ['W1', 'W2', 'W3'], 5)]
 
 AUDIT_JS = r"""() => {
   const cs = e => getComputedStyle(e);

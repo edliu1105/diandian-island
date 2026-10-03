@@ -23,6 +23,9 @@ MANUAL = {
     'miles': (0.42, 0.19, 0.34), 'panther': (0.50, 0.33, 0.52), 'spiderman': (0.47, 0.19, 0.38), 'snake': (0.50, 0.31, 0.44),
     'mummy_pig': (0.43, 0.20, 0.34),                                         # one eye in profile
     'george': (0.55, 0.32, 0.50), 'chilli': (0.55, 0.30, 0.50),              # big heads: whole face with ears / snout
+    # world 2, PJ Masks (generated stickers, masks: no blinking eyelids)
+    'catboy': (0.47, 0.27, 0.56), 'owlette': (0.50, 0.26, 0.50), 'gekko': (0.50, 0.27, 0.54),
+    'pj_robot': (0.50, 0.27, 0.62), 'luna_girl': (0.52, 0.25, 0.48), 'romeo': (0.47, 0.27, 0.52),
 }
 # per character: (dx, dy in eye distances, size factor) - pigs have close-set eyes on a big head, dogs long muzzles
 TUNE = {
