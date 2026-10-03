@@ -484,7 +484,7 @@ const WORLDS = {
 /* unlock chain: a world opens when every world listed here is passed (first two open by default).
    Passed = every one of its four games played at least once, OR 10 stars there (client's rule; the mastery gate -
    ws.cleared - still counts and is still shown in the parent panel) */
-const NEEDS = { peppa: [], bluey: ['peppa'], huluwa: ['bluey'], paw: ['huluwa'], xiyou: ['paw'], avengers: ['xiyou'] };   /* one island at a time */
+const NEEDS = { peppa: [], bluey: ['peppa'], huluwa: ['peppa', 'bluey'], paw: ['peppa', 'bluey', 'huluwa'], xiyou: ['peppa', 'bluey', 'huluwa', 'paw'], avengers: ['peppa', 'bluey', 'huluwa', 'paw', 'xiyou'] };   /* client rule: every island before is played through */
 /* IP safety valve (tools/replace_char.py takedown <world>): switched-off worlds vanish from the map, count as passed in
    the unlock chain, and leave the entry screen and the finale */
 const TAKEDOWN = [];
@@ -816,6 +816,32 @@ function ownerAlive(o) {
    3 engine state gates the next speak (pump) + timeouts 8 newest wins: stale owners dropped at enqueue and at speak
    4 resume before every speak and on visibility         9 per-request confirmation, 3 misses -> big retry target
    5 WebAudio + media session unlock (Sfx.touch)         10 counting never through here unless the mp3 path failed (protected) */
+/* ================================================================ VOICE BANK
+   the sentences as recordings: assets/voice/v/<fnv1a(text)>.mp3, the list of recorded keys in assets/voice/bank.json.
+   Decoded clips are kept in a small cache (the newest 40) */
+const Bank = {
+  set: null, bufs: {}, order: [], fails: {}, loading: {},
+  key(text) { let h = 0x811c9dc5; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return ('0000000' + h.toString(16)).slice(-8); },
+  init() { return fetch('assets/voice/bank.json').then(r => (r.ok ? r.json() : [])).then(a => { this.set = new Set(a); }).catch(() => { this.set = new Set(); }); },
+  has(text) { return !!(text && this.set && this.set.has(this.key(text)) && !this.fails[this.key(text)]); },
+  ready(text) { return this.bufs[this.key(text)] || null; },
+  keep(k, b) { this.bufs[k] = b; this.order.push(k); while (this.order.length > 40) delete this.bufs[this.order.shift()]; },
+  load(text) {
+    const k = this.key(text);
+    if (this.bufs[k]) return Promise.resolve(this.bufs[k]);
+    if (this.fails[k]) return Promise.resolve(null);
+    if (this.loading[k]) return this.loading[k];
+    const c = Sfx.ensure();
+    if (!c) { this.fails[k] = 1; return Promise.resolve(null); }
+    const p = fetch('assets/voice/v/' + k + '.mp3').then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+      .then(ab => new Promise((res, rej) => { const q = c.decodeAudioData(ab, res, rej); if (q && q.then) q.then(res, rej); }))
+      .then(b => { this.keep(k, b); delete this.loading[k]; return b; })
+      .catch(() => { this.fails[k] = 1; delete this.loading[k]; return null; });
+    this.loading[k] = p;
+    return p;
+  },
+};
+
 const Voice = {
   synth: ('speechSynthesis' in window) ? window.speechSynthesis : null,
   voices: [], zh: [], voice: null,
@@ -905,6 +931,13 @@ const Voice = {
   unlock(text) {
     this.enter('map');
     const s = this.synth;
+    if (Bank.has(text)) {
+      if (s) { try { s.resume(); const u = this.utter('。'); u.volume = 0; s.speak(u); } catch (e) {} }   /* iOS: the engine is unlocked in this gesture */
+      this.first = { item: null, text, at: now(), ctx: this.ctx.gen, voiceKey: this.voiceKey(), respoken: true };
+      this.firstConfirmed = true; this.lastText = text;
+      this.say(text, { tag: 'first', owner: null });
+      return;
+    }
     const item = { id: ++this.reqSeq, text, tag: 'first', resolve: () => {}, done: false, owner: null };
     this.first = { item, text, at: now(), ctx: this.ctx.gen, voiceKey: this.voiceKey(), respoken: false };
     this.lastText = text;
@@ -943,9 +976,10 @@ const Voice = {
       if (this.first && this.first.item === item) this.firstConfirmed = true;
     }
   },
-  bindEnd(item, u) {
+  bindEnd(item, u, dur) {
     const finish = (why) => {
       if (item.done) return;
+      if (item.clip) { try { item.clip.onended = null; item.clip.stop(); } catch (e) {} item.clip = null; }
       if (why === 'end') this.probe(item);           /* a last look before the request closes */
       item.done = true; clearTimeout(item.to); clearTimeout(item.pt0); clearTimeout(item.pt); clearTimeout(item.pt2);
       if (this.cur === item) { this.cur = null; this.localDoneAt = now(); }
@@ -964,7 +998,7 @@ const Voice = {
       u.onerror = (e) => finish(e && /interrupt|cancel/i.test(e.error || '') ? 'cancel' : 'error');
     }
     /* rule 3: every flow that depends on the end has a timeout fallback */
-    const lim = fast() ? 40 : Math.max(2500, item.text.length * 380);
+    const lim = fast() ? 40 : dur ? dur * 1000 + 900 : Math.max(2500, item.text.length * 380);
     item.to = setTimeout(() => finish('timeout'), lim);
   },
   /* rule 9: per request - confirmed, or a miss; three misses in a row -> the big retry target appears */
@@ -985,6 +1019,7 @@ const Voice = {
   say(text, opt) {
     opt = opt || {};
     const owner = opt.owner !== undefined ? opt.owner : speechOwner();
+    if (Bank.has(text)) Bank.load(text);                  /* decoded while the queue still talks */
     return new Promise(res0 => {
       const resolve = v => { if (ownerAlive(owner)) res0(v); };
       if (!text) { resolve('empty'); return; }
@@ -1051,6 +1086,14 @@ const Voice = {
     if (!this.q.length) { this.checkWaiters(); return; }
     const gap = 150 - (now() - this.lastCancelAt);
     if (gap > 0) { this.schedulePump(gap + 5); return; }
+    const head = this.q[0];
+    if (Bank.has(head.text) && Sfx.ctx) {
+      const b = Bank.ready(head.text);
+      if (b && Sfx.ctx.state === 'running') { this.playClip(this.q.shift(), b); return; }
+      if (!head.waitT) { head.waitT = now(); Bank.load(head.text).then(() => this.schedulePump(0)); }
+      if (now() - head.waitT < (fast() ? 30 : 700)) { this.schedulePump(40); return; }
+      /* not decoded / the audio not running in time: the speech engine says it */
+    }
     const s = this.synth;
     if (!s) {                          /* no engine: keep the page rhythm without sound */
       const item = this.q.shift();
@@ -1072,6 +1115,20 @@ const Voice = {
     this.busySince = 0;
     try { s.resume(); } catch (e) {}   /* rule 4: resume before every speak */
     this.speakNow(this.q.shift());
+  },
+  /* a recorded sentence: the same request life as a spoken one (cur, end, timeout, cancel) */
+  playClip(item, buf) {
+    const c = Sfx.ctx;
+    item.t0 = now(); this.cur = item; this.lastReqAt = now();
+    slog('narr', item.text, item.tag, 'speak');
+    const s = c.createBufferSource(); s.buffer = buf;
+    const g = c.createGain(); g.gain.value = 1.0; s.connect(g); g.connect(c.destination);
+    Sfx.track(s);
+    item.clip = s; item.heard = true; item.rec = true;
+    this.bindEnd(item, null, buf.duration);
+    s.onended = () => item.finish && item.finish('end');
+    Sfx.duck(buf.duration + 0.3);
+    try { s.start(); } catch (e) { item.finish('error'); }
   },
   busy() { return !!(this.cur || this.q.length); },
   /* afterSay(minMs): resolves when narration is idle AND at least minMs passed */
@@ -2019,12 +2076,12 @@ const Session = {
     const kinds = g.kinds(level, G);
     let kind = opt.kind && (kinds.includes(opt.kind) || opt.probe) ? opt.kind : null;
     if (!kind) kind = kinds.length > 1 ? bagPick(G, 'kind' + level, kinds) : kinds[0];
-    const q = this.genQ(G, level, kind);
+    const q = opt.same ? (typeof structuredClone === 'function' ? structuredClone(opt.same) : JSON.parse(JSON.stringify(opt.same))) : this.genQ(G, level, kind);
     ws.lastKey = g.key(q);
     const st = {
       gen: ++this.qn, id: 'q' + this.qn, G, game: g, q, kind, level, phase: 'setup',
       hinted: !!opt.guided || !!opt.demo, guided: !!opt.guided, demo: !!opt.demo, retest: !!opt.retest, probe: !!opt.probe,
-      evidence: !opt.guided && !opt.demo, err: opt.err || 0, scope: new Scope(G.scope), els: [], map: {}, ops: 0, childOps: 0, assists: [],
+      evidence: !opt.guided && !opt.demo && !opt.same, again: !!opt.same, err: opt.err || 0, scope: new Scope(G.scope), els: [], map: {}, ops: 0, childOps: 0, assists: [],
       submitted: false, idleFrom: Clock.t(), hintLv: 0, nextAuto: 0, budget: budgetFor(level), ff: false, childTook: false,
     };
     st.answerP = new Promise((res, rej) => { st.answerRes = res; st.answerRej = rej; });
@@ -2058,12 +2115,13 @@ const Session = {
     return null;
   },
   async round(G) {
-    let err = 0;
+    let err = 0, same = null;
     const pr = this.probeFor(G);
     let kind = pr ? pr.kind : null, level = pr ? pr.level : null;
     while (!G.dead) {
       const guided = false;          /* client rule: never lead the child to the answer (was: after two wrong answers) */
-      const st = this.newQ(G, { guided, retest: err > 0, err, kind, level, probe: !!pr });
+      /* client rule: after a wrong answer the SAME question comes again - the child works it out, nobody shows it */
+      const st = this.newQ(G, { guided, retest: err > 0, err, kind, level, probe: !!pr, same });
       /* R2-J03: after a wrong answer the retest keeps the skill and the kind (new numbers / positions / layout) */
       kind = st.kind; level = st.level;
       const res = await this.runQ(G, st);
@@ -2074,10 +2132,10 @@ const Session = {
       if (res === 'ok') {
         Mastery.guidedRound(G, guided);
         G.idleQs = st.childOps ? 0 : G.idleQs + 1;
-        await this.reward(G, st);
-        return G.idleQs >= 2 ? 'stop' : 'ok';        /* nobody is playing: two questions finished by the helper -> end gently */
+        if (!err) await this.reward(G, st);          /* client rule: a question with a mistake earns no star */
+        return 'ok';
       }
-      err++;
+      err++; same = st.q;
     }
     return 'dead';
   },
@@ -2122,10 +2180,9 @@ const Session = {
       }
       G.streak = 0;
       st.phase = 'correcting';
-      await g.feedback(st, ans);
+      await g.feedback(st, ans);                 /* says what is wrong (never "you are wrong", never the answer) */
       if (!this.alive(my)) return 'dead';
-      await g.correct(st, ans);
-      if (!this.alive(my)) return 'dead';
+      Voice.say(AGAIN[(G.again = (G.again || 0) + 1) % AGAIN.length], { tag: 'again' });
       await st.scope.guard(Voice.afterSay(200));
       if (!this.alive(my)) return 'dead';
       if (!st.demo) Mastery.record(G, st, false);
@@ -2357,6 +2414,7 @@ const Session = {
    One thing at a time: a cue first, its hint only after it and only if the child has not acted meanwhile.
    Before the first hint (the child is thinking) a friend now and then glances at the child - never the host.
    Every one of them marks the question as assisted (it can never count as mastery evidence). */
+const AGAIN = ['再想一想！', '再试一次！', '你可以的，再来！'];
 const CHEER = ['慢慢想，不着急', '你能行的！', '再看一看！', '我们等你哦！'];
 const Hints = {
   arm(st) { this.reset(st); st.hintTimer = st.scope.interval(() => this.tick(st), 100); },
@@ -3218,6 +3276,7 @@ const SWU = {
 
 function boot() {
   Store.load();
+  Bank.init().then(() => Bank.load('我们去点点岛玩吧！'));
   if (!Store.s.seq1) {                          /* a save from before "one at a time": what it had stays */
     LIVE().forEach(w => {
       const ws = Store.w(w);
@@ -7468,7 +7527,7 @@ const W2 = {
     ORDER2.forEach((id, i) => {
       const ws = Store.w(id);
       if (ws.unlocked) return;
-      if (Store.s.w2all || (i === 0 ? this.open() : this.islandDone(ORDER2[i - 1]))) { ws.unlocked = true; if (show) ws.justOpened = true; any = true; }
+      if (Store.s.w2all || (this.open() && ORDER2.slice(0, i).every(w => this.islandDone(w)))) { ws.unlocked = true; if (show) ws.justOpened = true; any = true; }   /* every game of every island before */
     });
     if (this.allDone() && !Store.s.fin2) { Store.s.fin2 = 'due'; any = true; }
     if (any) Store.save();
