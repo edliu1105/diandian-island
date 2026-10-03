@@ -3276,7 +3276,7 @@ const SWU = {
 
 function boot() {
   Store.load();
-  Bank.init().then(() => Bank.load('我们去点点岛玩吧！'));
+  Bank.init().then(() => { if (Bank.has('我们去点点岛玩吧！')) Bank.load('我们去点点岛玩吧！'); });
   if (!Store.s.seq1) {                          /* a save from before "one at a time": what it had stays */
     LIVE().forEach(w => {
       const ws = Store.w(w);
