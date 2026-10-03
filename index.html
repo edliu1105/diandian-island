@@ -819,6 +819,7 @@ function ownerAlive(o) {
 /* ================================================================ VOICE BANK
    the sentences as recordings: assets/voice/v/<fnv1a(text)>.mp3, the list of recorded keys in assets/voice/bank.json.
    Decoded clips are kept in a small cache (the newest 40) */
+const FIRST_LINE = '我们去点点岛玩吧！';
 const Bank = {
   set: null, bufs: {}, order: [], fails: {}, loading: {},
   key(text) { let h = 0x811c9dc5; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return ('0000000' + h.toString(16)).slice(-8); },
@@ -931,11 +932,14 @@ const Voice = {
   unlock(text) {
     this.enter('map');
     const s = this.synth;
-    if (Bank.has(text)) {
-      if (s) { try { s.resume(); const u = this.utter('。'); u.volume = 0; s.speak(u); } catch (e) {} }   /* iOS: the engine is unlocked in this gesture */
-      this.first = { item: null, text, at: now(), ctx: this.ctx.gen, voiceKey: this.voiceKey(), respoken: true };
+    const rec = Bank.ready(text), c = Sfx.ensure();
+    if (rec && c) {
+      if (s) { try { s.resume(); const u = this.utter('。'); u.volume = 0; s.speak(u); } catch (e) {} }   /* iOS: the engine is unlocked in this gesture (fallbacks) */
+      try { c.resume(); } catch (e) {}
+      const item = { id: ++this.reqSeq, text, tag: 'first', resolve: () => {}, done: false, owner: null };
+      this.first = { item, text, at: now(), ctx: this.ctx.gen, voiceKey: this.voiceKey(), respoken: true };
       this.firstConfirmed = true; this.lastText = text;
-      this.say(text, { tag: 'first', owner: null });
+      this.playClip(item, rec);                  /* starts in this gesture; sounds as soon as the audio runs */
       return;
     }
     const item = { id: ++this.reqSeq, text, tag: 'first', resolve: () => {}, done: false, owner: null };
@@ -3224,9 +3228,10 @@ const Entry = {
     play.addEventListener('pointercancel', () => play.classList.remove('press'));
     /* rule 1: click (not pointerdown); speak synchronously in this call stack */
     play.addEventListener('click', () => {
-      try { Voice.unlock('我们去点点岛玩吧！'); } catch (e) { /* never block the entry on a speech failure */ }
+      try { Voice.unlock(FIRST_LINE); } catch (e) { /* never block the entry on a speech failure */ }
       Sfx.touch();
       Sfx.startMedia();
+      Bank.init();
       Sfx.tap();
       Count.preload(10);
       $('#home img').src = 'assets/props/ui_home.png';     /* game chrome loads after the entry screen */
@@ -3276,7 +3281,7 @@ const SWU = {
 
 function boot() {
   Store.load();
-  Bank.init().then(() => { if (Bank.has('我们去点点岛玩吧！')) Bank.load('我们去点点岛玩吧！'); });
+  Bank.load(FIRST_LINE);                         /* the first sentence is decoded before the tap (the list loads after it) */
   if (!Store.s.seq1) {                          /* a save from before "one at a time": what it had stays */
     LIVE().forEach(w => {
       const ws = Store.w(w);

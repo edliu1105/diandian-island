@@ -144,6 +144,8 @@ def run(p, eng, base, log):
 
     # ---- nothing but the entry screen
     allowed = {base + 'index.html'} | set(snap['entry']) | {h for rel_, h in snap['links'] if rel_ in ('manifest', 'icon', 'apple-touch-icon')}
+    sys.path.insert(0, os.path.join(ROOT, 'tools')); from voice_bank import key as vkey
+    allowed |= {base + 'assets/voice/v/' + vkey('我们去点点岛玩吧！') + '.mp3'}     # the first sentence, played in the entry tap (natural voice)
     early = [(x[0], x[2], classify(x[0])) for x in others if base + x[0] not in allowed]
     log.check(not early, E + 'no map/island/game asset requested before #play %s' % (['%s (%s, %d B)' % (a, c, n) for a, n, c in early] or ''))
     log.w('%s   entry screen pictures: %s' % (eng, [rel(u) for u in snap['entry']]))
