@@ -47,7 +47,7 @@ with sync_playwright() as p, serve() as base:
     page = new_page(br, base, 1180, 820, fast=True); enter(page)
     st = page.evaluate("() => ({ open: W2.open(), u: ORDER2.map(w => Store.w(w).unlocked) })")
     log.check(not st['open'] and not any(st['u']), 'fresh save: world 2 closed %s' % st)
-    page.evaluate("() => { LIVE().forEach(w => { Store.w(w).stars = 10; }); Store.save(); }")
+    page.evaluate("() => { LIVE().forEach(w => { Store.w(w).pass = true; }); Store.save(); }")
     page.reload(); page.wait_for_function('window.__ready === true', timeout=20000); enter(page)
     st = page.evaluate("() => ({ open: W2.open(), u: ORDER2.map(w => Store.w(w).unlocked), g: ['Q1','Q2','Q3'].map(g => W2.gameOpen('peppa2', g)), set: MapView.set })")
     log.check(st['open'] and st['u'] == [True] + [False] * 6 and st['g'] == [True, False, False] and st['set'] == 1, 'world 1 passed: world 2 opens with only its first island and first game; the map stays on the first sea %s' % st)

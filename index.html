@@ -484,7 +484,7 @@ const WORLDS = {
 /* unlock chain: a world opens when every world listed here is passed (first two open by default).
    Passed = every one of its four games played at least once, OR 10 stars there (client's rule; the mastery gate -
    ws.cleared - still counts and is still shown in the parent panel) */
-const NEEDS = { peppa: [], bluey: [], huluwa: ['peppa', 'bluey'], paw: ['huluwa'], xiyou: ['paw'], avengers: ['xiyou'] };
+const NEEDS = { peppa: [], bluey: ['peppa'], huluwa: ['bluey'], paw: ['huluwa'], xiyou: ['paw'], avengers: ['xiyou'] };   /* one island at a time */
 /* IP safety valve (tools/replace_char.py takedown <world>): switched-off worlds vanish from the map, count as passed in
    the unlock chain, and leave the entry screen and the finale */
 const TAKEDOWN = [];
@@ -499,7 +499,8 @@ const FLAG_HTML = id => {
   return '<div class="cloth"><svg viewBox="0 0 60 42">' + cloth + '</svg><img src="assets/thumbs/' + W.host + '.png" alt=""></div>'
     + (two ? '<svg class="finial" viewBox="0 0 24 24"><path d="M12 1.5L15 8.6L22.6 9.3L16.8 14.3L18.6 21.8L12 17.8L5.4 21.8L7.2 14.3L1.4 9.3L9 8.6Z" fill="#FFC93C" stroke="' + ink + '" stroke-width="2.2" stroke-linejoin="round"/></svg>' : '');
 };
-const passed = w => { if (TAKEDOWN.includes(w)) return true; const ws = Store.w(w); return ws.cleared || ws.stars >= 10 || WORLDS[w].games.every(g => played(w, g)); };
+/* passed (the flag): every game of the island played through once or 5 stars in it; pass = passed by the old rule (kept) */
+const passed = w => TAKEDOWN.includes(w) || Store.w(w).pass === true || W2.islandDone(w);
 const Unlock = {
   /* show: the island opens with its cloud show on the map (after a session); false: just open (start-up of an old save) */
   check(show) {
@@ -527,7 +528,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 /* ---------------------------------------------------------------- storage (versioned, corruption tolerant) */
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
-function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], gate: { cool: 0, last: '' } }; }
+function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, gate: { cool: 0, last: '' } }; }
 const Store = {
   s: null,
   load() {
@@ -575,7 +576,8 @@ const Store = {
       t.guidedRun = Math.round(num(w.guidedRun, 0, 0, 99));
       t.unlocked = openByDefault(id) || w.unlocked === true; t.cleared = w.cleared === true;
       t.played = Array.isArray(w.played) ? w.played.filter(gid).slice(0, 8) : [];
-      t.gstars = {}; t.gdone = {};                                          /* world 2: stars per game, games played through */
+      t.pass = w.pass === true; t.allOpen = w.allOpen === true;              /* passed / all games open by the old world-1 rule */
+      t.gstars = {}; t.gdone = {};                                          /* stars per game, games played through */
       for (const g of WORLDS[id].games) { if (w.gstars && typeof w.gstars[g] === 'number') t.gstars[g] = Math.round(num(w.gstars[g], 0, 0, 1e6)); if (w.gdone && w.gdone[g] === true) t.gdone[g] = true; }
       t.lastKey = typeof w.lastKey === 'string' ? w.lastKey.slice(0, 80) : '';
       t.demo = {};
@@ -584,7 +586,7 @@ const Store = {
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
-    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
+    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
     return d;
@@ -1948,7 +1950,7 @@ const Session = {
       t0: Clock.t(), ev: [], stars: 0, streak: 0, bags: {}, dead: false, errors: 0, idleQs: 0, probed: false,
     };
     ws.visits++; ws.sessions++; Store.save();
-    if (W.map === 2) { const gl = W.games; G.nx = gl[gl.indexOf(gameId) + 1] || null; G.nxWas = G.nx ? W2.gameOpen(worldId, G.nx) : true; }
+    { const gl = W.games; G.nx = gl[gl.indexOf(gameId) + 1] || null; G.nxWas = G.nx ? W2.gameOpen(worldId, G.nx) : true; }
     Voice.enter('game');
     MapView.closePanel(true);
     await Loader.run(G);
@@ -2166,7 +2168,7 @@ const Session = {
   },
   async reward(G, st) {
     G.stars++; G.ws.stars++;
-    if (G.W.map === 2) { const gs = G.ws.gstars || (G.ws.gstars = {}); gs[G.id] = (gs[G.id] || 0) + 1; }
+    { const gs = G.ws.gstars || (G.ws.gstars = {}); gs[G.id] = (gs[G.id] || 0) + 1; }
     Store.save();
     const slots = $$('#tray i');
     const slot = slots[Math.min(G.stars, slots.length) - 1];
@@ -2277,11 +2279,10 @@ const Session = {
     Mastery.sessionEnd(G);
     const wid = G.world, stars = G.stars, lvUp = !!G.levelUp;
     let newGame = null;
-    if (G.W.map === 2) {                     /* played through once: the next game (and maybe the next island) opens */
-      (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;
-      if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (stars or played through) */
-      W2.check(true); Store.save();
-    }
+    (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through once: the next game (and maybe the next island) opens */
+    if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (stars or played through) */
+    if (G.W.map === 2) W2.check(true); else Unlock.check(true);
+    Store.save();
     this.teardown(G);
     Screens.show('map');
     Voice.enter('map');
@@ -2317,8 +2318,8 @@ const Session = {
     Sfx.touch();
     if (Screens.cur === 'finale') { Finale.stop(); Screens.show('map'); Voice.enter('map'); MapView.update(); return; }
     if (!this.G) return;
-    const G = this.G, wid = G.world, opened = G.W.map === 2 && G.nx && !G.nxWas && W2.gameOpen(wid, G.nx);
-    if (G.W.map === 2) W2.check(true);
+    const G = this.G, wid = G.world, opened = G.nx && !G.nxWas && W2.gameOpen(wid, G.nx);
+    if (G.W.map === 2) W2.check(true); else Unlock.check(true);
     this.teardown(this.G);
     Screens.show('map');
     Voice.enter('map');
@@ -2496,7 +2497,7 @@ function tapify(e, fn, opt) {
 
 /* ================================================================ MAP */
 const MAPPOS2 = {
-  land: { peppa2: [10, 38], bluey2: [29, 18], pjmasks: [50, 15.5], paw2: [71, 18], huluwa2: [90, 38], xiyou2: [76, 71], avengers2: [50, 74], festival: [24, 71], gate: [50, 46] },
+  land: { peppa2: [10, 38], bluey2: [29, 18], pjmasks: [50, 15.5], paw2: [71, 18], huluwa2: [87, 38], xiyou2: [76, 71], avengers2: [50, 74], festival: [24, 71], gate: [50, 46] },
   port: { peppa2: [19, 16], bluey2: [50, 13], pjmasks: [81, 16], paw2: [81, 47], huluwa2: [77, 80], xiyou2: [49, 83], avengers2: [21, 80], festival: [19, 47], gate: [50, 48] },
 };
 const MAPPOS = {
@@ -2654,7 +2655,7 @@ const MapView = {
     const heroA = img('assets/chars/' + W.host + '.png', '', p);
     Object.assign(heroA.style, { position: 'absolute', height: S * 0.27 + 'px', left: (cx - S * 0.05) + 'px', top: (cy - S * 0.47) + 'px', pointerEvents: 'none' });
     Loops.run(heroA, [{ transform: 'translateY(0)' }, { transform: 'translateY(-10px)' }, { transform: 'translateY(0)' }], { duration: 1400 });
-    const rec = W2.isW2(id) ? (W.games.find(g => W2.gameOpen(id, g) && !W2.gameDone(id, g)) || W.games.filter(g => W2.gameOpen(id, g)).slice(-1)[0]) : this.recGame(id);
+    const rec = W.games.find(g => W2.gameOpen(id, g) && !W2.gameDone(id, g)) || (W2.isW2(id) ? W.games.filter(g => W2.gameOpen(id, g)).slice(-1)[0] : this.recGame(id));
     const M = Math.max(112, Math.round(S * 0.16)), gap = Math.round(M * 0.28), FS = Math.round(M * 0.72);
     const games = W.games.filter(g => GAMES[g]), x0 = cx - (games.length * (M + gap) + FS) / 2;
     games.forEach((g, i) => {
@@ -2669,12 +2670,12 @@ const MapView = {
       Object.assign(ic.style, { position: 'absolute', width: '62%', height: '62%', left: '19%', top: '19%', objectFit: 'contain', filter: 'drop-shadow(0 4px 0 rgba(43,33,24,.3))' });
       if (g === rec) { m.style.boxShadow = '0 0 0 4px #2B2118, 0 0 0 12px rgba(255,236,140,.95), 0 12px 30px rgba(255,210,60,.8)'; Loops.run(m, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 1200, iterations: Infinity }); }
       m.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: T(320) + 1, delay: T(80 * i), easing: EASE.pop, fill: 'backwards' });
-      const locked = W2.isW2(id) && !W2.gameOpen(id, g);
-      if (locked) {                         /* world 2: a game opens when the one before it was played through */
+      const locked = !W2.gameOpen(id, g);
+      if (locked) {                         /* a game opens when the one before it was played (through, or 5 stars) */
         th.style.filter = ic.style.filter = 'grayscale(1) brightness(.75)';
         const lk = el('span', '', m); lk.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><rect x="9" y="18" width="22" height="17" rx="4" fill="#FFC93C" stroke="#2B2118" stroke-width="3"/><path d="M13 18V13a7 7 0 0 1 14 0v5" fill="none" stroke="#2B2118" stroke-width="3.5"/></svg>';
         Object.assign(lk.style, { position: 'absolute', width: '46%', height: '46%', right: '-6%', bottom: '-6%' });
-      } else if (W2.isW2(id) ? W2.gameDone(id, g) : played(id, g)) {      /* played: a check */
+      } else if (W2.gameDone(id, g)) {      /* played: a check */
         const ok = el('span', '', m); ok.innerHTML = ICONS.check; Object.assign(ok.style, { position: 'absolute', width: '38%', height: '38%', right: '-4%', bottom: '-4%', background: '#5CC46E', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118' });
       }
       tapify(m, () => {
@@ -2943,7 +2944,7 @@ const Parent = {
       const td = el('td', '', tr); const fs = el('select', '', td);
       for (let l = 1; l <= MAXLV[id]; l++) { const o = el('option', '', fs, { text: 'L' + l, value: l }); if (l === ws.floor) o.selected = true; }
       fs.addEventListener('change', () => { ws.floor = Number(fs.value); if (ws.level < ws.floor) ws.level = ws.floor; Store.save(); });
-      el('td', '', tr, { html: '<b>过关（任一）：</b>已玩过 ' + WORLDS[id].games.map(g => g + (played(id, g) ? ' ✓' : ' ·')).join(' ') + '｜星 ' + Math.min(ws.stars, 10) + '/10' + (passed(id) ? ' ✓' : '') + '<br><b>掌握（只作参考）：</b>' + rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
+      el('td', '', tr, { html: '<b>过关（4 个都玩过，插旗）：</b>' + WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' 开' : ' 锁')).join(' ') + (passed(id) ? ' → 已插旗' : '') + '<br><b>掌握（只作参考）：</b>' + rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
       el('td', '', tr, { text: ws.stars });
     });
     if (W2.open()) {
@@ -3205,6 +3206,14 @@ const SWU = {
 
 function boot() {
   Store.load();
+  if (!Store.s.seq1) {                          /* a save from before "one at a time": what it had stays */
+    LIVE().forEach(w => {
+      const ws = Store.w(w);
+      WORLDS[w].games.forEach(g => { if (played(w, g)) (ws.gdone || (ws.gdone = {}))[g] = true; });
+      if (ws.cleared || ws.stars >= 10 || WORLDS[w].games.every(g => played(w, g))) { ws.pass = true; ws.allOpen = true; }
+    });
+    Store.s.seq1 = true; Store.save();
+  }
   Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
   W2.check(false);
   if (!Store.s.flags) { Store.s.flags = LIVE().concat(ORDER2).filter(flagged); Store.save(); }
@@ -7416,13 +7425,13 @@ defGame({
    next when it was played through once or earned 5 stars; an island opens the next when all its games were played. */
 const ORDER2 = ['peppa2', 'bluey2', 'pjmasks', 'paw2', 'huluwa2', 'xiyou2', 'avengers2'];
 Object.assign(WORLDS, {
-  peppa2:    { map: 2, isl: 'peppa', skin: 'peppa', base: 1, name: '佩奇·新岛', color: '#FF8DB3', color2: '#9A6433', host: 'peppa', runner: 'peppa', chars: ['peppa', 'george', 'daddy_pig', 'mummy_pig'], amb: 'rain', games: ['Q1', 'Q2', 'Q3'], hi: '佩奇又来啦！' },
-  bluey2:    { map: 2, isl: 'bluey', skin: 'bluey', base: 1, name: 'Bluey·新岛', color: '#6BB9F2', color2: '#F59A4A', host: 'bluey', runner: 'bingo', chars: ['bluey', 'bingo', 'bandit', 'chilli'], amb: 'crickets', games: ['C1', 'C2', 'C3'], hi: '再玩一次吧！' },
+  peppa2:    { map: 2, isl: 'peppa2', skin: 'peppa', base: 1, name: '佩奇·新岛', color: '#FF8DB3', color2: '#9A6433', host: 'peppa', runner: 'peppa', chars: ['peppa', 'george', 'daddy_pig', 'mummy_pig'], amb: 'rain', games: ['Q1', 'Q2', 'Q3'], hi: '佩奇又来啦！' },
+  bluey2:    { map: 2, isl: 'bluey2', skin: 'bluey', base: 1, name: 'Bluey·新岛', color: '#6BB9F2', color2: '#F59A4A', host: 'bluey', runner: 'bingo', chars: ['bluey', 'bingo', 'bandit', 'chilli'], amb: 'crickets', games: ['C1', 'C2', 'C3'], hi: '再玩一次吧！' },
   pjmasks:   { map: 2, isl: 'pjmasks', skin: 'pjmasks', base: 2, name: '睡衣小英雄', color: '#2E4BB8', color2: '#E23B3B', host: 'catboy', runner: 'gekko', chars: ['catboy', 'owlette', 'gekko', 'pj_robot', 'luna_girl', 'romeo'], amb: 'city', games: ['J1', 'J2', 'J3'], hi: '睡衣小英雄！' },
-  paw2:      { map: 2, isl: 'paw', skin: 'paw', base: 2, name: '汪汪队·新岛', color: '#E8554A', color2: '#2E6FD8', host: 'ryder', runner: 'chase', chars: ['ryder', 'chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble'], amb: 'waves', games: ['D1', 'D2', 'D3'], hi: '汪汪队出发！' },
-  huluwa2:   { map: 2, isl: 'huluwa', skin: 'huluwa', base: 3, name: '葫芦娃·新岛', color: '#46C27A', color2: '#E0473A', host: 'grandpa', runner: 'gourd3', chars: ['grandpa', 'gourd1', 'gourd2', 'gourd3', 'gourd4'], amb: 'wind', games: ['G1', 'G2', 'G3'], hi: '葫芦娃来啦！' },
-  xiyou2:    { map: 2, isl: 'xiyou', skin: 'xiyou', base: 3, name: '西游记·新岛', color: '#F5B324', color2: '#D63B2F', host: 'wukong', runner: 'wukong', chars: ['wukong', 'bajie', 'shaseng', 'tangseng'], amb: 'falls', games: ['Y1', 'Y2', 'Y3'], hi: '俺老孙又来了！' },
-  avengers2: { map: 2, isl: 'avengers', skin: 'avengers', base: 4, name: '复仇者·新岛', color: '#3A5CC0', color2: '#E23B3B', host: 'captain', runner: 'spiderman', chars: ['captain', 'ironman', 'hulk', 'thor'], amb: 'city', games: ['W1', 'W2', 'W3'], hi: '复仇者集结！' },
+  paw2:      { map: 2, isl: 'paw2', skin: 'paw', base: 2, name: '汪汪队·新岛', color: '#E8554A', color2: '#2E6FD8', host: 'ryder', runner: 'chase', chars: ['ryder', 'chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble'], amb: 'waves', games: ['D1', 'D2', 'D3'], hi: '汪汪队出发！' },
+  huluwa2:   { map: 2, isl: 'huluwa2', skin: 'huluwa', base: 3, name: '葫芦娃·新岛', color: '#46C27A', color2: '#E0473A', host: 'grandpa', runner: 'gourd3', chars: ['grandpa', 'gourd1', 'gourd2', 'gourd3', 'gourd4'], amb: 'wind', games: ['G1', 'G2', 'G3'], hi: '葫芦娃来啦！' },
+  xiyou2:    { map: 2, isl: 'xiyou2', skin: 'xiyou', base: 3, name: '西游记·新岛', color: '#F5B324', color2: '#D63B2F', host: 'wukong', runner: 'wukong', chars: ['wukong', 'bajie', 'shaseng', 'tangseng'], amb: 'falls', games: ['Y1', 'Y2', 'Y3'], hi: '俺老孙又来了！' },
+  avengers2: { map: 2, isl: 'avengers2', skin: 'avengers', base: 4, name: '复仇者·新岛', color: '#3A5CC0', color2: '#E23B3B', host: 'captain', runner: 'spiderman', chars: ['captain', 'ironman', 'hulk', 'thor'], amb: 'city', games: ['W1', 'W2', 'W3'], hi: '复仇者集结！' },
 });
 ORDER2.forEach(w => { MAXLV[w] = 5; WORLDS[w].games.forEach(g => { REQUIRED[g] = []; }); });
 Object.assign(CHARS, { catboy: ['猫小子', 'hop'], owlette: ['猫头鹰女', 'flip'], gekko: ['壁虎侠', 'squash'], pj_robot: ['机器人', 'nod'], luna_girl: ['月亮女孩', 'spin'], romeo: ['罗密欧', 'silly'] });
@@ -7435,7 +7444,7 @@ const W2 = {
   open() { return LIVE().every(passed) || !!Store.s.w2; },
   stars(w, g) { const ws = Store.w(w); return (ws.gstars && ws.gstars[g]) || 0; },
   gameDone(w, g) { const ws = Store.w(w); return !!(ws.gdone && ws.gdone[g]) || this.stars(w, g) >= 5; },
-  gameOpen(w, g) { const gs = WORLDS[w].games, i = gs.indexOf(g); return !!Store.s.w2all || i <= 0 || this.gameDone(w, gs[i - 1]); },
+  gameOpen(w, g) { const gs = WORLDS[w].games, i = gs.indexOf(g); return !!Store.s.w2all || !!Store.w(w).allOpen || i <= 0 || this.gameDone(w, gs[i - 1]) || this.gameDone(w, g); },   /* both worlds */
   islandDone(w) { return WORLDS[w].games.every(g => this.gameDone(w, g)); },
   allDone() { return ORDER2.every(w => this.islandDone(w)); },
   /* the difficulty of this game now: the island's start + one step for every 5 stars earned in it */
@@ -8235,27 +8244,27 @@ function w2Game(rule, spec) {
 }
 const PEP = ['peppa', 'george', 'daddy_pig', 'mummy_pig'], BLU = ['bluey', 'bingo', 'bandit', 'chilli'], PJ = ['catboy', 'owlette', 'gekko', 'pj_robot'];
 const PAW = ['ryder', 'chase', 'marshall', 'skye'], HLW = ['grandpa', 'gourd1', 'gourd2', 'gourd3'], XY = ['wukong', 'bajie', 'shaseng', 'tangseng'], AVG = ['captain', 'ironman', 'hulk', 'thor'];
-w2Game(MPattern, { id: 'Q1', world: 'peppa2', bg: 'peppa_porch', chars: PEP, host: 'peppa', icon: 'boots', items: ['boots', 'boots_blue', 'boots_yellow'] });
-w2Game(MDouble,  { id: 'Q2', world: 'peppa2', bg: 'peppa_bedroom', chars: ['george', 'peppa', 'mummy_pig'], host: 'george', icon: 'duck', item: 'duck' });
-w2Game(MBalance, { id: 'Q3', world: 'peppa2', bg: 'peppa_garden', chars: ['daddy_pig', 'peppa', 'george'], host: 'daddy_pig', icon: 'ball', item: 'ball', box: 'toybox' });
-w2Game(MShare,   { id: 'C1', world: 'bluey2', bg: 'bluey_kitchen', chars: BLU, host: 'chilli', icon: 'cookie', item: 'cookie' });
-w2Game(MSort,    { id: 'C2', world: 'bluey2', bg: 'bluey_shop', chars: ['bingo', 'bluey'], host: 'bingo', icon: 'apple', items: ['apple', 'banana', 'strawberry'] });
-w2Game(MDouble,  { id: 'C3', world: 'bluey2', bg: 'bluey_yard', chars: ['bluey', 'bingo'], host: 'bluey', icon: 'watermelon', item: 'watermelon' });
+w2Game(MPattern, { id: 'Q1', world: 'peppa2', bg: 'peppa_school', chars: PEP, host: 'peppa', icon: 'umbrella', items: ['umbrella', 'umbrella_blue', 'umbrella_yellow'] });
+w2Game(MDouble,  { id: 'Q2', world: 'peppa2', bg: 'peppa_beach', chars: ['george', 'peppa', 'mummy_pig'], host: 'george', icon: 'shell', item: 'shell' });
+w2Game(MBalance, { id: 'Q3', world: 'peppa2', bg: 'peppa_playground', chars: ['daddy_pig', 'peppa', 'george'], host: 'daddy_pig', icon: 'block', item: 'block', box: 'schoolbag' });
+w2Game(MShare,   { id: 'C1', world: 'bluey2', bg: 'bluey_picnic', chars: BLU, host: 'chilli', icon: 'sandwich', item: 'sandwich' });
+w2Game(MSort,    { id: 'C2', world: 'bluey2', bg: 'bluey_market', chars: ['bingo', 'bluey'], host: 'bingo', icon: 'orange', items: ['orange', 'pear', 'lemon'] });
+w2Game(MDouble,  { id: 'C3', world: 'bluey2', bg: 'bluey_creek', chars: ['bluey', 'bingo'], host: 'bluey', icon: 'ladybug', item: 'ladybug' });
 w2Game(MSeq,     { id: 'J1', world: 'pjmasks', bg: 'pj_city', chars: PJ, host: 'catboy', iconSrc: 'assets/thumbs/catboy.png', tileColor: '#4F7BFF' });
 w2Game(MPattern, { id: 'J2', world: 'pjmasks', bg: 'pj_hq', chars: ['owlette', 'gekko', 'pj_robot'], host: 'owlette', iconSrc: 'assets/thumbs/owlette.png', items: ['orb:#3F6BFF', 'orb:#E8414B', 'orb:#3DBE4E'] });
 w2Game(MShare,   { id: 'J3', world: 'pjmasks', bg: 'pj_park', chars: ['catboy', 'owlette', 'gekko'], host: 'gekko', iconSrc: 'assets/thumbs/gekko.png', item: 'ui_star' });
-w2Game(MSeq,     { id: 'D1', world: 'paw2', bg: 'paw_tower', chars: PAW, host: 'ryder', icon: 'policecar', tileColor: '#FF9A6C' });
-w2Game(MDouble,  { id: 'D2', world: 'paw2', bg: 'paw_control', chars: ['skye', 'chase'], host: 'skye', icon: 'kitten', item: 'kitten' });
-w2Game(MMeasure, { id: 'D3', world: 'paw2', bg: 'paw_rooftops', chars: ['marshall', 'ryder'], host: 'marshall', icon: 'firetruck', style: 'hose', blockColor: '#FFD34D' });
-w2Game(MSort,    { id: 'G1', world: 'huluwa2', bg: 'huluwa_meadow', chars: ['gourd1', 'grandpa'], host: 'gourd1', icon: 'magicgourd', items: ['gourd', 'gem', 'magicgourd'] });
-w2Game(MSeq,     { id: 'G2', world: 'huluwa2', bg: 'huluwa_vine', chars: ['gourd3', 'grandpa'], host: 'gourd3', icon: 'gourd', tileColor: '#7BCB5B' });
-w2Game(MBalance, { id: 'G3', world: 'huluwa2', bg: 'huluwa_cave', chars: ['grandpa', 'gourd2'], host: 'grandpa', icon: 'gem', item: 'gem', box: 'chest' });
-w2Game(MMeasure, { id: 'Y1', world: 'xiyou2', bg: 'xiyou_peak', chars: ['wukong', 'bajie'], host: 'wukong', icon: 'cloud', style: 'staff', blockColor: '#FFB3A8' });
-w2Game(MShare,   { id: 'Y2', world: 'xiyou2', bg: 'xiyou_peachgarden', chars: ['wukong', 'bajie', 'shaseng'], host: 'tangseng', icon: 'peach', item: 'peach' });
-w2Game(MBalance, { id: 'Y3', world: 'xiyou2', bg: 'xiyou_sky', chars: ['bajie', 'wukong'], host: 'bajie', icon: 'basket', item: 'peach', box: 'basket' });
-w2Game(MSort,    { id: 'W1', world: 'avengers2', bg: 'avengers_vault', chars: ['hulk', 'captain'], host: 'hulk', icon: 'crystal', items: ['gem', 'cube', 'coin'] });
-w2Game(MPattern, { id: 'W2', world: 'avengers2', bg: 'avengers_lab', chars: ['ironman', 'thor'], host: 'ironman', icon: 'cube', items: ['crystal', 'cube', 'gem'] });
-w2Game(MMeasure, { id: 'W3', world: 'avengers2', bg: 'avengers_rooftop', chars: ['thor', 'captain'], host: 'thor', icon: 'jet', style: 'beam', blockColor: '#B78CFF' });
+w2Game(MSeq,     { id: 'D1', world: 'paw2', bg: 'paw_city', chars: PAW, host: 'ryder', icon: 'policecar', tileColor: '#FF9A6C' });
+w2Game(MDouble,  { id: 'D2', world: 'paw2', bg: 'paw_farm', chars: ['skye', 'chase'], host: 'skye', icon: 'egg', item: 'egg' });
+w2Game(MMeasure, { id: 'D3', world: 'paw2', bg: 'paw_snow', chars: ['marshall', 'ryder'], host: 'marshall', icon: 'firetruck', style: 'hose', blockColor: '#FFD34D' });
+w2Game(MSort,    { id: 'G1', world: 'huluwa2', bg: 'huluwa_bamboo', chars: ['gourd1', 'grandpa'], host: 'gourd1', icon: 'corn', items: ['corn', 'radish', 'chili'] });
+w2Game(MSeq,     { id: 'G2', world: 'huluwa2', bg: 'huluwa_lotus', chars: ['gourd3', 'grandpa'], host: 'gourd3', icon: 'gourd', tileColor: '#7BCB5B' });
+w2Game(MBalance, { id: 'G3', world: 'huluwa2', bg: 'huluwa_village', chars: ['grandpa', 'gourd2'], host: 'grandpa', icon: 'mushroom', item: 'mushroom', box: 'bamboobasket' });
+w2Game(MMeasure, { id: 'Y1', world: 'xiyou2', bg: 'xiyou_palace', chars: ['wukong', 'bajie'], host: 'wukong', icon: 'cloud', style: 'staff', blockColor: '#FFB3A8' });
+w2Game(MShare,   { id: 'Y2', world: 'xiyou2', bg: 'xiyou_temple', chars: ['wukong', 'bajie', 'shaseng'], host: 'tangseng', icon: 'bun', item: 'bun' });
+w2Game(MBalance, { id: 'Y3', world: 'xiyou2', bg: 'xiyou_river', chars: ['bajie', 'wukong'], host: 'bajie', icon: 'grapes', item: 'grapes', box: 'basket' });
+w2Game(MSort,    { id: 'W1', world: 'avengers2', bg: 'avengers_hangar', chars: ['hulk', 'captain'], host: 'hulk', icon: 'bolt', items: ['bolt', 'shield', 'battery'] });
+w2Game(MPattern, { id: 'W2', world: 'avengers2', bg: 'avengers_space', chars: ['ironman', 'thor'], host: 'ironman', icon: 'energy', items: ['energy', 'energy_blue', 'energy_green'] });
+w2Game(MMeasure, { id: 'W3', world: 'avengers2', bg: 'avengers_park', chars: ['thor', 'captain'], host: 'thor', icon: 'jet', style: 'beam', blockColor: '#B78CFF' });
 
 /*@@W2END@@*/
 /*@@MORE@@*/

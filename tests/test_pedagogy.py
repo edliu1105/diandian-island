@@ -125,7 +125,7 @@ def main():
             reset(page)
             order = page.evaluate('ORDER')
             for i, w in enumerate(order):
-                log.check(page.evaluate('(w) => __state().worlds[w].unlocked', w), 'chain: %s is open before it is played (%s)' % (w, 'open from the start' if i < 2 else 'opened by the world before it'))
+                log.check(page.evaluate('(w) => __state().worlds[w].unlocked', w), 'chain: %s is open before it is played (%s)' % (w, 'open from the start' if i < 1 else 'opened by the world before it'))
                 sess = 0
                 while sess < 40 and not page.evaluate('(w) => __state().worlds[w].cleared', w):
                     play_session(page, w, games_all[w][sess % 4], 'right', seed=2000 + 50 * i + sess)
@@ -135,7 +135,7 @@ def main():
                 page.reload(); page.wait_for_function('window.__ready === true', timeout=20000); enter(page)   # every world across a reload
                 if i + 1 < len(order):
                     nxt = order[i + 1]
-                    if i + 1 >= 2:
+                    if i + 1 >= 1:      # one island at a time
                         log.check(page.evaluate('(w) => __state().worlds[w].unlocked', nxt), 'chain: %s opened by itself after %s (kept across a reload)' % (nxt, w))
             s_ = page.evaluate('() => __state()')
             log.check(page.evaluate('W2.open()'), 'chain: all six worlds cleared -> the gate to the second sea opens')
