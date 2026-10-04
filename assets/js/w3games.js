@@ -393,7 +393,7 @@ const MISS_PICS = (() => {
   };
 })();
 const MMissing = {
-  kind0: 'missing', verb: '看！', intro: '画少了什么？', praise: ['眼睛真亮！'],
+  kind0: 'missing', verb: '看！', intro: '看图找一找！', praise: ['眼睛真亮！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const pics = Object.keys(MISS_PICS).filter(k => MISS_PICS[k].lv <= d && MISS_PICS[k].lv >= Math.max(1, d - 2));
@@ -454,7 +454,7 @@ const MMissing = {
 
 /* ================================================================ Bluey U1 · 盒 equal groups: every box holds the same */
 const MGroups = {
-  kind0: 'groups', verb: '数！', intro: '每盒一样多！', praise: ['几个几个数，真快！'],
+  kind0: 'groups', verb: '数！', intro: '小蛋糕装盒啦！', praise: ['几个几个数，真快！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const spec = [null, [[2], [2, 3]], [[3], [2, 3]], [[2, 3, 4], [2, 3, 4]], [[3, 4, 5], [2, 3]], [[4, 5], [3, 4]]][d];
@@ -615,7 +615,7 @@ const MGrid = {
 
 /* ================================================================ Bluey U3 · 变 the magic cups: which cup hides the ball */
 const MCups = {
-  kind0: 'cups', verb: '变！', intro: '球在哪个杯子里？', praise: ['眼睛跟得真紧！'],
+  kind0: 'cups', verb: '变！', intro: '爸爸变魔术！', praise: ['眼睛跟得真紧！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const [n, swaps, ms] = [null, [3, 2, 760], [3, 3, 660], [3, 4, 560], [4, 4, 540], [4, 6, 460]][d];
@@ -797,7 +797,7 @@ const MOverlay = {
 
 /* ================================================================ 睡衣小英雄 K1 · 灯 light the windows just like the picture (copying a pattern) */
 const MLights = {
-  kind0: 'lights', verb: '点灯！', intro: '照样子点灯！', praise: ['一模一样！'],
+  kind0: 'lights', verb: '点灯！', intro: '帮小楼点灯！', praise: ['一模一样！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const [C, R, lit, nc] = [null, [3, 2, 2, 1], [3, 3, 3, 1], [3, 3, 5, 1], [4, 3, 5, 2], [4, 4, 7, 2]][d];
@@ -972,7 +972,7 @@ const MTicTac = {
 
 /* ================================================================ 睡衣小英雄 K4 · 俯 seen from above: Owlette's view (reasoning: viewpoint) */
 const MTopView = {
-  kind0: 'topview', verb: '看！', intro: '从上面看是什么？', praise: ['像猫头鹰一样看！'],
+  kind0: 'topview', verb: '看！', intro: '猫头鹰女飞起来！', praise: ['像猫头鹰一样看！'],
   pal: ['#FF6B5B', '#4FB3FF', '#5CC46E', '#FFC93C'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng, kinds = ['cube', 'cyl', 'prism'];
@@ -1086,8 +1086,8 @@ const MSums = {
     }
     return { k: [d, 'x'], kind: '+', a: 2, b: 1, res: 3, thing, full: false, opts: [{ s: [2, '+', 1], why: 'ok' }, { s: [2, '-', 1], why: 'op' }, { s: [3, '+', 1], why: 'a' }], answer: 0 };
   },
-  geo() { return K.L() ? { rock: { x: 300, y: 230, w: 430, h: 250 }, sea: 820, cy: 600, cw: 214, ch: 112 } : { rock: { x: 90, y: 240, w: 524, h: 300 }, sea: 600, cy: 760, cw: 206, ch: 110 }; },
-  decor(G) { W3X.decor2(G, this.chars, true); },
+  geo() { return K.L() ? { rock: { x: 50, y: 210, w: 420, h: 280 }, cx: 752, cy0: 214, cw: 466, ch: 122, gap: 16 } : { rock: { x: 90, y: 220, w: 524, h: 290 }, cx: 352, cy0: 590, cw: 620, ch: 114, gap: 12 }; },
+  decor(G) { if (K.L()) W3X.decor2(G, this.chars, true); else W2X.hideAll(G, this.chars); },
   spot(st, i, n) { const r = this.geo().rock, cols = Math.min(5, Math.max(3, Math.ceil(n / 2))), rows = Math.ceil(n / cols), c = i % cols, rr = Math.floor(i / cols), inRow = Math.min(cols, n - rr * cols); return { x: r.x + r.w / 2 + (c - (inRow - 1) / 2) * 84 - 38, y: r.y + r.h / 2 + (rr - (rows - 1) / 2) * 84 - 38 }; },
   place(st) {
     const g = this.geo();
@@ -1095,9 +1095,27 @@ const MSums = {
     const here = st.items.filter(o => !o.gone);
     here.forEach((o, i) => { const p = this.spot(st, i, here.length); place(o.e, p.x, p.y, 76, 76); });
     st.items.filter(o => o.gone).forEach(o => place(o.e, -300, -300, 76, 76));
-    if (st.cards) st.cards.forEach((c, i) => place(c, Stage.W / 2 + (i - 1) * (g.cw + 20) - g.cw / 2, g.cy - g.ch / 2, g.cw, g.ch));
+    if (st.cards) st.cards.forEach((c, i) => place(c, g.cx - g.cw / 2, g.cy0 + i * (g.ch + g.gap), g.cw, g.ch));      /* one number sentence per row (R10-2) */
   },
-  eqNode(s) { const d = el('div', ''); Object.assign(d.style, { display: 'flex', alignItems: 'center', gap: '4px', pointerEvents: 'none' }); s.forEach(t => { if (typeof t === 'number') d.appendChild(UI.qty(t, 46)); else { const o = el('span', '', d); o.textContent = t === '-' ? '−' : t; Object.assign(o.style, { font: '900 46px/1 system-ui, sans-serif', color: '#2B2118' }); } }); return d; },
+  /* a number sentence a child can check without reading: every number with its dots under it; after a minus the
+     number taken away is drawn crossed out (R10-2) */
+  dotsOf(n, crossed) {
+    const per = Math.max(1, Math.min(5, n)), rows = Math.max(1, Math.ceil(n / per)), g = 15, s = svg('svg', { viewBox: '0 0 ' + (per * g + 2) + ' ' + (rows * g + 2), width: per * g + 2, height: rows * g + 2 });
+    for (let i = 0; i < n; i++) { const x = 1 + g / 2 + (i % per) * g, y = 1 + g / 2 + Math.floor(i / per) * g; svg('circle', { cx: x, cy: y, r: 5.8, fill: crossed ? '#FFF8EC' : '#4FB3FF', stroke: '#2B2118', 'stroke-width': 2 }, s); if (crossed) svg('path', { d: 'M' + (x - 5) + ' ' + (y - 5) + 'L' + (x + 5) + ' ' + (y + 5), stroke: '#E8414B', 'stroke-width': 2.6, 'stroke-linecap': 'round' }, s); }
+    s.style.flexShrink = '0';
+    return s;
+  },
+  eqNode(s) {
+    const d = el('div', ''); Object.assign(d.style, { display: 'flex', alignItems: 'center', gap: '6px', pointerEvents: 'none' });
+    s.forEach((t, i) => {
+      if (typeof t === 'number') {
+        const col = el('div', '', d); Object.assign(col.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' });
+        if (digits()) col.appendChild(UI.num(t, 40));
+        col.appendChild(this.dotsOf(t, s[i - 1] === '-'));
+      } else { const o = el('span', '', d); o.textContent = t === '-' ? '−' : t; Object.assign(o.style, { font: '900 38px/1 system-ui, sans-serif', color: '#2B2118' }); }
+    });
+    return d;
+  },
   async present(st) {
     const q = st.q, my = st, w = q.thing[1];
     st.rockEl = W2X.thing(st, 10, 10, 3, ''); st.rockEl.innerHTML = '<svg viewBox="0 0 400 240" width="100%" height="100%" preserveAspectRatio="none"><path d="M10 200Q20 70 120 50Q200 20 290 50Q390 80 390 200Q300 236 200 230Q90 236 10 200Z" fill="#A9B4C2" stroke="#2B2118" stroke-width="7" stroke-linejoin="round"/><path d="M60 110Q120 80 170 96M240 70Q300 80 330 120" fill="none" stroke="#8892A0" stroke-width="7" stroke-linecap="round"/></svg>';
@@ -1216,7 +1234,7 @@ const MBadges = {
 
 /* ================================================================ 汪汪队 R3 · 圈 inside the fence or outside (a closed line has an inside) */
 const MFence = {
-  kind0: 'fence', verb: '找！', intro: '哪只在羊圈里？', praise: ['里外分得清！'],
+  kind0: 'fence', verb: '找！', intro: '小羊回家啦！', praise: ['里外分得清！'],
   /* the field: corridors (centre polylines, width cw) in a 0..100 x 0..100 box */
   shapes: {
     blob: { cw: 44, p: [[30, 40], [70, 40]], extra: [[50, 28], [50, 62]] },
@@ -1375,7 +1393,7 @@ const MPipes = {
 /* ================================================================ 葫芦娃 L1 · 涂 colour the fields: touching fields never the same colour */
 const MAP_COL = [['#E8414B', '红'], ['#FFC93C', '黄'], ['#4F7BFF', '蓝'], ['#5CC46E', '绿']];
 const MColorMap = {
-  kind0: 'colormap', verb: '涂！', intro: '挨着的不能同色！', praise: ['颜色涂得真聪明！'],
+  kind0: 'colormap', verb: '涂！', intro: '给山地涂颜色！', praise: ['颜色涂得真聪明！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const [C, R, k, nc, nb] = [null, [3, 3, 4, 3, 1], [4, 3, 5, 3, 2], [4, 4, 6, 3, 3], [5, 4, 7, 4, 3], [5, 4, 8, 4, 4]][d];
@@ -1437,7 +1455,7 @@ const MColorMap = {
     st.lines = W2X.thing(st, 10, 10, 4, ''); st.lines.appendChild(this.borders(st));
     st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {});
     this.paint(st); this.place(st);
-    st.cells.forEach((e, i) => K.pop(st, e, 20 * i));
+    st.cells.concat([st.lines]).forEach(e => st.scope.anim(e, [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 320, easing: EASE.pop, fill: 'backwards' }));   /* one piece (R10-3) */
     K.task(st, [[W3X.ic('<rect x="6" y="28" width="28" height="44" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><rect x="34" y="28" width="28" height="44" fill="#FFC93C" stroke="#2B2118" stroke-width="4"/><path d="M68 52L76 62L94 38" fill="none" stroke="#5CC46E" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>')], [W3X.ic('<rect x="6" y="28" width="28" height="44" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><rect x="34" y="28" width="28" height="44" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><path d="M70 36L92 64M92 36L70 64" stroke="#E8414B" stroke-width="8" stroke-linecap="round"/>')]]);
     W3X.say2(st, '点空地，涂颜色！', '挨着的不能同色！');
   },
@@ -1490,7 +1508,7 @@ const STROKE_FIGS = {
   house: { v: [[18, 44], [82, 44], [82, 92], [18, 92], [50, 8]], e: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 4], [4, 1], [0, 2], [1, 3]] },
 };
 const MStroke = {
-  kind0: 'stroke', verb: '画！', intro: '一笔画完它！', praise: ['一笔就画完啦！'],
+  kind0: 'stroke', verb: '画！', intro: '爷爷教画画！', praise: ['一笔就画完啦！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const pool = [null, ['bowtie', 'fish', 'tail'], ['sqdiag', 'kite', 'flag', 'bowtie'], ['domino', 'kite', 'fish', 'boat'], ['house', 'domino', 'boat'], ['house', 'domino', 'boat', 'flag']][d];
@@ -1763,6 +1781,8 @@ const MBaskets = {
     const q = st.q, F = FRUIT3[q.t], e = st.plateEls[q.answer];
     st.fr.filter(o => o.p === q.answer && o.f === q.t).forEach(o => K.hop(st, o.e, 16));
     K.ring(st, [box(e)], 6, '#FFC93C'); Sfx.reveal(); this.cheerAll(st);
+    /* and why not the others (R10-4): their fruit that breaks the rule shows itself */
+    st.scope.timeout(() => { if (!Session.alive(st)) return; K.flash(st, st.fr.filter(o => o.p !== q.answer && (q.mode === 'all' ? o.f !== q.t : o.f === q.t)).map(o => o.e)); }, 900);
     st.summary = q.mode === 'all' ? '全是' + F[1] + '！' : q.mode === 'none' ? '没有' + F[1] + '！' : '只有一个' + F[1] + '！';
     Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
@@ -1780,7 +1800,7 @@ const MBaskets = {
 /* ================================================================ 西游记 S2 · 钻 which cave door can they get through (wide enough AND tall enough) */
 const WALKERS = { bajie: [168, '八戒'], shaseng: [222, '沙僧'], tangseng: [208, '师父'], wukong: [150, '悟空'] };
 const MDoors = {
-  kind0: 'doors', verb: '钻！', intro: '从哪个门钻过去？', praise: ['大小比得真准！'],
+  kind0: 'doors', verb: '钻！', intro: '前面是山洞！', praise: ['大小比得真准！'],
   size(id) { const m = META[id], h = WALKERS[id][0]; return { w: Math.round(h * m[0] / m[1]), h }; },
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -1835,7 +1855,7 @@ const MDoors = {
 
 /* ================================================================ 西游记 S3 · 扇 the palm-leaf fans: which opens widest (angle, not size) */
 const MFans = {
-  kind0: 'fans', verb: '比！', intro: '哪把扇子张得大？', praise: ['角度看得真准！'],
+  kind0: 'fans', verb: '比！', intro: '芭蕉扇来啦！', praise: ['角度看得真准！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const ask = d <= 3 ? 'big' : d === 4 ? 'small' : 'same', n = d === 1 ? 2 : d === 5 ? 4 : 3;
@@ -2047,7 +2067,7 @@ const MSorter = {
     this.place(st);
     Object.values(st.nodes).forEach((e, i) => K.pop(st, e, 60 * i));
     K.task(st, [[W3X.ic('<polygon points="50,8 88,46 50,84 12,46" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><circle cx="50" cy="46" r="14" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><circle cx="18" cy="88" r="9" fill="#3FA34D"/><circle cx="82" cy="88" r="9" fill="#E8414B"/>')], ['q']]);
-    if (!st.G.toldGate) { st.G.toldGate = true; W3X.tip('是就走绿色，'); W3X.tip('不是走红色！'); }
+    if (!st.G.toldGate) { st.G.toldGate = true; W3X.tip('是就走绿色，'); W3X.tip('不是走红色！'); await st.scope.guard(Voice.afterSay(80)); if (!Session.alive(st)) return; }   /* the queue keeps three sentences (R10-1) */
     W3X.say2(st, this.ask(q.gates.g0), q.mode === 'where' ? '它会掉进哪个箱子？' : '谁会掉进这里？');
   },
   onGesture(st, name, p) {

@@ -3000,7 +3000,7 @@ const MapView = {
       fly = null;
       star.remove(); if (!live()) return;
       slot.classList.add('on'); Sfx.star();
-      Count.say(((cur - 1) % 10) + 1);
+      if (n > 1) Count.say(((cur - 1) % 10) + 1);          /* one star: no lone number after the goodbye (R10-4) */
       slot.animate([{ transform: 'scale(1.6)' }, { transform: 'scale(1)' }], { duration: T(240) + 1, easing: EASE.pop });
       if (cur % 10 === 0) {
         await new Promise(r => setTimeout(r, T(450)));
