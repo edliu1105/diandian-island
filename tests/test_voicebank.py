@@ -58,9 +58,21 @@ def map_flows():
         page.evaluate("MapView.tapIsland('festival')"); page.wait_for_timeout(800)
         page.evaluate("MapView.tapIsland('gate')"); page.wait_for_timeout(2500)
         page.evaluate("MapView.tapIsland('gate')"); page.wait_for_timeout(2500)
-        page.evaluate("() => { ORDER2.forEach(w => { const ws = Store.w(w); ws.unlocked = true; ws.gdone = {}; WORLDS[w].games.forEach(g => { ws.gdone[g] = true; }); }); Store.s.mapSet = 2; Store.save(); }"); rl()
+        page.evaluate("() => { ORDER2.forEach(w => { const ws = Store.w(w); ws.unlocked = true; ws.gstars = {}; WORLDS[w].games.forEach(g => { ws.gstars[g] = 5; }); }); Store.s.mapSet = 2; Store.save(); }"); rl()
         page.wait_for_timeout(3000)
         if page.evaluate("Screens.cur === 'finale'"): page.wait_for_timeout(5000); page.evaluate("gesture('home')")
+        if page.evaluate("typeof ORDER3 !== 'undefined'"):          # the sky: the gate turns gold, up to the sky, its islands, the rainbow castle
+            page.evaluate("() => { Store.s.fin2 = 'seen'; Store.s.mapSet = 2; Store.save(); }"); rl(); page.wait_for_timeout(3000)
+            page.evaluate("MapView.tapIsland('gate')"); page.wait_for_timeout(3000)
+            page.evaluate("MapView.tapIsland('bluey3')"); page.wait_for_timeout(700)
+            page.evaluate("MapView.tapIsland('rainbow')"); page.wait_for_timeout(700)
+            page.evaluate("MapView.tapIsland('peppa3')"); page.wait_for_timeout(700)
+            page.evaluate("() => { const b = MapView.panel && MapView.panel.querySelector('[data-game=\"E2\"]'); if (b) b.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); }")
+            page.evaluate("MapView.closePanel(true)")
+            page.evaluate("() => { ORDER3.forEach(w => { const ws = Store.w(w); ws.unlocked = true; ws.gstars = {}; WORLDS[w].games.forEach(g => { ws.gstars[g] = 5; }); }); Store.s.mapSet = 3; Store.save(); }"); rl()
+            page.wait_for_timeout(3000)
+            if page.evaluate("Screens.cur === 'finale'"): page.wait_for_timeout(5000); page.evaluate("gesture('home')")
+            page.evaluate("MapView.tapIsland('gate')"); page.wait_for_timeout(3000)
         log = page.evaluate("window.__speechLog.filter(e => e.ch === 'narr').map(e => [e.text, e.ev])")
         miss = page.evaluate("[...(window.__vmiss || [])]")
         br.close()
@@ -75,6 +87,7 @@ def main():
     with sync_playwright() as p, serve() as base:
         br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True); enter(page)
         ids = page.evaluate("() => Object.keys(WORLDS).flatMap(w => (WORLDS[w].games || []).map(g => [w, g])).filter(x => GAMES[x[1]])")
+        if os.environ.get('VB_WORLDS'): ids = [x for x in ids if x[0] in os.environ['VB_WORLDS'].split(',')]
         br.close()
     with Pool(jobs) as pool:
         res = pool.map(play, [ids[i::jobs] for i in range(jobs)])

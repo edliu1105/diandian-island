@@ -125,7 +125,7 @@ def new_page(browser, base, vw=1180, vh=820, fast=True, no_speech=False, hint_sc
     page.on('requestfailed', on_fail)
     page.errors = errors
     page.env_errors = env
-    page.goto(base + 'index.html')
+    page.goto(base + os.environ.get('KM_PAGE', 'index.html'))     # KM_PAGE: test another copy of the page
     page.wait_for_function('window.__ready === true', timeout=20000)
     return page
 

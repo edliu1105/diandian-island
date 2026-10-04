@@ -128,8 +128,9 @@ def part5(p, base, log):
         log.check(again is not None and glow is not None and glow > again, '5 %s 5 s: the question is said again, the work glows after it (+%s ms)' % (g, None if again is None or glow is None else glow - again))
         log.check(wave is not None and any(h > wave + 600 for h in hands) and not any(wave - 50 < h < wave + 600 for h in hands),
                   '5 %s 10 s: the host waves first, the gesture comes after the wave' % g)
-        log.check(yawn is not None and any(h >= yawn + 1000 for h in hands) and not any(yawn - 50 < h < yawn + 1000 for h in hands),
-                  '5 %s 15 s: the host yawns (little z), then the hand points - never both at once' % g)
+        waves = t.get('wave', [])
+        log.check(len(waves) >= 2 and len(hands) <= 1 and any(a2 > waves[1] - 50 for a2 in (t.get('say-again') or [])),
+                  '5 %s 15 s (client rule: never show the answer): the host waves again, a kind word and the question again - the hand does not come back (hands %d)' % (g, len(hands)))
         friends = [x for x in tl if x[0] == 'glance' and again is not None and x[2] < again - 200]
         log.check(len(friends) == (1 if mates else 0), '5 %s thinking time: %s glances at the child before the first hint (%s; friends on stage %s)' % (g, 'one friend' if mates else 'nobody (no friend on stage)', [x[1] for x in friends], mates))
         cur = real_answer(page, gen)

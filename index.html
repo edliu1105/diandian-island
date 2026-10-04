@@ -528,7 +528,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 /* ---------------------------------------------------------------- storage (versioned, corruption tolerant) */
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
-function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, gate: { cool: 0, last: '' } }; }
+function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, star5: true, gate: { cool: 0, last: '' } }; }
 const Store = {
   s: null,
   load() {
@@ -579,6 +579,7 @@ const Store = {
       t.pass = w.pass === true; t.allOpen = w.allOpen === true;              /* passed / all games open by the old world-1 rule */
       t.gstars = {}; t.gdone = {};                                          /* stars per game, games played through */
       for (const g of WORLDS[id].games) { if (w.gstars && typeof w.gstars[g] === 'number') t.gstars[g] = Math.round(num(w.gstars[g], 0, 0, 1e6)); if (w.gdone && w.gdone[g] === true) t.gdone[g] = true; }
+      if (w.keep && typeof w.keep === 'object') { t.keep = {}; for (const g of WORLDS[id].games) if (w.keep[g] === true) t.keep[g] = true; }   /* sea 1 as earned before the 5-star rule */
       t.lastKey = typeof w.lastKey === 'string' ? w.lastKey.slice(0, 80) : '';
       t.demo = {};
       if (w.demo && typeof w.demo === 'object') for (const k in w.demo) if (/^[A-Z]\d$/.test(k) && w.demo[k] === true) t.demo[k] = true;
@@ -586,7 +587,7 @@ const Store = {
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
-    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
+    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
     return d;
@@ -2074,7 +2075,8 @@ const Session = {
     $('#avatar img').src = 'assets/thumbs/' + (G.game.host || W.host) + '.png';
     $('#avatar').style.background = W.color;
     const tray = $('#tray'); tray.innerHTML = '';
-    for (let i = 0; i < 5; i++) el('i', '', tray);
+    G.trayBase = W2.gameDone(G.world, G.id) ? 0 : Math.min(4, W2.stars(G.world, G.id));      /* 5 in the tray = the next game */
+    for (let i = 0; i < 5; i++) el('i', i < G.trayBase ? 'on' : '', tray);
     /* rotation: drop any gesture in flight, re-lay the scene, then the question (task card, cards, done button) */
     Stage.onRelayout = () => {
       Input.abort();
@@ -2149,13 +2151,14 @@ const Session = {
     return null;
   },
   async round(G) {
-    let err = 0, same = null;
+    let err = 0;
     const pr = this.probeFor(G);
     let kind = pr ? pr.kind : null, level = pr ? pr.level : null;
     while (!G.dead) {
       const guided = false;          /* client rule: never lead the child to the answer (was: after two wrong answers) */
-      /* client rule: after a wrong answer the SAME question comes again - the child works it out, nobody shows it */
-      const st = this.newQ(G, { guided, retest: err > 0, err, kind, level, probe: !!pr, same });
+      /* client rule: after a wrong answer a NEW question of the same kind and level (the same one again could be solved by
+         trying every option); nobody shows the answer, and the round's star is gone (first try only) */
+      const st = this.newQ(G, { guided, retest: err > 0, err, kind, level, probe: !!pr });
       /* R2-J03: after a wrong answer the retest keeps the skill and the kind (new numbers / positions / layout) */
       kind = st.kind; level = st.level;
       const res = await this.runQ(G, st);
@@ -2169,7 +2172,7 @@ const Session = {
         if (!err) await this.reward(G, st);          /* client rule: a question with a mistake earns no star */
         return 'ok';
       }
-      err++; same = st.q;
+      err++;
     }
     return 'dead';
   },
@@ -2262,7 +2265,7 @@ const Session = {
     { const gs = G.ws.gstars || (G.ws.gstars = {}); gs[G.id] = (gs[G.id] || 0) + 1; }
     Store.save();
     const slots = $$('#tray i');
-    const slot = slots[Math.min(G.stars, slots.length) - 1];
+    const slot = slots[Math.min((G.trayBase || 0) + G.stars, slots.length) - 1];
     if (!slot) return;
     const sr = slot.getBoundingClientRect();
     const star = img('assets/props/ui_star.png', '', $('#fx'));
@@ -2370,8 +2373,8 @@ const Session = {
     Mastery.sessionEnd(G);
     const wid = G.world, stars = G.stars, lvUp = !!G.levelUp;
     let newGame = null;
-    (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through once: the next game (and maybe the next island) opens */
-    if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (stars or played through) */
+    (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through (a record only: a game is done with 5 stars) */
+    if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (its 5th star) */
     if (G.W.map === 2) W2.check(true); else Unlock.check(true);
     Store.save();
     this.teardown(G);
@@ -2775,11 +2778,18 @@ const MapView = {
         th.style.filter = ic.style.filter = 'grayscale(1) brightness(.75)';
         const lk = el('span', '', m); lk.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><rect x="9" y="18" width="22" height="17" rx="4" fill="#FFC93C" stroke="#2B2118" stroke-width="3"/><path d="M13 18V13a7 7 0 0 1 14 0v5" fill="none" stroke="#2B2118" stroke-width="3.5"/></svg>';
         Object.assign(lk.style, { position: 'absolute', width: '46%', height: '46%', right: '-6%', bottom: '-6%' });
-      } else if (W2.gameDone(id, g)) {      /* played: a check */
+      } else if (W2.gameDone(id, g)) {      /* 5 stars: a check */
         const ok = el('span', '', m); ok.innerHTML = ICONS.check; Object.assign(ok.style, { position: 'absolute', width: '38%', height: '38%', right: '-4%', bottom: '-4%', background: '#5CC46E', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118' });
       }
+      if (!locked) {                        /* its stars so far: 5 small stars filling up (5 = the next game opens) */
+        const n = W2.gameDone(id, g) ? 5 : Math.min(5, W2.stars(id, g)), sz = Math.round(M / 5.6);
+        const row = el('div', 'gstars', p); row.dataset.n = n;
+        Object.assign(row.style, { position: 'absolute', left: (x - M / 2) + 'px', top: (y + M / 2 + 8) + 'px', width: M + 'px', display: 'flex', justifyContent: 'center', gap: '1px', pointerEvents: 'none' });
+        for (let k = 0; k < 5; k++) { const s = img('assets/props/ui_star.png', '', row); Object.assign(s.style, { width: sz + 'px', height: sz + 'px', filter: k < n ? 'drop-shadow(0 2px 0 rgba(43,33,24,.35))' : 'grayscale(1) brightness(1.6) opacity(.55)' }); }
+        row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(300) + 1, delay: T(80 * i + 200), fill: 'backwards' });
+      }
       tapify(m, () => {
-        if (locked) { m.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-10px)' }, { transform: 'translateX(10px)' }, { transform: 'translateX(0)' }], { duration: T(360) + 1 }); Voice.sayNow('先玩亮着的！', { tag: 'map' }); return; }
+        if (locked) { m.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-10px)' }, { transform: 'translateX(10px)' }, { transform: 'translateX(0)' }], { duration: T(360) + 1 }); Voice.sayNow('先集满五颗星！', { tag: 'map' }); return; }
         this.closePanel(true); Session.start(id, g);
       });
     });
@@ -2788,7 +2798,7 @@ const MapView = {
     const fp = el('div', 'flagpole', fs); fp.innerHTML = FLAG_HTML(id);
     Object.assign(fp.style, { left: (FS * 0.28) + 'px', top: (FS * 0.5 - 30) + 'px', height: '64px', filter: has ? '' : 'grayscale(1) opacity(.45)' });
     fs.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: T(320) + 1, delay: T(80 * games.length), easing: EASE.pop, fill: 'backwards' });
-    tapify(fs, () => { fs.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-8deg)' }, { transform: 'rotate(8deg)' }, { transform: 'rotate(0)' }], { duration: T(400) + 1 }); Voice.sayNow(has ? '旗子插好啦！' : '都玩过就有旗子！', { tag: 'map' }); });
+    tapify(fs, () => { fs.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-8deg)' }, { transform: 'rotate(8deg)' }, { transform: 'rotate(0)' }], { duration: T(400) + 1 }); Voice.sayNow(has ? '旗子插好啦！' : '集满星星有旗子！', { tag: 'map' }); });
   },
   recGame(id) {
     const W = WORLDS[id], ws = Store.w(id);
@@ -3048,11 +3058,11 @@ const Parent = {
       const td = el('td', '', tr); const fs = el('select', '', td);
       for (let l = 1; l <= MAXLV[id]; l++) { const o = el('option', '', fs, { text: 'L' + l, value: l }); if (l === ws.floor) o.selected = true; }
       fs.addEventListener('change', () => { ws.floor = Number(fs.value); if (ws.level < ws.floor) ws.level = ws.floor; Store.save(); });
-      el('td', '', tr, { html: '<b>过关（4 个都玩过，插旗）：</b>' + WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' 开' : ' 锁')).join(' ') + (passed(id) ? ' → 已插旗' : '') + '<br><b>掌握（只作参考）：</b>' + rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
+      el('td', '', tr, { html: '<b>过关（每个小游戏 5 颗星，插旗）：</b>' + WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' 开' : ' 锁') + W2.stars(id, g) + '★').join(' ') + (passed(id) ? ' → 已插旗' : '') + '<br><b>掌握（只作参考）：</b>' + rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
       el('td', '', tr, { text: ws.stars });
     });
     if (W2.open()) {
-      el('h3', '', sh, { text: '第二片海（每个小游戏玩完一次或拿 5 颗星，开下一个）' });
+      el('h3', '', sh, { text: '第二片海（每个小游戏拿满 5 颗星才开下一个；答错的题不给星，换一道新题）' });
       const t2 = el('table', '', sh); t2.innerHTML = '<tr><th>岛</th><th>开放</th><th>小游戏（✓ 已过 · 星）</th><th>难度</th></tr>';
       ORDER2.forEach(id => { const ws = Store.w(id), tr = el('tr', '', t2); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: ws.unlocked ? (W2.islandDone(id) ? '已过关' : '开放') : '未开放' });
         el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
@@ -3320,6 +3330,15 @@ function boot() {
       if (ws.pass || ws.unlocked) ws.allOpen = true;          /* the old rule had every game of an open island open */
     });
     Store.s.seq1 = true; Store.save();
+  }
+  if (!Store.s.star5) {                         /* a save from before "5 stars open the next game" */
+    LIVE().forEach(w => {                        /* sea 1 stays as it was earned: passed islands, checked games */
+      const ws = Store.w(w);
+      WORLDS[w].games.forEach(g => { if (ws.gdone && ws.gdone[g]) (ws.keep || (ws.keep = {}))[g] = true; });
+      if (ws.pass || WORLDS[w].games.every(g => W2.gameDone(w, g))) ws.pass = true;
+    });
+    if (Store.s.fin2 === 'due' && !W2.allDone()) Store.s.fin2 = '';             /* sea 2: only 5 stars count from now on */
+    Store.s.star5 = true; Store.save();
   }
   Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
   W2.check(false);
@@ -7551,8 +7570,10 @@ const W2 = {
   /* world 2 opens when world 1 is passed (or a parent opened everything) */
   open() { return LIVE().every(passed) || !!Store.s.w2; },
   stars(w, g) { const ws = Store.w(w); return (ws.gstars && ws.gstars[g]) || 0; },
-  gameDone(w, g) { const ws = Store.w(w); return !!(ws.gdone && ws.gdone[g]) || this.stars(w, g) >= 5; },
-  gameOpen(w, g) { const gs = WORLDS[w].games, i = gs.indexOf(g); return !!Store.s.w2all || !!Store.w(w).allOpen || i <= 0 || this.gameDone(w, gs[i - 1]) || this.gameDone(w, g); },   /* both worlds */
+  /* done: 5 stars in it (client rule) - or kept from sea 1 as it was earned before the rule (ws.keep) */
+  gameDone(w, g) { const ws = Store.w(w); return this.stars(w, g) >= 5 || !!(ws.keep && ws.keep[g]); },
+  /* open: the first game, the game before it done, or played already (nothing played is locked again) */
+  gameOpen(w, g) { const gs = WORLDS[w].games, i = gs.indexOf(g); return !!Store.s.w2all || !!Store.w(w).allOpen || i <= 0 || this.gameDone(w, gs[i - 1]) || this.gameDone(w, g) || played(w, g) || this.stars(w, g) > 0; },   /* both worlds */
   islandDone(w) { return WORLDS[w].games.every(g => this.gameDone(w, g)); },
   allDone() { return ORDER2.every(w => this.islandDone(w)); },
   /* the difficulty of this game now: the island's start + one step for every 5 stars earned in it */
@@ -8359,7 +8380,7 @@ const MMeasure = {
 
 /* ================================================================ WORLD 2 · new rules (client: no two games with the same
    logic - each island plays its own; the fourth game of every island is a reasoning test like a gifted-school entrance
-   test). The answer is never shown: a wrong answer is named, the same question comes again (Session.round). */
+   test). The answer is never shown: a wrong answer is named, then a NEW question of the same kind (Session.round). */
 const W2X = {
   ink: '#2B2118',
   pal: ['#FF6B5B', '#4FB3FF', '#5CC46E', '#FFC93C', '#B57BFF', '#FF9F43', '#3DD6C6'],

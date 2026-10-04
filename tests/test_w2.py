@@ -87,7 +87,7 @@ with sync_playwright() as p, serve() as base:
     st = page.evaluate("() => { Store.w('bluey2').gstars = { C1: 5 }; return W2.gameOpen('bluey2', 'C2'); }")
     log.check(st, '5 stars in C1 open C2 without playing it through')
     # all seven islands played: the lantern island opens and the finale plays (with the pajama heroes)
-    page.evaluate("() => { ORDER2.forEach(w => { const ws = Store.w(w); ws.unlocked = true; ws.gdone = {}; WORLDS[w].games.forEach(g => { ws.gdone[g] = true; }); }); Store.save(); }")
+    page.evaluate("() => { ORDER2.forEach(w => { const ws = Store.w(w); ws.unlocked = true; ws.gstars = {}; WORLDS[w].games.forEach(g => { ws.gstars[g] = 5; }); }); Store.save(); }")
     page.evaluate("window.__go('avengers2', 'W4', 0, {noDemo: true, seed: 4})")
     for i in range(8):
         try:
