@@ -34,7 +34,7 @@ for a in range(0, 11):
         if a + b <= 10: out.add(CN[a] + '加' + CN[b] + '等于' + CN[a + b] + '！')
         if b < a: out.add(CN[a] + '减' + CN[b] + '等于' + CN[a - b] + '！')
 for r in range(0, 14): out |= {'等于' + CN[r] + '！', '不是等于' + CN[r]}
-for x in range(1, 10): out.add('放进' + CN[x] + '个，')
+for x in range(1, 10): out.add('放进' + Q(x) + '个，')
 for k in range(1, 5): out |= {'每次多' + Q(k) + '个！', '每次少' + Q(k) + '个！'}
 for n in range(1, 13): out |= {'一共' + Q(n) + '种！', '不是' + Q(n) + '种'}
 for n in range(2, 21): out |= {'一共' + Q(n) + '个！', '不是' + Q(n) + '个'}
@@ -44,7 +44,7 @@ for w in ('两', '三', '四'): out |= {w + '块不一样大', '这是' + w + '�
 for w in ('球形', '方块形', '圆柱形', '圆锥形'): out |= {'这是' + w + '的', '都是' + w + '！'}
 for n in ('轮子', '车灯', '门', '窗户', '烟囱', '把手', '尾巴', '眼睛', '鱼鳍', '伞把', '桌子腿', '耳朵', '鼻子', '胡子', '翅膀', '壶嘴', '盖子', '花瓣', '叶子', '一格', '一个角', '一道光', '指针', '一个点', '一个点点'):
     out.add('少了' + n + '！')
-out |= {'飞到云上啦！', '飞到云上去！', '彩虹城堡开啦！', '先集满五颗星！', '集满星星有旗子！'}
+out |= {'飞到云上啦！', '飞到云上去！', '彩虹城堡开啦！', '先集满五颗星！', '集满星星有旗子！', '集满啦！', '云上大派对！'}
 out = {t for t in out if CJK.search(t)}
 too_long = sorted(t for t in out if len(re.sub(r'[，。！？、]', '', t)) > 8)
 p = os.path.join(ROOT, 'raw', 'voice_lines.json')

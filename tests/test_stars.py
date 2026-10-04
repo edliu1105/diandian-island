@@ -69,6 +69,7 @@ def rules(log):
         log.check(page.evaluate("JSON.stringify(window.__speechLog).includes('先集满五颗星')") and page.evaluate("!Session.G"), 'a locked game: "先集满五颗星！", it does not start')
         page.evaluate("MapView.closePanel(true)")
         # next session: the tray starts with the stars already earned; the 5th star opens Q2
+        page.evaluate("() => { window.__said = []; const o = Voice.say.bind(Voice); Voice.say = (t, opt) => { window.__said.push(t); return o(t, opt); }; }")   # (fast mode lets queued words go)
         page.evaluate("window.__go('peppa2', 'Q1', 0, {noDemo: true, seed: 4})")
         page.wait_for_function("!!Session.st", timeout=20000)
         tray = page.evaluate("document.querySelectorAll('#tray i.on').length")
@@ -80,8 +81,9 @@ def rules(log):
                 break
             if page.evaluate("!Session.G"): break
         wait_map(page, timeout=60000); page.wait_for_timeout(1500)
-        st = page.evaluate("() => ({ stars: W2.stars('peppa2', 'Q1'), done: W2.gameDone('peppa2', 'Q1'), q2: W2.gameOpen('peppa2', 'Q2'), said: JSON.stringify(window.__speechLog).includes('新游戏开啦'), panel: !!MapView.panel })")
+        st = page.evaluate("() => ({ stars: W2.stars('peppa2', 'Q1'), done: W2.gameDone('peppa2', 'Q1'), q2: W2.gameOpen('peppa2', 'Q2'), said: JSON.stringify(window.__speechLog).includes('新游戏开啦'), full: (window.__said || []).includes('集满啦！'), panel: !!MapView.panel })")
         log.check(st['done'] and st['q2'] and st['said'] and st['panel'], '5 stars: Q1 done, Q2 opens, "新游戏开啦！" with the panel %s' % st)
+        log.check(st['full'] and st['stars'] == 5, 'the 5th star is a moment: "集满啦！" and the session ends there (5 stars, not 6 or 7) %s' % st)
         log.check(not page.errors, 'rules: zero page errors %s' % page.errors[:3])
         # ---- an old save: sea 1 played through (some games < 5 stars), sea 2 peppa2 played through with 2 stars each
         page.evaluate("""() => {

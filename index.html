@@ -2052,6 +2052,7 @@ const Session = {
     };
     ws.visits++; ws.sessions++; Store.save();
     { const gl = W.games; G.nx = gl[gl.indexOf(gameId) + 1] || null; G.nxWas = G.nx ? W2.gameOpen(worldId, G.nx) : true; }
+    G.wasDone = W2.gameDone(worldId, gameId);          /* the 5th star in this session is a moment (R9-1) */
     Voice.enter('game');
     MapView.closePanel(true);
     await Loader.run(G);
@@ -2069,7 +2070,7 @@ const Session = {
     for (G.round = 0; G.round < G.rounds && !G.dead; G.round++) {
       if (G.round >= 3 && Clock.t() - G.t0 > 150000 && !fast()) break;
       const r = await this.round(G);
-      if (r === 'stop') break;
+      if (r === 'stop' || G.full) break;                 /* 5 stars: the next game is open - back to the map */
     }
     if (!G.dead) await this.finish(G);
   },
@@ -2139,17 +2140,22 @@ const Session = {
   genQ(G, level, kind) {
     const g = G.game, ws = G.ws;
     const want = G.wantRank = bagPick(G, 'rank', ['min', 'mid', 'max']);
-    let q = null, keep = null, met = false;
-    for (let i = 0; i < 40; i++) {
+    let q = null, keep = null, met = false, again = null;
+    const seen = G.seenKeys || (G.seenKeys = new Set());
+    for (let i = 0; i < 60; i++) {
       G.rankMiss = false;
       q = g.gen(G, { level, kind, rng: G.rng });
-      if (g.key(q) === ws.lastKey) continue;
+      const k = g.key(q);
+      if (k === ws.lastKey) continue;
+      if (seen.has(k)) { if (!again) again = q; continue; }       /* asked already in this session (R9-7): another one if there is one */
       if (!G.rankMiss) { keep = q; met = true; break; }
       if (!keep) keep = q;
     }
     if (!met) G.bags.rank.unshift(want);          /* could not be dealt now: it comes first next time (long-run balance) */
     G.wantRank = null; G.rankMiss = false;
-    return keep || q;
+    const out = keep || again || q;
+    seen.add(g.key(out));
+    return out;
   },
   /* J01-b: a required kind of evidence that the child's current level never asks -> ask it once, at its own level */
   probeFor(G) {
@@ -2286,6 +2292,18 @@ const Session = {
     star.remove();
     slot.classList.add('on');
     slot.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: T(260) + 1, easing: EASE.pop });
+    if (!G.wasDone && !G.full && W2.gameDone(G.world, G.id)) { G.full = true; await this.fullTray(G); }
+  },
+  /* all five stars of this game: the tray glows star by star, a fanfare and "集满啦！" (then the session ends) */
+  async fullTray(G) {
+    const slots = $$('#tray i'), tray = $('#tray');
+    slots.forEach((s, i) => { s.classList.add('on'); s.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.45) rotate(18deg)' }, { transform: 'scale(1)' }], { duration: T(420) + 1, delay: T(90 * i), easing: EASE.pop }); });
+    tray.animate([{ boxShadow: '0 0 0 0 rgba(255,201,60,0)' }, { boxShadow: '0 0 0 10px rgba(255,201,60,.9), 0 0 36px 14px rgba(255,214,90,.85)' }, { boxShadow: '0 0 0 0 rgba(255,201,60,0)' }], { duration: T(1500) + 1, easing: 'ease-in-out' });
+    Sfx.fanfare(); Fx.confetti(50);
+    Object.values(G.actors).filter(a => !a.math).forEach((a, i) => G.scope.timeout(() => a.cheer(), 200 + i * 110));
+    Voice.say('集满啦！', { tag: 'praise' });
+    await G.scope.guard(Promise.race([Voice.afterSay(150), G.scope.wait(2400)]));      /* the words are heard before the map */
+    await G.scope.wait(500);
   },
   /* D04: the friends react to the child's answer together - everyone turns to where it happened, then a wave of cheers */
   cheer(G, st) {
@@ -2739,7 +2757,7 @@ const MapView = {
       const I = this.isl[id], fin = id === 'rainbow' ? Store.s.fin3 : Store.s.fin2;
       if (id === 'gate' ? (this.set > 1 || W2.open()) : fin) {
         if (id === 'gate' && (this.set > 1 || Store.s.gateShown)) { this.sail(); return; }
-        if (id !== 'gate' && fin === 'seen') { Finale.play(); return; }
+        if (id !== 'gate' && fin === 'seen') { Finale.play(id === 'rainbow' ? 'sky' : undefined); return; }
         this.specials(this.liveTok()); return;               /* its show had not played yet */
       }
       I.cloud.animate([{ transform: 'translate(-50%,-50%)' }, { transform: 'translate(-56%,-50%)' }, { transform: 'translate(-44%,-50%)' }, { transform: 'translate(-50%,-50%)' }], { duration: T(420) + 1 });
@@ -2772,7 +2790,7 @@ const MapView = {
     const W = WORLDS[id], ws = Store.w(id);
     Voice.sayNow(line || W.hi, { tag: line ? 'unlock' : 'map' });      /* line: "新游戏开啦！" replaces the greeting */
     const p = this.panel = el('div', '', $('#map'));
-    Object.assign(p.style, { position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,44,74,.58)' });
+    Object.assign(p.style, { position: 'absolute', inset: 0, zIndex: 30, background: this.set === 3 ? 'rgba(18,34,78,.74)' : 'rgba(12,44,74,.58)' });
     tapify(p, () => this.closePanel(), { silent: true });
     const vw = window.innerWidth, vh = window.innerHeight, S = Math.min(vw, vh);
     const cx = vw / 2, cy = vh / 2;
@@ -2900,7 +2918,7 @@ const MapView = {
       await this.openShow('rainbow', '彩虹城堡开啦！');
       if (live()) this.pointAt('rainbow');
       await new Promise(r => setTimeout(r, T(2200)));
-      if (live()) Finale.play();
+      if (live()) Finale.play('sky');
       return true;
     }
     return false;
@@ -3151,12 +3169,12 @@ const Parent = {
 /* ================================================================ FINALE (all 39 friends, fireworks, a group photo) */
 const Finale = {
   sc: null,
-  play() {
+  play(kind) {
     this.stop();
     const sc = this.sc = new Scope(APP);
     Store.s.finaleSeen = true; Store.s.finaleDue = false; Store.save();
     const F = $('#finale');
-    $('.fbg', F).style.backgroundImage = 'url(assets/bg/finale.jpg)';
+    $('.fbg', F).style.backgroundImage = 'url(assets/bg/' + (kind === 'sky' ? 'finale_sky' : 'finale') + '.jpg)';      /* the sky: the rainbow castle party */
     const crowd = $('.crowd', F); crowd.innerHTML = '';
     Screens.show('finale');
     const home = el('button', 'btn', F); home.id = 'fhome';
@@ -3179,7 +3197,7 @@ const Finale = {
         sc.timeout(() => sc.anim(im, [{ transform: 'translateX(-50%) translateY(0)' }, { transform: 'translateX(-50%) translateY(-14px)' }, { transform: 'translateX(-50%) translateY(0)' }], { duration: 520 + (i % 3) * 90, iterations: Infinity, delay: (i * 97) % 400 }), 1600);
       });
     });
-    Voice.say('大家一起庆祝！', { tag: 'finale' });
+    Voice.say(kind === 'sky' ? '云上大派对！' : '大家一起庆祝！', { tag: 'finale' });
     Sfx.fanfare();
     this.fireworks(sc);
     sc.timeout(() => { Voice.say('一起拍照，茄子！', { tag: 'finale' }); }, 3500);

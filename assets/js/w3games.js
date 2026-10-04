@@ -160,24 +160,25 @@ const MStory = {
   frame(fr) { const s = svg('svg', { viewBox: '0 0 120 120', width: '100%', height: '100%' }); s.innerHTML = SEQ_ART[fr.art][fr.f]; s.style.pointerEvents = 'none'; return s; },
   geo(st) {
     const L = K.L(), n = st.q.n, m = st.q.frames.length;
-    return L ? { slot: 148, sy: 228, sx: 450, sgap: 22, card: 128, py: 512, px: 450, pgap: 18, per: m } : { slot: 150, sy: 360, sx: 352, sgap: 14, card: 136, py: 640, px: 352, pgap: 18, per: 3 };
+    /* the slots stand on the floor, an arrow between each two (left to right: first, then) (R9-8) */
+    return L ? { slot: 138, sy: 400, sx: 450, sgap: 44, card: 124, py: 592, px: 450, pgap: 16, per: m } : { slot: 140, sy: 470, sx: 352, sgap: 30, card: 136, py: 690, px: 352, pgap: 18, per: 3 };
   },
   decor(G) { const L = K.L(), a = G.actors[this.chars[0]]; W2X.hideAll(G, this.chars); if (a) showActor(a, L ? 944 : 634, L ? 698 : 1016, L ? 170 : 136); },
   slotXY(st, i) { const g = this.geo(st); return W3X.row(st.q.n, g.sx, g.sy, g.slot, g.sgap)[i]; },
   poolXY(st, i) { const g = this.geo(st); return W3X.row(st.q.frames.length, g.px, g.py, g.card, g.pgap, g.per)[i]; },
   place(st) {
     const g = this.geo(st);
-    st.slots.forEach((e, i) => { const p = this.slotXY(st, i); place(e, p.x, p.y, g.slot, g.slot); place(st.nums[i], p.x + g.slot / 2 - 20, p.y - 46, 40, 40); });
+    st.slots.forEach((e, i) => { const p = this.slotXY(st, i); place(e, p.x, p.y, g.slot, g.slot); if (st.arrows[i]) place(st.arrows[i], p.x + g.slot + 2, p.y + g.slot / 2 - 18, g.sgap - 4, 36); });
     st.cardsE.forEach((o, k) => { if (o.at != null) { const p = this.slotXY(st, o.at); place(o.e, p.x + 6, p.y + 6, g.slot - 12, g.slot - 12); } else { const p = this.poolXY(st, o.home); place(o.e, p.x, p.y, g.card, g.card); } });
   },
   async present(st) {
     const q = st.q;
     st.slots = Array.from({ length: q.n }, () => { const e = W2X.thing(st, 10, 10, 3, ''); Object.assign(e.style, { borderRadius: '22px', border: '5px dashed rgba(43,33,24,.5)', background: 'rgba(255,255,255,.45)' }); return e; });
-    st.nums = st.slots.map((_, i) => { const b = W2X.thing(st, 40, 40, 4, ''); Object.assign(b.style, { borderRadius: '50%', background: '#FFF8EC', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); b.appendChild(UI.qty(i + 1, 26)); return b; });
+    st.arrows = st.slots.slice(1).map(() => { const b = W2X.thing(st, 40, 36, 4, ''); b.innerHTML = '<svg viewBox="0 0 40 36" width="100%" height="100%"><path d="M4 18H30M22 8L34 18L22 28" fill="none" stroke="#2B2118" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 18H30M22 8L34 18L22 28" fill="none" stroke="#FFC93C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'; return b; });
     st.cardsE = q.order.map((fi, k) => { const e = W3X.card(st, 'c' + fi, 6, 'card'); e.appendChild(this.frame(q.frames[fi])); return { e, fi, home: k, at: null }; });
     this.place(st);
     st.cardsE.forEach((o, i) => K.pop(st, o.e, 70 * i));
-    K.task(st, [[W3X.ic('<rect x="4" y="30" width="26" height="40" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><rect x="37" y="30" width="26" height="40" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><rect x="70" y="30" width="26" height="40" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><circle cx="17" cy="50" r="5" fill="#2B2118"/><circle cx="46" cy="50" r="5" fill="#2B2118"/><circle cx="54" cy="50" r="5" fill="#2B2118"/><circle cx="76" cy="44" r="5" fill="#2B2118"/><circle cx="83" cy="50" r="5" fill="#2B2118"/><circle cx="90" cy="56" r="5" fill="#2B2118"/>')], ['q']]);
+    K.task(st, [[W3X.ic('<rect x="2" y="32" width="24" height="36" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><rect x="38" y="32" width="24" height="36" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><rect x="74" y="32" width="24" height="36" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><path d="M27 50H36M32 45L37 50L32 55M63 50H72M68 45L73 50L68 55" fill="none" stroke="#2B2118" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>')], ['q']]);
     K.say(st, '按先后排一排！');
   },
   onGesture(st, name, p) {
@@ -763,10 +764,17 @@ const MOverlay = {
   },
   async reveal(st) {
     const q = st.q, my = st;
+    /* the two see-through cards slide onto each other on top (R9-4): what they show together is the picture */
     const pair = q.mode === 'make' ? st.ab : q.answer.split('-').map(Number).map(i => st.optEls[i]);
-    const dest = q.mode === 'make' ? box(st.optEls[q.answer]) : box(st.tgt);
-    for (const e of pair) { if (!Session.alive(my)) return; const b = box(e); await st.scope.anim(e, [{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: 'translate(' + (dest.x + dest.w / 2 - b.x - b.w / 2) + 'px,' + (dest.y + dest.h / 2 - b.y - b.h / 2) + 'px) scale(' + (dest.w / b.w).toFixed(2) + ')', opacity: 0.85 }], { duration: 520, easing: EASE.glide, fill: 'forwards' }); }
-    K.ring(st, [dest], 8, '#FFC93C'); Sfx.reveal(); this.cheerAll(st);
+    const ans = q.mode === 'make' ? st.optEls[q.answer] : st.tgt, A = box(pair[0]);
+    const meet = q.mode === 'make' ? { x: (box(pair[0]).x + box(pair[1]).x) / 2, y: A.y, w: A.w, h: A.h } : box(st.tgt);
+    if (st.plus) st.plus.style.visibility = 'hidden';
+    pair.forEach(e => { e.style.zIndex = 9; });
+    await Promise.all(pair.map(e => { const b = box(e); return st.scope.anim(e, [{ transform: 'translate(0,0)' }, { transform: 'translate(' + (meet.x + meet.w / 2 - b.x - b.w / 2) + 'px,' + (meet.y + meet.h / 2 - b.y - b.h / 2) + 'px)' }], { duration: 700, easing: EASE.glide, fill: 'forwards' }); }));
+    if (!Session.alive(my)) return;
+    Sfx.pop(); K.hop(st, ans, 14);
+    K.ring(st, [box(ans)], 8, '#FFC93C'); if (q.mode === 'make') K.ring(st, [meet], 8, '#FFC93C');
+    Sfx.reveal(); this.cheerAll(st);
     st.summary = '叠起来就是它！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
   async feedback(st, ans) {
@@ -841,7 +849,7 @@ const MLights = {
     return i >= 0 ? { g: 'tap', p: { id: 'w' + i } } : { g: 'tap', p: { id: 'done' } };
   },
   workEls(st) { return st.cWins || []; },
-  gestureHint(st) { if (st.cWins) W3X.tapHint(st, st.cWins[0]); },
+  gestureHint(st) { if (st.mFace) K.flash(st, [st.mFace].concat(st.mWins.filter((_, i) => st.q.model[i]))); },      /* look at the picture (R9-5) */
   snap(st) { return { lit: (st.state || []).filter(Boolean).length }; },
 };
 
@@ -1948,7 +1956,7 @@ const MFurnace = {
     if (!Session.alive(my)) return;
     K.cards(st, q.opts, Object.assign({ layout: 'frame' }, { cx: this.geo(st).cx, cy: this.geo(st).cy }));
     this.place(st);
-    W3X.say2(st, '放进' + CN[q.x] + '个，', '出来几个？');
+    W3X.say2(st, '放进' + CNQ(q.x) + '个，', '出来几个？');
   },
   onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
   async reveal(st) {
@@ -1976,6 +1984,7 @@ const MSorter = {
     4: { n: { g0: [50, 16], g1: [27, 48], g2: [73, 48], b0: [13, 86], b1: [39, 86], b2: [61, 86], b3: [87, 86] }, kids: { g0: ['g1', 'g2'], g1: ['b0', 'b1'], g2: ['b2', 'b3'] }, bins: ['b0', 'b1', 'b2', 'b3'] },
   },
   truth(t, it) { return t.a === 'c' ? it.c === t.v : t.a === 's' ? it.s === t.v : it.k === t.v; },
+  ask(t) { return t.a === 'c' ? '是红色的吗？' : t.a === 's' ? '是大的吗？' : '是圆的吗？'; },      /* what a sign asks (R9-2) */
   route(q, it) { const T = this.trees[q.tree]; let n = 'g0'; const path = [n]; while (n[0] === 'g') { n = T.kids[n][this.truth(q.gates[n], it) ? 0 : 1]; path.push(n); } return path; },
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -2030,7 +2039,7 @@ const MSorter = {
     Object.keys(T.kids).forEach(gn => T.kids[gn].forEach((c, j) => { const a = T.n[gn], b = T.n[c], m = W2X.thing(st, 40, 40, 5, ''); m.innerHTML = j ? '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="20" r="17" fill="#E8414B" stroke="#2B2118" stroke-width="3"/><path d="M13 13L27 27M27 13L13 27" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="20" r="17" fill="#3FA34D" stroke="#2B2118" stroke-width="3"/><path d="M11 21L18 28L30 13" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>'; st.marks.push({ m, a, b }); }));
     st.nodes = {};
     Object.keys(T.n).forEach(n => {
-      if (n[0] === 'g') { const e = W2X.thing(st, 88, 88, 4, ''); e.appendChild(this.gateSvg(q.gates[n])); st.nodes[n] = e; }
+      if (n[0] === 'g') { const e = W2X.thing(st, 88, 88, 4, ''); e.appendChild(this.gateSvg(q.gates[n])); K.reg(st, 'gate_' + n, e, {}); st.nodes[n] = e; }
       else { const i = T.bins.indexOf(n), e = W3X.card(st, q.mode === 'where' ? 'bin' + i : null, 4, ''); e.innerHTML = '<svg viewBox="0 0 120 96" width="100%" height="100%"><path d="M8 18H112L102 90H18Z" fill="' + ['#FFC93C', '#4FB3FF', '#B57BFF', '#5CC46E'][i] + '" stroke="#2B2118" stroke-width="5" stroke-linejoin="round"/><path d="M4 12H116V22H4Z" fill="#2B2118"/></svg>'; if (q.mode === 'who' && i === q.target) { e.style.boxShadow = '0 0 0 6px #FFC93C, 0 0 24px 8px rgba(255,201,60,.8)'; e.style.borderRadius = '14px'; } st.nodes[n] = e; }
     });
     if (q.mode === 'where') { st.itemEl = W2X.thing(st, 80, 80, 7, ''); st.itemEl.appendChild(this.itemSvg(q.it, '100%')); }
@@ -2039,10 +2048,11 @@ const MSorter = {
     Object.values(st.nodes).forEach((e, i) => K.pop(st, e, 60 * i));
     K.task(st, [[W3X.ic('<polygon points="50,8 88,46 50,84 12,46" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><circle cx="50" cy="46" r="14" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><circle cx="18" cy="88" r="9" fill="#3FA34D"/><circle cx="82" cy="88" r="9" fill="#E8414B"/>')], ['q']]);
     if (!st.G.toldGate) { st.G.toldGate = true; W3X.tip('是就走绿色，'); W3X.tip('不是走红色！'); }
-    K.say(st, q.mode === 'where' ? '它会掉进哪个箱子？' : '谁会掉进这里？');
+    W3X.say2(st, this.ask(q.gates.g0), q.mode === 'where' ? '它会掉进哪个箱子？' : '谁会掉进这里？');
   },
   onGesture(st, name, p) {
     const id = p.id || ''; if (name !== 'tap' || st.picked) return false;
+    if (id.startsWith('gate_')) { const n = id.slice(5); Voice.sayNow(this.ask(st.q.gates[n]), { tag: 'hint1' }); K.hop(st, st.nodes[n], 12); return 'ok'; }
     if (st.q.mode === 'who') return W3X.tapCards(st, name, p);
     if (!/^bin\d$/.test(id)) return false;
     st.picked = true; Session.submit(st, Number(id.slice(3))); return 'ok';
@@ -2050,7 +2060,11 @@ const MSorter = {
   async reveal(st) {
     const q = st.q, my = st, it = q.mode === 'where' ? q.it : q.items[q.answer];
     let e = st.itemEl; if (!e) { e = W2X.thing(st, 80, 80, 7, ''); e.appendChild(this.itemSvg(it, '100%')); const g = this.geo(st); place(e, g.ix - 40, g.iy - 40, 80, 80); }
-    for (const n of this.route(q, it)) { if (!Session.alive(my)) return; const p = this.P(st, n); await K.flyTo(st, e, p[0] - 40, p[1] - 40 - (n[0] === 'b' ? 10 : 0), 340, 10); Sfx.place(); }
+    e.style.zIndex = 9;
+    for (const n of this.route(q, it)) {
+      if (!Session.alive(my)) return; const p = this.P(st, n); await K.flyTo(st, e, p[0] - 46, p[1] - 46 - (n[0] === 'b' ? 10 : 0), 340, 10); Sfx.place();
+      if (n[0] === 'g') { const t = q.gates[n], y = this.truth(t, it); K.hop(st, st.nodes[n], 10); Voice.say(this.ask(t), { tag: 'summary' }); Voice.say(y ? '是！' : '不是！', { tag: 'summary' }); await st.scope.guard(Voice.afterSay(120)); }
+    }
     Sfx.reveal(); this.cheerAll(st); st.summary = q.mode === 'where' ? '掉进这个箱子！' : '它掉进这里！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
   },
   say(t, it) { const y = this.truth(t, it); return t.a === 'c' ? (y ? '它是红色的' : '它不是红色的') : t.a === 's' ? (y ? '它是大的' : '它是小的') : (y ? '它是圆的' : '它不是圆的'); },
@@ -2106,7 +2120,8 @@ const MSuits = {
     st.bb.forEach((e, i) => place(e, g.bx - 46, g.py[i] - 46, 92, 92));
     st.fb.forEach((e, i) => place(e, g.mx - 104 + i * 116, g.fy - 46, 92, 92));
     place(st.cam, g.cam[0] - 50, g.cam[1] - 46, 100, 92);
-    const n = st.photos.length, w = 62; st.photos.forEach((o, i) => place(o.e, g.strip[0] - (Math.max(n, 1) * (w + 6)) / 2 + i * (w + 6), g.strip[1] - 40, w, 80));
+    if (st.grid) { const q = st.q, cols = q.B * (q.F || 1), rows = q.H, w = K.L() ? 84 : 92, h = w * 1.3, cx = K.L() ? 512 : 352, cy = K.L() ? 360 : 520; st.photos.forEach((o, i) => place(o.e, cx - (cols * (w + 10)) / 2 + (i % cols) * (w + 10), cy - (rows * (h + 10)) / 2 + Math.floor(i / cols) * (h + 10), w, h)); }
+    else { const n = st.photos.length, w = 62; st.photos.forEach((o, i) => place(o.e, g.strip[0] - (Math.max(n, 1) * (w + 6)) / 2 + i * (w + 6), g.strip[1] - 40, w, 80)); }
     if (st.cards) { if (K.L()) st.cards.forEach((c, i) => place(c, g.cards[0] - 58, 200 + i * 140, 116, 116)); else K.cardsPlace(st, { cx: g.cards[0], cy: g.cards[1], gap: 24 }); }
     void q;
   },
@@ -2145,10 +2160,12 @@ const MSuits = {
   async reveal(st) {
     const q = st.q, my = st;
     const all = []; for (let h = 0; h < q.H; h++) for (let b = 0; b < q.B; b++) for (let f = 0; f < (q.F || 1); f++) all.push({ h, b, f });
-    st.photos.forEach(o => o.e.remove()); st.photos = [];
+    st.photos.forEach(o => o.e.remove()); st.photos = []; st.grid = true;
+    [st.man, st.cam].concat(st.hb, st.bb, st.fb, st.cards || []).forEach(e => { if (e) e.style.visibility = 'hidden'; });
     all.forEach(c => { const e = W2X.thing(st, 62, 80, 6, ''); Object.assign(e.style, { background: '#FFF8EC', borderRadius: '8px', boxShadow: '0 0 0 3px #2B2118' }); e.appendChild(this.suit(SUIT_COL[q.hc[c.h]], SUIT_COL[q.bc[c.b]], q.F ? SUIT_COL[q.fc[c.f]] : null, '100%')); st.photos.push({ k: this.comboKey(c), e }); });
     this.place(st);
-    for (let i = 0; i < st.photos.length; i++) { if (!Session.alive(my)) return; K.pop(st, st.photos[i].e); await Count.beat(st.scope, 280, i + 1); }
+    st.photos.forEach(o => { o.e.style.visibility = 'hidden'; o.e.style.zIndex = 9; });
+    for (let i = 0; i < st.photos.length; i++) { if (!Session.alive(my)) return; st.photos[i].e.style.visibility = ''; K.pop(st, st.photos[i].e); await Count.beat(st.scope, 460, i + 1); }
     Sfx.reveal(); st.summary = '一共' + CNQ(q.answer) + '种！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '种'); await st.scope.wait(500); },
@@ -2358,8 +2375,8 @@ w3Game(MBaskets,  { id: 'S1', world: 'xiyou3', bg: 'xiyou_heaven', chars: ['baji
 w3Game(MDoors,    { id: 'S2', world: 'xiyou3', bg: 'xiyou_cliffs', chars: ['wukong', 'bajie', 'shaseng', 'tangseng'], host: 'wukong', iconSrc: IC3.doors });
 w3Game(MFans,     { id: 'S3', world: 'xiyou3', bg: 'xiyou_flame', chars: ['wukong', 'bajie'], host: 'wukong', iconSrc: IC3.fans });
 w3Game(MFurnace,  { id: 'S4', world: 'xiyou3', bg: 'xiyou_alchemy', chars: ['wukong'], host: 'wukong', icon: 'furnace', props: ['furnace'], boost: 1 });
-w3Game(MSorter,   { id: 'T1', world: 'avengers3', bg: 'avengers_factory', chars: ['ironman'], host: 'ironman', iconSrc: IC3.sorter });
-w3Game(MSuits,    { id: 'T2', world: 'avengers3', bg: 'avengers_armory', chars: ['ironman'], host: 'ironman', iconSrc: IC3.suits });
+w3Game(MSorter,   { id: 'T1', world: 'avengers3', bg: 'avengers_factory', chars: ['ironman'], host: 'ironman', iconSrc: IC3.sorter, boost: -1 });   /* starts with one sign row less (R9-2) */
+w3Game(MSuits,    { id: 'T2', world: 'avengers3', bg: 'avengers_armory', chars: ['ironman'], host: 'ironman', iconSrc: IC3.suits, boost: -3 });   /* from 2 x 2 suits; 3 x 3 at L4 (R9-3) */
 w3Game(MArrows,   { id: 'T3', world: 'avengers3', bg: 'avengers_field', chars: ['hawkeye'], host: 'hawkeye', iconSrc: IC3.arrows });
 w3Game(MGears,    { id: 'T4', world: 'avengers3', bg: 'avengers_garage', chars: ['ironman', 'hulk'], host: 'ironman', iconSrc: IC3.gears, boost: 0 });
 W3.loaded = true;
