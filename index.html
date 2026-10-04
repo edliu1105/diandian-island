@@ -2374,7 +2374,8 @@ const Session = {
     Sfx.touch();
     if (st && !st.scope.dead && ['ready', 'input', 'act'].includes(st.phase)) { Hints.mark(st, 'relisten'); Hints.reset(st); }
     const text = (st && st.prompt) || this.G.game.intro;
-    if (Voice.silent) Voice.retry(text); else if (st && st.lead && st.prompt) { Voice.sayNow(st.lead, { tag: 'relisten' }); Voice.say(text, { tag: 'relisten' }); } else Voice.sayNow(text, { tag: 'relisten' });
+    const leads = st && st.lead && st.prompt ? [].concat(st.lead) : [];
+    if (Voice.silent) Voice.retry(text); else if (leads.length) { Voice.sayNow(leads[0], { tag: 'relisten' }); leads.slice(1).forEach(l => Voice.say(l, { tag: 'relisten' })); Voice.say(text, { tag: 'relisten' }); } else Voice.sayNow(text, { tag: 'relisten' });
     const a = $('#avatar'); a.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: T(300) + 1 });
   },
   guideStart(st) {
@@ -2496,7 +2497,7 @@ const Hints = {
       if (idle < 5000) { this.life(st, t, idle); return; }
       st.hintLv = 1; this.mark(st, 'hint1');
       const h = Session.host(st.G); if (h && !fast()) h.glance();
-      if (st.lead && st.prompt) Voice.say(st.lead, { tag: 'hint1' });
+      if (st.lead && st.prompt) [].concat(st.lead).forEach(l => Voice.say(l, { tag: 'hint1' }));
       Voice.say(st.prompt || st.game.intro, { tag: 'hint1' });
       this.retap();
       st.scope.timeout(() => { if (st.hintLv === 1) this.glow(st); }, 450 * HS());
@@ -2514,8 +2515,9 @@ const Hints = {
   },
   cheerUp(st) {
     const h = Session.host(st.G); if (h && !fast()) h.wave();
-    Voice.say(CHEER[(st.cheers || 0) % CHEER.length], { tag: 'cheer' });
-    if (st.lead && st.prompt) Voice.say(st.lead, { tag: 'hint1' });
+    const leads = st.lead && st.prompt ? [].concat(st.lead) : [];
+    if (leads.length < 2) Voice.say(CHEER[(st.cheers || 0) % CHEER.length], { tag: 'cheer' });     /* the queue keeps three: a two-sentence rule goes without the kind word */
+    leads.forEach(l => Voice.say(l, { tag: 'hint1' }));
     Voice.say(st.prompt || st.game.intro, { tag: 'hint1' });
     this.retap();
     st.scope.timeout(() => { if (Session.alive(st)) this.glow(st); }, 900 * HS());

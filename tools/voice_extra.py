@@ -20,6 +20,8 @@ for p in ['chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble']:
     out |= {'刚才没有' + NAME[p], '是' + NAME[p] + '！'} | {NAME[p] + '是第' + CN[k] + '个' for k in range(1, 6)}
 for c in ['catboy', 'owlette', 'gekko', 'pj_robot', 'luna_girl', 'romeo']:
     out |= {'不是' + NAME[c], '是' + NAME[c] + '！'}
+for s in ['布鲁伊', '宾果']:          # Bluey: whose plate has more / less (each sister with both questions)
+    out |= {s + '的多！', s + '的少！'}
 col = ['红色', '蓝色', '绿色', '黄色']
 for c in col:
     out |= {c + '的！', '它是' + c + '的', c + '！'}

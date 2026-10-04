@@ -27,6 +27,8 @@ run voicebank  tests/test_voicebank.py 3
 run boot       tests/test_boot.py chromium
 run voice      tests/test_voice.py chromium
 run spotcheck  tests/spotcheck.py
+run intro_w3   tests/intro_w3.py
+run r11        tests/r11_check.py
 echo "end $(date +%H:%M:%S)" >> "$OUT"
 if [ -n "$BAD" ]; then echo "W3: FAIL -$BAD" >> "$OUT"; else echo "W3: PASS" >> "$OUT"; fi
 cat "$OUT"

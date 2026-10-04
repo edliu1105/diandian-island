@@ -518,7 +518,7 @@ const MGroups = {
 const ROWC = [['#E8414B', '红色'], ['#4F7BFF', '蓝色'], ['#FFC93C', '黄色'], ['#5CC46E', '绿色'], ['#B57BFF', '紫色']];
 const COLV = [['tomato', '番茄'], ['eggplant', '茄子'], ['pumpkin', '南瓜'], ['broccoli', '西兰花'], ['carrot', '胡萝卜']];
 const MGrid = {
-  kind0: 'grid', verb: '种！', intro: '种在哪一格？', praise: ['行和列都对！'],
+  kind0: 'grid', verb: '种！', intro: '种在哪一格？', praise: ['种得真准！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const [C, R] = [null, [3, 3], [4, 3], [4, 4], [4, 4], [5, 4]][d];
@@ -1124,6 +1124,7 @@ const MSums = {
     void total;
     this.place(st);
     st.items.filter(o => !o.gone).forEach((o, i) => K.pop(st, o.e, 60 * i));
+    await st.scope.wait(T(700)); if (!Session.alive(my)) return;          /* not straight after the last reveal (R11-4) */
     K.say(st, '有' + CNQ(q.a) + w + q.thing[2]);
     await st.scope.wait(T(1400)); if (!Session.alive(my)) return;
     const come = async n => { const back = st.items.filter(o => o.gone).slice(0, n); back.forEach(o => { o.gone = false; }); this.place(st); back.forEach((o, i) => st.scope.anim(o.e, [{ transform: 'translateX(' + (Stage.W) + 'px)' }, { transform: 'translateX(0)' }], { duration: T(700) + 1, delay: T(120 * i), easing: EASE.glide, fill: 'backwards' })); Sfx.whoosh(0.3); K.say(st, '又来了' + CNQ(n) + w + '！'); await st.scope.wait(T(1500)); };
@@ -1508,7 +1509,7 @@ const STROKE_FIGS = {
   house: { v: [[18, 44], [82, 44], [82, 92], [18, 92], [50, 8]], e: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 4], [4, 1], [0, 2], [1, 3]] },
 };
 const MStroke = {
-  kind0: 'stroke', verb: '画！', intro: '爷爷教画画！', praise: ['一笔就画完啦！'],
+  kind0: 'stroke', verb: '画！', intro: '爷爷教画画！', praise: ['画得真顺！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const pool = [null, ['bowtie', 'fish', 'tail'], ['sqdiag', 'kite', 'flag', 'bowtie'], ['domino', 'kite', 'fish', 'boat'], ['house', 'domino', 'boat'], ['house', 'domino', 'boat', 'flag']][d];
@@ -1536,7 +1537,8 @@ const MStroke = {
   },
   geo() { return K.L() ? { x: 512, y: 392, s: 470 } : { x: 352, y: 560, s: 560 }; },
   decor(G) { W3X.decor2(G, this.chars, true); },
-  vxy(st, i) { const g = this.geo(), p = st.q.v[i]; return [g.x - g.s / 2 + p[0] / 100 * g.s, g.y - g.s / 2 + p[1] / 100 * g.s]; },
+  /* the paper is g.s + 60 square and its svg shows -15 .. 115: a dot sits exactly on its line end (R11-1) */
+  vxy(st, i) { const g = this.geo(), p = st.q.v[i], u = (g.s + 60) / 130, x0 = g.x - g.s / 2 - 30, y0 = g.y - g.s / 2 - 30; return [x0 + (p[0] + 15) * u, y0 + (p[1] + 15) * u]; },
   place(st) { const g = this.geo(); place(st.paper, g.x - g.s / 2 - 30, g.y - g.s / 2 - 30, g.s + 60, g.s + 60); st.dots.forEach((e, i) => { const p = this.vxy(st, i); place(e, p[0] - 48, p[1] - 48, 96, 96); }); },
   draw(st) {
     const q = st.q, s = svg('svg', { viewBox: '-15 -15 130 130', width: '100%', height: '100%' });
@@ -1569,7 +1571,12 @@ const MStroke = {
     return 'ok';
   },
   async reveal(st) { K.ring(st, [box(st.paper)], 4, '#FFC93C'); Sfx.reveal(); this.cheerAll(st); st.summary = '一笔画完啦！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300); },
-  async feedback(st) { K.wiggle(st, st.dots[st.at]); W3X.say('走不下去啦！'); await st.scope.wait(700); },
+  async feedback(st) {
+    const q = st.q, dg = this.deg(q.v.length, q.e), odd = dg.map((d, i) => d % 2 ? i : -1).filter(i => i >= 0);
+    K.wiggle(st, st.dots[st.at]);
+    W3X.say(odd.length && !odd.includes(st.path[0]) ? '换个点开始试试' : '还有线没画到');      /* what went wrong, not where to start (R11-3) */
+    await st.scope.wait(700);
+  },
   next(st, strat) {
     if (st.picked) return null;
     const seq = strat === 'wrong' && st.q.bad ? st.q.bad : st.q.good;
@@ -1677,7 +1684,7 @@ const MAbacus = {
 
 /* ================================================================ 葫芦娃 L4 · 补 mend the brocade: which patch continues the pattern (reasoning) */
 const MCloth = {
-  kind0: 'cloth', verb: '补！', intro: '花布破了个洞！', praise: ['花布补好啦！'],
+  kind0: 'cloth', verb: '补！', intro: '花布破了个洞！', praise: ['补得真巧！'],
   C: 6, R: 5,
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng, kinds = ['circle', 'sq', 'tri', 'diamond', 'heart', 'star'];
@@ -1815,15 +1822,24 @@ const MDoors = {
     const doors = rng.shuffle([ok].concat(foils));
     return { k: [d, who.join(), doors.map(x => x.w + 'x' + x.h).join()], who, need: { w: W, h: H }, doors, answer: doors.indexOf(ok) };
   },
-  geo(st) { const L = K.L(), n = st.q.doors.length; return L ? { k: 1, base: 600, cx: 600, cw: n === 4 ? 200 : 250, wx: 140 } : { k: 0.78, base: 860, cx: 352, cw: n === 4 ? 160 : 210, wx: 150, wy: 520 }; },
+  geo(st) {
+    /* R11-2: everyone on the ground, the walkers side by side just left of the doors, each door as wide as itself;
+       as big as fits (at most the old sizes), so nothing leaves the screen and no narrow door gets small */
+    const L = K.L(), q = st.q, n = q.doors.length, ws = q.who.map(id => this.size(id).w), sum = a => a.reduce((x, y) => x + y, 0);
+    const fixed = 12 * (ws.length - 1) + 36 + 16 * n + 14 * (n - 1), k = Math.min(L ? 1 : 0.78, (Stage.W - 40 - fixed) / (sum(ws) + sum(q.doors.map(d => d.w))));
+    let x = (Stage.W - fixed - k * (sum(ws) + sum(q.doors.map(d => d.w)))) / 2;
+    const wx = ws.map(w => { const a = x; x += w * k + 12; return a; }); x += 24;
+    const dx = q.doors.map(d => { const a = x + (d.w * k + 16) / 2; x += d.w * k + 16 + 14; return a; });
+    return { k, base: L ? 600 : 820, wx, dx };
+  },
   decor(G) { W2X.hideAll(G, this.chars); },
-  doorX(st, i) { const g = this.geo(st), n = st.q.doors.length; return g.cx + (i - (n - 1) / 2) * g.cw; },
+  doorX(st, i) { return this.geo(st).dx[i]; },
   place(st) {
-    const g = this.geo(st), L = K.L();
+    const g = this.geo(st);
     place(st.wall, 0, g.base - 330 * g.k, Stage.W, 330 * g.k + 30);
-    if (st.ledge) { st.ledge.style.display = L ? 'none' : ''; place(st.ledge, g.wx - 110, g.wy - 6, 220 + (st.walkers.length - 1) * 110, 40); }
+    if (st.ledge) st.ledge.style.display = 'none';
     st.doorEls.forEach((e, i) => { const dd = st.q.doors[i], w = dd.w * g.k, h = dd.h * g.k, x = this.doorX(st, i); place(e, x - w / 2 - 8, g.base - h - 8, w + 16, h + 8); });
-    st.walkers.forEach((o, j) => { const s = this.size(o.id), w = s.w * g.k, h = s.h * g.k, x = o.at != null ? this.doorX(st, o.at) - w / 2 : (L ? g.wx - w / 2 + j * 70 : g.wx - w / 2 + j * 110); const base = L ? g.base : (o.at != null ? g.base : g.wy); place(o.e, x, base - h, w, h); });
+    st.walkers.forEach((o, j) => { const s = this.size(o.id), w = s.w * g.k, h = s.h * g.k, x = o.at != null ? this.doorX(st, o.at) - w / 2 : g.wx[j]; place(o.e, x, g.base - h, w, h); });
   },
   async present(st) {
     const q = st.q;
@@ -2069,6 +2085,7 @@ const MSorter = {
     K.task(st, [[W3X.ic('<polygon points="50,8 88,46 50,84 12,46" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><circle cx="50" cy="46" r="14" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><circle cx="18" cy="88" r="9" fill="#3FA34D"/><circle cx="82" cy="88" r="9" fill="#E8414B"/>')], ['q']]);
     if (!st.G.toldGate) { st.G.toldGate = true; W3X.tip('是就走绿色，'); W3X.tip('不是走红色！'); await st.scope.guard(Voice.afterSay(80)); if (!Session.alive(st)) return; }   /* the queue keeps three sentences (R10-1) */
     W3X.say2(st, this.ask(q.gates.g0), q.mode === 'where' ? '它会掉进哪个箱子？' : '谁会掉进这里？');
+    st.lead = ['是就走绿色，', '不是走红色！'];          /* replay and hints say the rule again (R11-3); a tap on a sign says its question */
   },
   onGesture(st, name, p) {
     const id = p.id || ''; if (name !== 'tap' || st.picked) return false;
