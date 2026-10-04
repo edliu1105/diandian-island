@@ -98,7 +98,7 @@ with sync_playwright() as p, serve() as base:
     st = page.evaluate("() => ({ fin2: Store.s.fin2, pj: [...document.querySelectorAll('#finale .crowd img')].some(i => i.src.includes('catboy')) })")
     log.check(st['fin2'] == 'seen' and st['pj'], 'all of world 2 played: the lantern island opens and the finale plays with the pajama heroes %s' % st)
     page.evaluate("gesture('home')"); page.wait_for_timeout(300)
-    log.check(page.evaluate("MapView.recommend() === 'festival' && !MapView.isl.festival.d.classList.contains('locked')"), 'afterwards the lantern island stays open (the finale again)')
+    log.check(page.evaluate("['festival', 'gate'].includes(MapView.recommend()) && !MapView.isl.festival.d.classList.contains('locked')"), 'afterwards the lantern island stays open (the finale again); the hand points at it or at the gate up to the sky')
     log.check(not page.errors, 'progress: zero page errors %s' % page.errors[:3])
     br.close()
 sys.exit(0 if log.close() else 1)

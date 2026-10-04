@@ -133,6 +133,10 @@ def new_page(browser, base, vw=1180, vh=820, fast=True, no_speech=False, hint_sc
 def enter(page):
     page.click('#play')
     page.wait_for_function("document.querySelector('#map').classList.contains('on')", timeout=10000)
+    try:            # the sky's games come in their own file right after the entry tap (W3.load)
+        page.wait_for_function("typeof W3 === 'undefined' || W3.loaded === true", timeout=10000)
+    except Exception:
+        pass
 
 
 def q(page):

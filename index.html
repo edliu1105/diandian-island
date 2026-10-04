@@ -97,6 +97,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cu
 .isl .land{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);transition:filter .6s}
 .isl.locked .land{filter:saturate(.35) brightness(.96)}
 .isl.gate.locked .land{opacity:0}
+.isl.gate.sky .land{filter:hue-rotate(-75deg) saturate(1.5) brightness(1.08) drop-shadow(0 0 18px rgba(255,214,90,.95))}
 .isl .hero{position:absolute;transform-origin:50% 100%}
 .isl .cloudcover{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;transition:opacity .8s,transform .8s}
 .isl:not(.locked) .cloudcover{opacity:0;transform:translate(-50%,-70%) scale(1.3)}
@@ -491,9 +492,13 @@ const TAKEDOWN = [];
 const LIVE = () => ORDER.filter(w => !TAKEDOWN.includes(w));
 const played = (w, g) => { const ws = Store.w(w); return (ws.played || []).includes(g) || !!(ws.g && ws.g[g]) || (ws.log || []).some(x => x.g === g); };
 /* an island's flag: all its games played (world 2) / passed (world 1) */
-const flagged = w => W2.isW2(w) ? W2.islandDone(w) : passed(w);
+const flagged = w => (WORLDS[w].map || 1) > 1 ? W2.islandDone(w) : passed(w);
 const FLAG_HTML = id => {
   const W = WORLDS[id], two = W.map === 2, ink = '#2B2118';
+  if (W.map === 3) {                    /* the sky: a hanging banner (rainbow top band), a little cloud on the pole */
+    return '<div class="cloth"><svg viewBox="0 0 60 42"><path d="M2 2H58V30L30 42L2 30Z" fill="' + W.color + '" stroke="' + ink + '" stroke-width="3" stroke-linejoin="round"/><path d="M3.5 3.5H56.5V9H3.5Z" fill="#FF6B5B"/><path d="M3.5 9H56.5V13H3.5Z" fill="#FFC93C"/><path d="M3.5 13H56.5V17H3.5Z" fill="#4FB3FF"/></svg><img src="assets/thumbs/' + W.host + '.png" alt="" style="top:13px"></div>'
+      + '<svg class="finial" viewBox="0 0 24 24"><path d="M5 18C1.5 18 1 13 4.5 12.5C4 8 9 6.5 11 9.5C12.5 5 19.5 6 19 11C23 11 23.5 18 19 18Z" fill="#FFFFFF" stroke="' + ink + '" stroke-width="2.2" stroke-linejoin="round"/></svg>';
+  }
   const cloth = two ? '<path d="M2 3H58L47 21L58 39H2Z" fill="' + W.color + '" stroke="' + ink + '" stroke-width="3" stroke-linejoin="round"/><path d="M3.5 4.5H10V37.5H3.5Z" fill="' + W.color2 + '"/>'
     : '<path d="M2 3Q30 -2 58 5Q54 21 58 37Q30 44 2 39Z" fill="' + W.color + '" stroke="' + ink + '" stroke-width="3" stroke-linejoin="round"/><path d="M3.5 31Q30 36 56.5 30.5L57 35.6Q30 42.4 3.5 37.7Z" fill="' + W.color2 + '"/>';
   return '<div class="cloth"><svg viewBox="0 0 60 42">' + cloth + '</svg><img src="assets/thumbs/' + W.host + '.png" alt=""></div>'
@@ -509,6 +514,8 @@ const Unlock = {
     if (any) Store.save();
   },
 };
+/* every opening rule, in order: sea 1 islands, sea 2 islands (+ its lantern island), the sky (+ its rainbow castle) */
+const Progress = { check(show) { Unlock.check(show); W2.check(show); W3.check(show); } };
 const openByDefault = w => !!NEEDS[w] && NEEDS[w].every(n => TAKEDOWN.includes(n));      /* world 2 opens by its own rule (W2.check) */
 const CHARS = {
   peppa: ['佩奇', 'hop'], george: ['乔治', 'dino'], daddy_pig: ['猪爸爸', 'belly'], mummy_pig: ['猪妈妈', 'twirl'],
@@ -528,7 +535,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 /* ---------------------------------------------------------------- storage (versioned, corruption tolerant) */
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
-function defState() { const w = {}; ORDER.concat(ORDER2).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, star5: true, gate: { cool: 0, last: '' } }; }
+function defState() { const w = {}; ORDER.concat(ORDER2, ORDER3).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, star5: true, gate: { cool: 0, last: '' } }; }
 const Store = {
   s: null,
   load() {
@@ -550,7 +557,7 @@ const Store = {
     const bits = (v, max) => (Array.isArray(v) ? v.filter(x => x === 0 || x === 1).slice(-max) : []);
     const gid = x => typeof x === 'string' && /^[A-Z]\d$/.test(x);
     const kid = x => typeof x === 'string' && /^[a-z][a-z0-9]{0,11}$/i.test(x);
-    ORDER.concat(ORDER2).forEach((id, i) => {
+    ORDER.concat(ORDER2, ORDER3).forEach((id, i) => {
       const w = o.worlds[id] || {}, t = d.worlds[id];
       t.level = Math.round(num(w.level, 1, 1, 4)); t.floor = Math.round(num(w.floor, 1, 1, 4));
       /* level window: [{g, ok}] (which game produced each piece of evidence) */
@@ -587,7 +594,8 @@ const Store = {
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
-    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 ? 2 : 1;
+    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 || o.mapSet === 3 ? o.mapSet : 1;
+    d.w3 = o.w3 === true; d.w3seen = o.w3seen === true; d.gate3 = o.gate3 === true || d.w3seen; d.fin3 = o.fin3 === 'due' || o.fin3 === 'seen' ? o.fin3 : '';
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
     return d;
@@ -2032,13 +2040,14 @@ const Session = {
   },
   async start(worldId, gameId, opt) {
     opt = opt || {};
+    if (!GAMES[gameId] && WORLDS[worldId] && WORLDS[worldId].map === 3) await W3.load();
     if (this.G) this.teardown(this.G);
     const W = WORLDS[worldId], ws = Store.w(worldId), game = GAMES[gameId];
     const seed = opt.seed || (Number((location.search.match(/seed=(\d+)/) || [])[1]) || 0) || ((Date.now() ^ (ws.sessions * 2654435761)) >>> 0);
     if (opt.level) ws.level = clamp(opt.level, 1, MAXLV[worldId]);
     const G = this.G = {
       world: worldId, W, ws, id: gameId, game, scope: new Scope(APP), rng: RNG(seed), seed,
-      level: W.map === 2 ? (opt.level ? clamp(opt.level, 1, 5) : W2.level(worldId, gameId)) : clamp(Math.max(ws.level, ws.floor), 1, MAXLV[worldId]), actors: {}, els: {}, round: 0, rounds: 5,
+      level: W.map >= 2 ? (opt.level ? clamp(opt.level, 1, 5) : W2.level(worldId, gameId)) : clamp(Math.max(ws.level, ws.floor), 1, MAXLV[worldId]), actors: {}, els: {}, round: 0, rounds: 5,
       t0: Clock.t(), ev: [], stars: 0, streak: 0, bags: {}, dead: false, errors: 0, idleQs: 0, probed: false,
     };
     ws.visits++; ws.sessions++; Store.save();
@@ -2108,7 +2117,7 @@ const Session = {
   newQ(G, opt) {
     opt = opt || {};
     const g = G.game, ws = G.ws;
-    const level = opt.demo ? (G.W.map === 2 ? G.level : 1) : (opt.level || G.level);
+    const level = opt.demo ? (G.W.map >= 2 ? G.level : 1) : (opt.level || G.level);
     const kinds = g.kinds(level, G);
     let kind = opt.kind && (kinds.includes(opt.kind) || opt.probe) ? opt.kind : null;
     if (!kind) kind = kinds.length > 1 ? bagPick(G, 'kind' + level, kinds) : kinds[0];
@@ -2256,7 +2265,7 @@ const Session = {
     return true;
   },
   praise(G) {
-    const pool = (G.W.map === 2 ? PRAISE.filter(x => x !== '数得真准！') : PRAISE).concat(G.game.praise || []);   /* nothing is counted in many world-2 games (R8-5) */
+    const pool = (G.W.map >= 2 ? PRAISE.filter(x => x !== '数得真准！') : PRAISE).concat(G.game.praise || []);   /* nothing is counted in many world-2 games (R8-5) */
     let p; do { p = pool[Math.floor(Math.random() * pool.length)]; } while (p === this.lastPraise && pool.length > 1);
     this.lastPraise = p; return p;
   },
@@ -2347,7 +2356,7 @@ const Session = {
     Sfx.touch();
     if (st && !st.scope.dead && ['ready', 'input', 'act'].includes(st.phase)) { Hints.mark(st, 'relisten'); Hints.reset(st); }
     const text = (st && st.prompt) || this.G.game.intro;
-    if (Voice.silent) Voice.retry(text); else Voice.sayNow(text, { tag: 'relisten' });
+    if (Voice.silent) Voice.retry(text); else if (st && st.lead && st.prompt) { Voice.sayNow(st.lead, { tag: 'relisten' }); Voice.say(text, { tag: 'relisten' }); } else Voice.sayNow(text, { tag: 'relisten' });
     const a = $('#avatar'); a.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: T(300) + 1 });
   },
   guideStart(st) {
@@ -2375,12 +2384,12 @@ const Session = {
     let newGame = null;
     (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through (a record only: a game is done with 5 stars) */
     if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (its 5th star) */
-    if (G.W.map === 2) W2.check(true); else Unlock.check(true);
+    Progress.check(true);
     Store.save();
     this.teardown(G);
     Screens.show('map');
     Voice.enter('map');
-    MapView.useSet(W2.isW2(wid) ? 2 : 1);
+    MapView.useSet(G.W.map || 1);
     MapView.update();
     await MapView.celebrate(wid, stars, lvUp);
     if (newGame && Screens.cur === 'map' && !this.G) MapView.openPanel(wid, '新游戏开啦！');
@@ -2413,11 +2422,11 @@ const Session = {
     if (Screens.cur === 'finale') { Finale.stop(); Screens.show('map'); Voice.enter('map'); MapView.update(); return; }
     if (!this.G) return;
     const G = this.G, wid = G.world, opened = G.nx && !G.nxWas && W2.gameOpen(wid, G.nx);
-    if (G.W.map === 2) W2.check(true); else Unlock.check(true);
+    Progress.check(true);
     this.teardown(this.G);
     Screens.show('map');
     Voice.enter('map');
-    if (G.W.map === 2) MapView.useSet(2);
+    MapView.useSet(G.W.map || 1);
     MapView.update();
     if (opened) MapView.openPanel(wid, '新游戏开啦！');     /* 5 stars opened it before the end */
     else MapView.after(T(400));
@@ -2469,6 +2478,7 @@ const Hints = {
       if (idle < 5000) { this.life(st, t, idle); return; }
       st.hintLv = 1; this.mark(st, 'hint1');
       const h = Session.host(st.G); if (h && !fast()) h.glance();
+      if (st.lead && st.prompt) Voice.say(st.lead, { tag: 'hint1' });
       Voice.say(st.prompt || st.game.intro, { tag: 'hint1' });
       this.retap();
       st.scope.timeout(() => { if (st.hintLv === 1) this.glow(st); }, 450 * HS());
@@ -2487,6 +2497,7 @@ const Hints = {
   cheerUp(st) {
     const h = Session.host(st.G); if (h && !fast()) h.wave();
     Voice.say(CHEER[(st.cheers || 0) % CHEER.length], { tag: 'cheer' });
+    if (st.lead && st.prompt) Voice.say(st.lead, { tag: 'hint1' });
     Voice.say(st.prompt || st.game.intro, { tag: 'hint1' });
     this.retap();
     st.scope.timeout(() => { if (Session.alive(st)) this.glow(st); }, 900 * HS());
@@ -2603,6 +2614,10 @@ const MAPPOS2 = {
   land: { peppa2: [10, 38], bluey2: [29, 18], pjmasks: [50, 15.5], paw2: [71, 18], huluwa2: [87, 38], xiyou2: [76, 71], avengers2: [50, 74], festival: [24, 71], gate: [50, 46] },
   port: { peppa2: [19, 16], bluey2: [50, 13], pjmasks: [81, 16], paw2: [81, 47], huluwa2: [77, 80], xiyou2: [49, 83], avengers2: [21, 80], festival: [19, 47], gate: [50, 48] },
 };
+const MAPPOS3 = {
+  land: { peppa3: [11, 74], bluey3: [14, 38], pjmasks3: [33, 15], paw3: [63, 14], huluwa3: [87, 27], xiyou3: [88, 66], avengers3: [67, 80], rainbow: [39, 80], gate: [50, 47] },
+  port: { peppa3: [21, 85], bluey3: [17, 59], pjmasks3: [22, 33], paw3: [50, 14], huluwa3: [80, 32], xiyou3: [83, 59], avengers3: [79, 85], rainbow: [50, 87], gate: [50, 50] },
+};
 const MAPPOS = {
   land: { peppa: [15, 35], bluey: [37, 19], huluwa: [63, 19], paw: [85, 35], xiyou: [72, 72], avengers: [28, 72], gate: [50, 50] },
   port: { peppa: [26, 17], bluey: [74, 17], huluwa: [81, 48], paw: [74, 81], xiyou: [26, 81], avengers: [19, 48], gate: [50, 49] },
@@ -2610,8 +2625,12 @@ const MAPPOS = {
 const MapView = {
   isl: {}, built: false, panel: null, set: 1,
   /* world 1 (six islands + the gate) or world 2 (seven islands + the lantern island + the gate) */
-  ids() { return this.set === 2 ? ORDER2.slice() : LIVE(); },
+  ids() { return this.set === 3 ? ORDER3.slice() : this.set === 2 ? ORDER2.slice() : LIVE(); },
+  specialIds() { return this.set === 3 ? ['rainbow', 'gate'] : this.set === 2 ? ['festival', 'gate'] : ['gate']; },
+  /* the gates go round the open seas: 1 -> 2 -> 3 -> 1 (the sky once its gate was shown) */
+  nextSet() { return this.set === 1 ? 2 : this.set === 2 ? (W3.open() && Store.s.gate3 ? 3 : 1) : 1; },
   useSet(n) {
+    if (n === 3 && !W3.open()) n = 2;
     if (n === 2 && !W2.open()) n = 1;
     if (this.set === n && this.built) { this.tint(); return; }
     this.set = n; if (Store.s) { Store.s.mapSet = n; Store.save(); }
@@ -2619,17 +2638,17 @@ const MapView = {
     this.tint();
   },
   /* the second sea is the evening sea */
-  tint() { $('#mapbg').style.filter = this.set === 2 ? 'hue-rotate(58deg) saturate(1.15) brightness(.9)' : ''; },
+  tint() { const b = $('#mapbg'); b.style.filter = this.set === 2 ? 'hue-rotate(58deg) saturate(1.15) brightness(.9)' : ''; b.style.backgroundImage = 'url(assets/bg/' + (this.set === 3 ? 'map_sky' : 'map_sea') + '.jpg)'; },
   build() {
     if (this.built) return;
     this.built = true;
-    $('#mapbg').style.backgroundImage = 'url(assets/bg/map_sea.jpg)';
+    this.tint();
     const root = $('#islands');
-    this.ids().concat(this.set === 2 ? ['festival', 'gate'] : ['gate']).forEach(id => {
-      const sp = id === 'festival' || id === 'gate';
+    this.ids().concat(this.specialIds()).forEach(id => {
+      const sp = id === 'festival' || id === 'gate' || id === 'rainbow';
       const d = el('div', 'isl', root);
       const glow = el('div', '', d); Object.assign(glow.style, { position: 'absolute', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,247,190,.95), rgba(255,247,190,0) 68%)', opacity: 0 });
-      const land = img('assets/isl/' + ((WORLDS[id] && WORLDS[id].isl) || id) + '.png', 'land', d);
+      const land = img('assets/isl/' + (id === 'gate' && this.set === 3 ? 'gate_sky' : ((WORLDS[id] && WORLDS[id].isl) || id)) + '.png', 'land', d);
       const hero = img(sp ? 'assets/props/ui_star.png' : 'assets/chars/' + WORLDS[id].host + '.png', 'hero', d);
       const cloud = el('div', 'cloudcover', d);
       cloud.innerHTML = '<svg viewBox="0 0 200 120" width="100%" height="100%"><path d="M40 100C18 100 8 86 10 72C12 58 26 50 40 52C42 30 62 16 84 20C98 6 124 6 138 20C160 18 178 34 176 54C192 58 198 72 194 84C190 96 178 102 166 100Z" fill="#FFFFFF" stroke="#2B2118" stroke-width="5" stroke-linejoin="round" opacity=".96"/><path d="M60 64C68 60 76 60 84 64M110 58C118 54 126 54 134 58" stroke="#B9C7D6" stroke-width="5" fill="none" stroke-linecap="round"/></svg>';
@@ -2643,6 +2662,7 @@ const MapView = {
       this.isl[id] = { d, glow, land, hero, cloud, lan, big, flag, hit, deco };
       if (sp) { lan.remove(); big.remove(); flag.remove(); }
       if (id === 'gate') d.classList.add('gate');
+      if (id === 'gate' && this.set === 2) d.classList.toggle('sky', !!Store.s.gate3);      /* the way up: a golden glow */
     });
     this.layout();
     this.update();
@@ -2651,11 +2671,11 @@ const MapView = {
   layout() {
     if (!this.built) return;
     const vw = window.innerWidth, vh = window.innerHeight, port = vh > vw * 1.02;
-    const MP = this.set === 2 ? MAPPOS2 : MAPPOS, P = port ? MP.port : MP.land;
+    const MP = this.set === 3 ? MAPPOS3 : this.set === 2 ? MAPPOS2 : MAPPOS, P = port ? MP.port : MP.land;
     const S = Math.round(Math.min(vw, vh) * (port ? 0.27 : 0.25));
     const pts = [];
     Object.keys(this.isl).forEach(id => {
-      const I = this.isl[id], [px, py] = P[id], x = vw * px / 100, y = vh * py / 100, s = id === 'festival' ? S * 0.9 : id === 'gate' ? S * 0.8 : S, sp = id === 'festival' || id === 'gate';
+      const I = this.isl[id], [px, py] = P[id], x = vw * px / 100, y = vh * py / 100, s = id === 'festival' || id === 'rainbow' ? S * 0.9 : id === 'gate' ? S * 0.8 : S, sp = id === 'festival' || id === 'gate' || id === 'rainbow';
       Object.assign(I.d.style, { left: x + 'px', top: y + 'px' });
       Object.assign(I.land.style, { width: s + 'px' });
       Object.assign(I.glow.style, { width: s * 1.5 + 'px', height: s * 1.5 + 'px', left: -s * 0.75 + 'px', top: -s * 0.75 + 'px' });
@@ -2665,7 +2685,7 @@ const MapView = {
       Object.assign(I.hit.style, { width: s * 0.95 + 'px', height: s * 0.95 + 'px', left: -s * 0.475 + 'px', top: -s * 0.5 + 'px' });
       Object.assign(I.deco.style, { left: (-s * 0.46) + 'px', top: (s * 0.02) + 'px', height: (s * 0.24) + 'px' });
       if (I.lan.isConnected) { I.lan.style.left = '0px'; I.lan.style.top = (s * 0.36) + 'px'; I.big.style.left = '0px'; I.big.style.top = (s * 0.36 + 64) + 'px'; I.flag.style.left = (s * 0.3) + 'px'; I.flag.style.top = Math.max(-s * 0.55, 24 - y) + 'px'; }
-      if (id !== 'gate') pts.push([x, y]);              /* the second sea's path ends at the lantern island */
+      if (id !== 'gate') pts.push([x, y]);              /* the path ends at the lantern island / the rainbow castle */
     });
     const sv = $('#mapsvg'); sv.innerHTML = '';
     sv.setAttribute('viewBox', '0 0 ' + vw + ' ' + vh);
@@ -2675,7 +2695,8 @@ const MapView = {
     if (this.panel) this.closePanel(true);
   },
   recommend() {
-    if (this.set === 2) { if (W2.allDone()) return 'festival'; const open = ORDER2.filter(id => Store.w(id).unlocked); return open.find(id => !W2.islandDone(id)) || open[open.length - 1]; }
+    if (this.set === 3) { if (W3.allDone()) return 'rainbow'; const open = ORDER3.filter(id => Store.w(id).unlocked); return open.find(id => !W2.islandDone(id)) || open[open.length - 1]; }
+    if (this.set === 2) { if (W2.allDone()) return Store.s.fin2 === 'seen' && W3.open() && !W3.allDone() ? 'gate' : 'festival'; const open = ORDER2.filter(id => Store.w(id).unlocked); return open.find(id => !W2.islandDone(id)) || open[open.length - 1]; }
     if (LIVE().every(passed)) return 'gate';
     const open = LIVE().filter(id => Store.w(id).unlocked);
     const notDone = open.filter(id => !passed(id));                 /* R5-1: the new pass rule (played all 4 or 10 stars) */
@@ -2698,10 +2719,12 @@ const MapView = {
       I.glow.style.opacity = id === rec ? 1 : 0;
       I.lan.style.opacity = ws.unlocked ? 1 : 0.35;
     });
-    const Gt = this.isl.gate, gOpen = W2.open() && !!Store.s.gateShown;
-    if (Gt) { Gt.d.classList.toggle('locked', !gOpen); Gt.hero.style.opacity = gOpen ? 0 : 1; Gt.glow.style.opacity = rec === 'gate' ? 1 : 0; }
+    const Gt = this.isl.gate, gOpen = this.set > 1 || (W2.open() && !!Store.s.gateShown);
+    if (Gt) { Gt.d.classList.toggle('locked', !gOpen); if (this.set === 2) Gt.d.classList.toggle('sky', !!Store.s.gate3); Gt.hero.style.opacity = gOpen ? 0 : 1; Gt.glow.style.opacity = rec === 'gate' ? 1 : 0; }
     const F = this.isl.festival;
     if (F) { F.d.classList.toggle('locked', Store.s.fin2 !== 'seen'); F.glow.style.opacity = rec === 'festival' ? 1 : 0; }
+    const R = this.isl.rainbow;
+    if (R) { R.d.classList.toggle('locked', Store.s.fin3 !== 'seen'); R.glow.style.opacity = rec === 'rainbow' ? 1 : 0; }
     this.tint();
   },
   idle() {
@@ -2712,11 +2735,11 @@ const MapView = {
     });
   },
   tapIsland(id) {
-    if (id === 'gate' || id === 'festival') {
-      const I = this.isl[id];
-      if (id === 'gate' ? W2.open() : Store.s.fin2) {
-        if (id === 'gate' && Store.s.gateShown) { this.sail(); return; }
-        if (id === 'festival' && Store.s.fin2 === 'seen') { Finale.play(); return; }
+    if (id === 'gate' || id === 'festival' || id === 'rainbow') {
+      const I = this.isl[id], fin = id === 'rainbow' ? Store.s.fin3 : Store.s.fin2;
+      if (id === 'gate' ? (this.set > 1 || W2.open()) : fin) {
+        if (id === 'gate' && (this.set > 1 || Store.s.gateShown)) { this.sail(); return; }
+        if (id !== 'gate' && fin === 'seen') { Finale.play(); return; }
         this.specials(this.liveTok()); return;               /* its show had not played yet */
       }
       I.cloud.animate([{ transform: 'translate(-50%,-50%)' }, { transform: 'translate(-56%,-50%)' }, { transform: 'translate(-44%,-50%)' }, { transform: 'translate(-50%,-50%)' }], { duration: T(420) + 1 });
@@ -2744,6 +2767,7 @@ const MapView = {
   },
   /* island panel: the four mini-games of this world, the recommended one glows */
   openPanel(id, line) {
+    if (WORLDS[id].map === 3 && !WORLDS[id].games.every(g => GAMES[g])) { W3.load().then(() => { if (Screens.cur === 'map' && !Session.G && WORLDS[id].games.every(g => GAMES[g])) this.openPanel(id, line); }); return; }
     this.closePanel(true);
     const W = WORLDS[id], ws = Store.w(id);
     Voice.sayNow(line || W.hi, { tag: line ? 'unlock' : 'map' });      /* line: "新游戏开啦！" replaces the greeting */
@@ -2758,7 +2782,7 @@ const MapView = {
     const heroA = img('assets/chars/' + W.host + '.png', '', p);
     Object.assign(heroA.style, { position: 'absolute', height: S * 0.27 + 'px', left: (cx - S * 0.05) + 'px', top: (cy - S * 0.47) + 'px', pointerEvents: 'none' });
     Loops.run(heroA, [{ transform: 'translateY(0)' }, { transform: 'translateY(-10px)' }, { transform: 'translateY(0)' }], { duration: 1400 });
-    const rec = W.games.find(g => W2.gameOpen(id, g) && !W2.gameDone(id, g)) || (W2.isW2(id) ? W.games.filter(g => W2.gameOpen(id, g)).slice(-1)[0] : this.recGame(id));
+    const rec = W.games.find(g => W2.gameOpen(id, g) && !W2.gameDone(id, g)) || ((W.map || 1) > 1 ? W.games.filter(g => W2.gameOpen(id, g)).slice(-1)[0] : this.recGame(id));
     const M = Math.max(112, Math.round(S * 0.16)), gap = Math.round(M * 0.28), FS = Math.round(M * 0.72);
     const games = W.games.filter(g => GAMES[g]), x0 = cx - (games.length * (M + gap) + FS) / 2;
     games.forEach((g, i) => {
@@ -2814,7 +2838,7 @@ const MapView = {
     const a = p.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }); a.onfinish = () => { p.remove(); Loops.sweep(); };
   },
   enter() {
-    this.useSet(Store.s.mapSet === 2 ? 2 : 1);
+    this.useSet(Store.s.mapSet || 1);
     this.update();
     this.after(T(900));
   },
@@ -2861,6 +2885,24 @@ const MapView = {
       if (live()) Finale.play();
       return true;
     }
+    /* every island of world 2 has its flag: the gate in the middle of the evening sea now leads up to the sky */
+    if (this.set === 2 && W3.open() && !Store.s.gate3 && Store.s.fin2 === 'seen' && this.isl.gate) {
+      if (!live()) return false;
+      Store.s.gate3 = true; Store.save();
+      this.isl.gate.d.classList.add('sky');
+      await this.openShow('gate', '惊喜来啦！');
+      if (live()) this.pointAt('gate');
+      return true;
+    }
+    if (this.set === 3 && Store.s.fin3 === 'due' && this.isl.rainbow) {
+      if (!live()) return false;
+      Store.s.fin3 = 'seen'; Store.save();
+      await this.openShow('rainbow', '彩虹城堡开啦！');
+      if (live()) this.pointAt('rainbow');
+      await new Promise(r => setTimeout(r, T(2200)));
+      if (live()) Finale.play();
+      return true;
+    }
     return false;
   },
   async plantFlag(id) {
@@ -2887,7 +2929,7 @@ const MapView = {
   async sail() {
     if (this.sailing) return;
     this.sailing = true; this.liveTok(); this.closePanel(true);
-    const to = this.set === 2 ? 1 : 2, first = to === 2 && !Store.s.w2seen;
+    const to = this.nextSet(), first = (to === 2 && !Store.s.w2seen) || (to === 3 && !Store.s.w3seen);
     Sfx.reveal();
     this.isl.gate.land.animate([{ transform: 'translate(-50%,-50%) scale(1)' }, { transform: 'translate(-50%,-50%) scale(1.35) rotate(-4deg)' }], { duration: T(560) + 1, easing: EASE.pop, fill: 'forwards' });
     const ov = el('div', '', $('#map'));
@@ -2895,18 +2937,19 @@ const MapView = {
     const wait = (a, ms) => new Promise(r => { a.onfinish = r; setTimeout(r, ms); });
     await wait(ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(560) + 1, fill: 'forwards' }), T(560) + 80);
     if (to === 2) { Store.s.w2seen = true; Store.s.gateShown = true; W2.check(false); Store.save(); }
+    if (to === 3) { Store.s.w3seen = true; Store.s.gate3 = true; W3.check(false); Store.save(); }
     this.useSet(to); this.update();
     Object.keys(this.isl).forEach((id, i) => this.isl[id].d.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: T(420) + 1, delay: T(240 + 70 * i), easing: EASE.pop, fill: 'backwards' }));
     await wait(ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: T(520) + 1, fill: 'forwards' }), T(520) + 80);
     ov.remove(); this.sailing = false;
     if (Screens.cur !== 'map' || Session.G) return;
     if (first) { Sfx.fanfare(); Fx.confetti(30); }
-    Voice.sayNow(first ? '新的海岛开啦！' : to === 2 ? '去新的海岛！' : '回到第一片海！', { tag: 'map' });
+    Voice.sayNow(first ? (to === 3 ? '飞到云上啦！' : '新的海岛开啦！') : to === 3 ? '飞到云上去！' : to === 2 ? '去新的海岛！' : '回到第一片海！', { tag: 'map' });
     this.after(T(1000));
   },
   /* stars fly into the lantern; counting continues from what was already there (count-on for free) */
   async celebrate(wid, n, lvUp) {
-    this.useSet(W2.isW2(wid) ? 2 : 1);
+    this.useSet(WORLDS[wid].map || 1);
     this.build();
     const tok = this.celebTok = (this.celebTok || 0) + 1;
     const live = () => this.celebTok === tok && Screens.cur === 'map' && !Session.G;   /* a new session ends the show */
@@ -2915,6 +2958,7 @@ const MapView = {
     const onTap = () => { skip = true; if (fly) try { fly.finish(); } catch (e) {} };
     $('#map').addEventListener('pointerdown', onTap, { capture: true, once: true });
     const ws = Store.w(wid), I = this.isl[wid];
+    if (!I) { this.update(); return; }
     const before = ws.stars - n;
     const lamps = $$('i', I.lan);
     lamps.forEach((l, i) => l.classList.toggle('on', i < ((before % 10) + 10) % 10 && before > 0 ? i < before % 10 : false));
@@ -3067,6 +3111,12 @@ const Parent = {
       ORDER2.forEach(id => { const ws = Store.w(id), tr = el('tr', '', t2); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: ws.unlocked ? (W2.islandDone(id) ? '已过关' : '开放') : '未开放' });
         el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
     }
+    if (W3.open()) {
+      el('h3', '', sh, { text: '云上（第三世界：每个小游戏拿满 5 颗星才开下一个）' });
+      const t3 = el('table', '', sh); t3.innerHTML = '<tr><th>岛</th><th>开放</th><th>小游戏（✓ 已过 · 星）</th><th>难度</th></tr>';
+      ORDER3.forEach(id => { const ws = Store.w(id), tr = el('tr', '', t3); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: ws.unlocked ? (W2.islandDone(id) ? '已过关' : '开放') : '未开放' });
+        el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
+    }
     if (!digits()) el('div', 'mut', sh, { text: '数字显示已关闭：复仇者世界的“解码”只记录点卡映射，不代表已检验数字。' });
     /* offline readiness: the service worker writes its list only after EVERY asset is in the cache */
     el('h3', '', sh, { text: '离线' });
@@ -3091,7 +3141,7 @@ const Parent = {
     vm.addEventListener('click', () => { Store.s.settings.visual = !Store.s.settings.visual; Store.save(); vm.textContent = '看图模式：' + (visualMode() ? '开' : '关'); });
     el('div', 'mut', sh, { text: '看图模式：孩子听不见声音时打开。只靠听的题（佩奇“插蜡烛”）会直接显示点阵，记为“看图完成”，不算“听数取物”。' });
     const ul = el('button', 'pbtn', sh, { text: '全部解锁' });
-    ul.addEventListener('click', () => { ORDER.concat(ORDER2).forEach(o => { Store.w(o).unlocked = true; }); Store.s.w2 = true; Store.s.w2all = true; Store.save(); ul.textContent = '已全部解锁'; });
+    ul.addEventListener('click', () => { ORDER.concat(ORDER2, ORDER3).forEach(o => { Store.w(o).unlocked = true; }); Store.s.w2 = true; Store.s.w2all = true; Store.s.w3 = true; Store.save(); ul.textContent = '已全部解锁'; });
     let n = 0;
     const rs = el('button', 'pbtn warn', sh, { text: '清空进度' });
     rs.addEventListener('click', () => { n++; if (n === 1) rs.textContent = '确定清空？再按一次'; else if (n === 2) rs.textContent = '最后确认：清空全部进度'; else { Store.reset(); rs.textContent = '已清空'; MapView.update(); } });
@@ -3272,6 +3322,7 @@ const Entry = {
       Sfx.touch();
       Sfx.startMedia();
       Bank.init();
+      W3.load();                                   /* the sky's games (own file) - long before anyone can reach them */
       Sfx.tap();
       Count.preload(10);
       $('#home img').src = 'assets/props/ui_home.png';     /* game chrome loads after the entry screen */
@@ -3342,7 +3393,8 @@ function boot() {
   }
   Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
   W2.check(false);
-  if (!Store.s.flags) { Store.s.flags = LIVE().concat(ORDER2).filter(flagged); Store.save(); }
+  W3.check(false);
+  if (!Store.s.flags) { Store.s.flags = LIVE().concat(ORDER2, ORDER3).filter(flagged); Store.save(); }
   else if (Store.s.flags.some(w => !flagged(w))) { Store.s.flags = Store.s.flags.filter(flagged); Store.save(); }   /* an island got a new game: its flag is earned (and planted) again */
   Fx.init();
   Stage.init();
@@ -3455,7 +3507,7 @@ function boot() {
     }
     return { pts: pts.map(S), hold, id };
   };
-  window.__go = (world, game, level, opt) => { opt = opt || {}; if (level && WORLDS[world].map === 2) opt.level = opt.level || level; if (level) { const ws = Store.w(world); ws.level = level; ws.unlocked = true; } Session.start(world, game, opt); return true; };
+  window.__go = (world, game, level, opt) => { opt = opt || {}; if (level && WORLDS[world].map >= 2) opt.level = opt.level || level; if (level) { const ws = Store.w(world); ws.level = level; ws.unlocked = true; } Session.start(world, game, opt); return true; };
   window.__res = () => {
     let timers = 0, anims = 0, waits = 0, scopes = 0;
     const walk = s => { scopes++; timers += s.timers.size; anims += s.anims.size; waits += s.waits.size; s.children.forEach(walk); };
@@ -9957,6 +10009,77 @@ w2Game(MClock,    { id: 'W2', world: 'avengers2', bg: 'avengers_space', chars: [
 w2Game(MCompose,  { id: 'W3', world: 'avengers2', bg: 'avengers_park', chars: ['hulk'], host: 'hulk', iconSrc: IC.compose });
 w2Game(MTransitive, { id: 'W4', world: 'avengers2', bg: 'avengers_track', chars: ['captain'], host: 'captain', iconSrc: IC.race, pool: ['captain', 'ironman', 'hulk', 'thor', 'spiderman', 'widow', 'hawkeye'], boost: 0 });   /* L4: three heroes, who is fastest (R8-1) */
 /*@@W2END@@*/
+/*@@W3@@*/
+/* ================================================================ WORLD 3 · the sky (client, after the child finished
+   world 2): the seven families again, on floating islands above the clouds - its own map, its own pictures and things.
+   Same rules as world 2: 4 games per island, the 4th a reasoning test (gifted-school entrance style); a game is done with
+   5 stars (first-try right answers only), done opens the next game, every game of every island before opens the next
+   island; a wrong answer is named for what it is and a NEW question comes - the answer is never shown.
+   28 new rules: none of them is a rule of world 1 or world 2, and no two of them are the same. A little harder: the
+   islands start one step higher than in world 2. */
+const ORDER3 = ['peppa3', 'bluey3', 'pjmasks3', 'paw3', 'huluwa3', 'xiyou3', 'avengers3'];
+Object.assign(WORLDS, {
+  peppa3:    { map: 3, isl: 'peppa3', skin: 'peppa', base: 2, name: '佩奇·云岛', color: '#FF8DB3', color2: '#9A6433', host: 'peppa', runner: 'peppa', chars: ['peppa', 'george', 'daddy_pig', 'mummy_pig'], amb: 'wind', games: ['E1', 'E2', 'E3', 'E4'], hi: '佩奇在云上！' },
+  bluey3:    { map: 3, isl: 'bluey3', skin: 'bluey', base: 2, name: 'Bluey·云岛', color: '#6BB9F2', color2: '#F59A4A', host: 'bluey', runner: 'bingo', chars: ['bluey', 'bingo', 'bandit', 'chilli'], amb: 'crickets', games: ['U1', 'U2', 'U3', 'U4'], hi: '云上一起玩！' },
+  pjmasks3:  { map: 3, isl: 'pjmasks3', skin: 'pjmasks', base: 2, name: '睡衣小英雄·云岛', color: '#2E4BB8', color2: '#E23B3B', host: 'owlette', runner: 'catboy', chars: ['catboy', 'owlette', 'gekko', 'pj_robot', 'luna_girl', 'romeo'], amb: 'city', games: ['K1', 'K2', 'K3', 'K4'], hi: '夜空出发！' },
+  paw3:      { map: 3, isl: 'paw3', skin: 'paw', base: 3, name: '汪汪队·云岛', color: '#E8554A', color2: '#2E6FD8', host: 'ryder', runner: 'chase', chars: ['ryder', 'chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble'], amb: 'waves', games: ['R1', 'R2', 'R3', 'R4'], hi: '汪汪队，起飞！' },
+  huluwa3:   { map: 3, isl: 'huluwa3', skin: 'huluwa', base: 3, name: '葫芦娃·云岛', color: '#46C27A', color2: '#E0473A', host: 'grandpa', runner: 'gourd5', chars: ['grandpa', 'gourd1', 'gourd2', 'gourd5', 'gourd6', 'gourd7'], amb: 'wind', games: ['L1', 'L2', 'L3', 'L4'], hi: '葫芦娃上天啦！' },
+  xiyou3:    { map: 3, isl: 'xiyou3', skin: 'xiyou', base: 3, name: '西游记·天宫', color: '#F5B324', color2: '#D63B2F', host: 'wukong', runner: 'wukong', chars: ['wukong', 'bajie', 'shaseng', 'tangseng', 'dragon_horse'], amb: 'wind', games: ['S1', 'S2', 'S3', 'S4'], hi: '俺老孙上天宫！' },
+  avengers3: { map: 3, isl: 'avengers3', skin: 'avengers', base: 4, name: '复仇者·云岛', color: '#3A5CC0', color2: '#E23B3B', host: 'ironman', runner: 'spiderman', chars: ['ironman', 'hawkeye', 'captain', 'thor', 'hulk', 'widow'], amb: 'city', games: ['T1', 'T2', 'T3', 'T4'], hi: '复仇者，升空！' },
+});
+ORDER3.forEach(w => { MAXLV[w] = 5; WORLDS[w].games.forEach(g => { REQUIRED[g] = []; }); });
+
+const W3 = {
+  /* the 28 sky games come in their own file (assets/js/w3games.js): asked for after the entry tap */
+  loaded: false,
+  load() {
+    if (this.loaded) return Promise.resolve();
+    if (this.p) return this.p;
+    return (this.p = new Promise(res => {
+      const s = document.createElement('script'); s.src = 'assets/js/w3games.js';
+      s.onload = () => { res(); };
+      s.onerror = () => { this.p = null; s.remove(); res(); };          /* offline without it: tried again next time */
+      document.head.appendChild(s);
+    }));
+  },
+  /* the sky opens when every island of world 2 has its flag (or a parent opened everything) */
+  open() { return W2.allDone() || !!Store.s.w3; },
+  allDone() { return ORDER3.every(w => W2.islandDone(w)); },
+  check(show) {
+    let any = false;
+    ORDER3.forEach((id, i) => {
+      const ws = Store.w(id);
+      if (ws.unlocked) return;
+      if (Store.s.w2all || (this.open() && ORDER3.slice(0, i).every(w => W2.islandDone(w)))) { ws.unlocked = true; if (show) ws.justOpened = true; any = true; }
+    });
+    if (this.allDone() && !Store.s.fin3) { Store.s.fin3 = 'due'; any = true; }
+    if (any) Store.save();
+  },
+};
+
+/* ---------------------------------------------------------------- shared pieces of the sky games */
+const W3X = {
+  ink: '#2B2118',
+  /* a white card on the stage, registered for taps */
+  card(st, id, z, cls) { const e = W2X.thing(st, 10, 10, z || 5, cls || 'card'); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' }); if (id) K.reg(st, id, e, {}); return e; },
+  /* an svg of the given viewBox that fills its box */
+  svg(w, h) { const s = svg('svg', { viewBox: '0 0 ' + w + ' ' + h, width: '100%', height: '100%' }); s.style.overflow = 'visible'; s.style.pointerEvents = 'none'; return s; },
+  /* n boxes of size s in a row (or rows of `per`) centred on (cx, cy) */
+  row(n, cx, cy, s, gap, per) { per = per || n; const out = []; const rows = Math.ceil(n / per); for (let i = 0; i < n; i++) { const r = Math.floor(i / per), inRow = Math.min(per, n - r * per), c = i % per; out.push({ x: cx + (c - (inRow - 1) / 2) * (s + gap) - s / 2, y: cy + (r - (rows - 1) / 2) * (s + gap) - s / 2 }); } return out; },
+  /* the two watchers: one at each bottom corner (or only the first) */
+  decor2(G, chars, one) { const L = K.L(); chars.forEach((id, i) => { const a = G.actors[id]; if (!a) return; if (i === 0) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 180 : 140); else if (i === 1 && !one) showActor(a, L ? 944 : 634, L ? 698 : 1016, L ? 170 : 136); else hideActor(a); }); },
+  tapCards(st, name, p) { const i = K.cardIndex(p.id); if (name === 'tap' && i >= 0 && st.cards && !st.picked) { st.picked = true; Session.submit(st, st.opts[i]); return 'ok'; } return false; },
+  /* an icon for the task card from an svg string (viewBox 0 0 100 100) */
+  ic(str, size) { const d = el('span', ''); d.innerHTML = '<svg viewBox="0 0 100 100" width="' + (size || 48) + '" height="' + (size || 48) + '">' + str + '</svg>'; return { node: d }; },
+  say(text) { return Voice.say(text, { tag: 'wrong' }); },
+  /* a question in two short sentences: the lead is said again before the question on every repeat (replay, hints) */
+  say2(st, lead, text) { st.lead = lead; Voice.say(lead, { tag: 'prompt' }); return K.say(st, text); },
+  tip(text) { return Voice.say(text, { tag: 'prompt' }); },
+  num: n => W2X.num(n), numQ: n => W2X.numQ(n),
+  /* the hand shows HOW to act on a thing (never which one is right): a tap on the first work element */
+  tapHint(st, e) { if (!e) return; const c = center(e); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+};
+/*@@W3END@@*/
 /*@@MORE@@*/
 boot();</script>
 </body>

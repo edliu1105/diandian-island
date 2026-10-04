@@ -64,6 +64,11 @@ for cap in (5, 10):
     for a_ in range(0, cap + 1):
         out.add(CN[a_] + '和' + CN[cap - a_] + '，凑成' + CN[cap] + '！')
 out |= {'翻' + Q(m) + '下，到哪朵？' for m in range(1, 11)}
+# world 1 H3: "二和一，合起来三个" for every split
+for a_ in range(0, 8):
+    for b_ in range(0, 8):
+        if 1 <= a_ + b_ <= 7:                      # the seven brothers
+            out.add(CN[a_] + '和' + CN[b_] + '，合起来' + Q(a_ + b_) + '个')
 p = os.path.join(ROOT, 'raw', 'voice_lines.json')
 have = set(json.load(open(p, encoding='utf-8')))
 miss = os.path.join(ROOT, 'raw', 'voice_miss.json')
