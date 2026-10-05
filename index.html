@@ -9484,8 +9484,8 @@ const MTrace = {
     let k = Number(String(p.at).slice(1));
     /* a station at the same spot as the one expected next is that one: the end of the 8 on its start, a crossing, a
        second stroke starting where the first did (the finger is matched to the nearest station - a tie goes to the first) */
-    if (k !== st.done && same(S[k], S[st.done])) k = st.done;
-    else if (k !== st.done + 1 && S[st.done + 1] && !S[st.done + 1].start && same(S[k], S[st.done + 1])) k = st.done + 1;
+    if (st.done && k !== st.done && same(S[k], S[st.done])) k = st.done;          /* once writing has begun: at the start, an end on the start is "backwards" */
+    else if (st.done && k !== st.done + 1 && S[st.done + 1] && !S[st.done + 1].start && same(S[k], S[st.done + 1])) k = st.done + 1;
     if (k === st.done || (k === st.done + 1 && !S[k].start)) {
       st.done = k + 1; st.back = [];
       if (S[k].start && k) Sfx.pop(); else if (k % 3 === 0) Sfx.mar(Sfx.SCALE[Math.min(9, Math.floor(10 * k / S.length))], 0, 0.25, 0.2);

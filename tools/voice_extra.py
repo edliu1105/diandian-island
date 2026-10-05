@@ -20,6 +20,10 @@ for p in ['chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble']:
     out |= {'刚才没有' + NAME[p], '是' + NAME[p] + '！'} | {NAME[p] + '是第' + CN[k] + '个' for k in range(1, 6)}
 for c in ['catboy', 'owlette', 'gekko', 'pj_robot', 'luna_girl', 'romeo']:
     out |= {'不是' + NAME[c], '是' + NAME[c] + '！'}
+for n0 in range(1, 10):          # PAW elevator: every "n0 more d / n0 go d" the generator can make
+    for d in (1, 2):
+        if n0 + d <= 10: out.add(CN[n0] + '添' + CN[d] + '，是' + CN[n0 + d] + '只！')
+        if n0 - d >= 1: out.add(CN[n0] + '走' + CN[d] + '，剩' + CN[n0 - d] + '只！')
 for s in ['布鲁伊', '宾果']:          # Bluey: whose plate has more / less (each sister with both questions)
     out |= {s + '的多！', s + '的少！'}
 col = ['红色', '蓝色', '绿色', '黄色']
