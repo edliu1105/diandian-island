@@ -2438,7 +2438,7 @@ const Session = {
   },
   home() {
     Sfx.touch();
-    if (Screens.cur === 'finale') { Finale.stop(); Screens.show('map'); Voice.enter('map'); MapView.update(); return; }
+    if (Screens.cur === 'finale') { Finale.stop(); Screens.show('map'); Voice.enter('map'); MapView.update(); MapView.after(T(500)); return; }
     if (!this.G) return;
     const G = this.G, wid = G.world, opened = G.nx && !G.nxWas && W2.gameOpen(wid, G.nx);
     Progress.check(true);
@@ -2758,6 +2758,11 @@ const MapView = {
     if (id === 'gate' || id === 'festival' || id === 'rainbow') {
       const I = this.isl[id], fin = id === 'rainbow' ? Store.s.fin3 : Store.s.fin2;
       if (id === 'gate' ? (this.set > 1 || W2.open()) : fin) {
+        if (id === 'gate' && this.set === 2 && W3.open() && !Store.s.gate3) {      /* the sky is open but its gate show has not played: play it, never back to sea 1 */
+          const live = this.liveTok();
+          this.specials(live).then(shown => { if (!shown && live() && !Store.s.gate3) { Store.s.gate3 = true; Store.save(); this.sail(); } });
+          return;
+        }
         if (id === 'gate' && (this.set > 1 || Store.s.gateShown)) { this.sail(); return; }
         if (id !== 'gate' && fin === 'seen') { Finale.play(id === 'rainbow' ? 'sky' : undefined); return; }
         this.specials(this.liveTok()); return;               /* its show had not played yet */
@@ -3182,7 +3187,7 @@ const Finale = {
     const home = el('button', 'btn', F); home.id = 'fhome';
     Object.assign(home.style, { left: 'calc(14px + var(--sl))', top: 'calc(14px + var(--st))', width: '96px', height: '96px', background: '#FFE08A', zIndex: 5 });
     img('assets/props/ui_home.png', '', home).style.width = '74%';
-    tapify(home, () => { this.stop(); Screens.show('map'); MapView.update(); });
+    tapify(home, () => { this.stop(); Screens.show('map'); MapView.update(); MapView.after(T(500)); });      /* the shows that are due: the gold gate (R12-gate) */
     sc.add(() => home.remove());
     const vw = window.innerWidth, vh = window.innerHeight;
     const all = LIVE().flatMap(w => WORLDS[w].chars).concat(W2.allDone() ? ['catboy', 'owlette', 'gekko'] : []);
