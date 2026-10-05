@@ -9420,17 +9420,17 @@ const MCoins = {
 };
 
 /* ================================================================ 葫芦娃 G3 · 描 the dragonfly writes a number - the child traces it */
-const DIGITS = {    /* strokes in a 100 x 160 box, in writing order */
+const DIGITS = {    /* strokes in a 100 x 160 box, in writing order - the Chinese school way (client) */
   0: [[[50, 8], [24, 22], [12, 60], [14, 110], [34, 148], [62, 150], [84, 120], [88, 70], [80, 28], [56, 8]]],
-  1: [[[34, 30], [56, 10], [56, 152]]],
+  1: [[[58, 10], [46, 152]]],                                                  /* one straight stroke */
   2: [[[16, 40], [32, 14], [62, 10], [84, 32], [80, 66], [50, 106], [16, 150], [88, 150]]],
   3: [[[18, 22], [48, 8], [78, 22], [80, 54], [50, 74], [82, 96], [82, 132], [52, 152], [18, 138]]],
-  4: [[[64, 10], [14, 106], [90, 106]], [[64, 54], [64, 152]]],
-  5: [[[82, 10], [26, 10], [20, 70], [54, 58], [82, 84], [80, 128], [50, 152], [16, 136]]],
+  4: [[[56, 10], [12, 104], [90, 104]], [[68, 30], [68, 152]]],                /* slant + bar, then the vertical */
+  5: [[[24, 12], [20, 70], [54, 58], [82, 84], [80, 128], [50, 152], [16, 136]], [[24, 12], [84, 12]]],   /* vertical + belly, then the bar */
   6: [[[76, 14], [42, 22], [18, 70], [18, 122], [44, 152], [76, 136], [82, 100], [56, 80], [22, 100]]],
   7: [[[14, 12], [86, 12], [56, 80], [40, 152]]],
   8: [[[78, 30], [50, 8], [22, 30], [32, 62], [70, 92], [80, 130], [50, 152], [20, 130], [30, 92], [68, 62], [78, 30]]],
-  9: [[[80, 46], [56, 74], [24, 60], [24, 26], [52, 8], [80, 30], [80, 90], [64, 150]]],
+  9: [[[78, 28], [62, 10], [38, 10], [20, 28], [22, 56], [44, 72], [70, 64], [80, 40], [80, 96], [76, 152]]],   /* from the top right, the circle counterclockwise, then down */
 };
 const MTrace = {
   kind0: 'trace', verb: '写！', intro: '跟着蜻蜓写数字！', praise: ['写得真漂亮！'],
@@ -9480,7 +9480,12 @@ const MTrace = {
   onGesture(st, name, p) {
     if (name === 'pick') return st.done ? 'ok' : false;
     if (name !== 'pass' || p.id !== 'pad' || st.over) return false;
-    const k = Number(String(p.at).slice(1)), S = this.geo(st).S.list;
+    const S = this.geo(st).S.list, same = (a, b) => !!(a && b) && Math.hypot(a.x - b.x, a.y - b.y) < 12;
+    let k = Number(String(p.at).slice(1));
+    /* a station at the same spot as the one expected next is that one: the end of the 8 on its start, a crossing, a
+       second stroke starting where the first did (the finger is matched to the nearest station - a tie goes to the first) */
+    if (k !== st.done && same(S[k], S[st.done])) k = st.done;
+    else if (k !== st.done + 1 && S[st.done + 1] && !S[st.done + 1].start && same(S[k], S[st.done + 1])) k = st.done + 1;
     if (k === st.done || (k === st.done + 1 && !S[k].start)) {
       st.done = k + 1; st.back = [];
       if (S[k].start && k) Sfx.pop(); else if (k % 3 === 0) Sfx.mar(Sfx.SCALE[Math.min(9, Math.floor(10 * k / S.length))], 0, 0.25, 0.2);
