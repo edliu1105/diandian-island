@@ -30,6 +30,7 @@ run spotcheck  tests/spotcheck.py
 run intro_w3   tests/intro_w3.py
 run r11        tests/r11_check.py
 run gate3      tests/gate3_flow.py
+run strict2    tests/strict2_check.py
 echo "end $(date +%H:%M:%S)" >> "$OUT"
 if [ -n "$BAD" ]; then echo "W3: FAIL -$BAD" >> "$OUT"; else echo "W3: PASS" >> "$OUT"; fi
 cat "$OUT"
