@@ -535,7 +535,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 /* ---------------------------------------------------------------- storage (versioned, corruption tolerant) */
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
-function defState() { const w = {}; ORDER.concat(ORDER2, ORDER3).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, star5: true, gate: { cool: 0, last: '' } }; }
+function defState() { const w = {}; ORDER.concat(ORDER2, ORDER3).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, star5: true, keep2: true, gate: { cool: 0, last: '' } }; }
 const Store = {
   s: null,
   load() {
@@ -594,7 +594,7 @@ const Store = {
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
-    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 || o.mapSet === 3 ? o.mapSet : 1;
+    d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.keep2 = o.keep2 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 || o.mapSet === 3 ? o.mapSet : 1;
     d.w3 = o.w3 === true; d.w3seen = o.w3seen === true; d.gate3 = o.gate3 === true || d.w3seen; d.fin3 = o.fin3 === 'due' || o.fin3 === 'seen' ? o.fin3 : '';
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     if (o.gate && typeof o.gate === 'object') { d.gate.cool = num(o.gate.cool, 0, 0, 9e15); d.gate.last = typeof o.gate.last === 'string' ? o.gate.last.slice(0, 20) : ''; }
@@ -3415,6 +3415,10 @@ function boot() {
     });
     if (Store.s.fin2 === 'due' && !W2.allDone()) Store.s.fin2 = '';             /* sea 2: only 5 stars count from now on */
     Store.s.star5 = true; Store.save();
+  }
+  if (!Store.s.keep2) {                         /* sea 2 as it was earned (client): a game played through so far stays passed */
+    ORDER2.forEach(w => { const ws = Store.w(w); WORLDS[w].games.forEach(g => { if (ws.gdone && ws.gdone[g]) (ws.keep || (ws.keep = {}))[g] = true; }); });
+    Store.s.keep2 = true; Store.save();
   }
   Unlock.check(false);                          /* the unlock rule may have been relaxed since this save was written */
   W2.check(false);
@@ -7647,7 +7651,7 @@ const W2 = {
   /* world 2 opens when world 1 is passed (or a parent opened everything) */
   open() { return LIVE().every(passed) || !!Store.s.w2; },
   stars(w, g) { const ws = Store.w(w); return (ws.gstars && ws.gstars[g]) || 0; },
-  /* done: 5 stars in it (client rule) - or kept from sea 1 as it was earned before the rule (ws.keep) */
+  /* done: 5 stars in it (client rule) - or kept as it was earned before the rule (ws.keep: sea 1, and sea 2 up to the keep2 release) */
   gameDone(w, g) { const ws = Store.w(w); return this.stars(w, g) >= 5 || !!(ws.keep && ws.keep[g]); },
   /* open: the first game, the game before it done, or played already (nothing played is locked again) */
   gameOpen(w, g) { const gs = WORLDS[w].games, i = gs.indexOf(g); return !!Store.s.w2all || !!Store.w(w).allOpen || i <= 0 || this.gameDone(w, gs[i - 1]) || this.gameDone(w, g) || played(w, g) || this.stars(w, g) > 0; },   /* both worlds */
