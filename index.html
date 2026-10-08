@@ -536,7 +536,7 @@ const PRAISE = ['真棒！', '对啦！', '你真厉害！', '数得真准！', 
 const KEY = 'ddi.v1', VER = 1;
 function defWorld(id) { return { level: 1, floor: 1, win: [], hist: [], g: {}, log: [], mastery: 0, windows: 0, stars: 0, unlocked: openByDefault(id), cleared: false, rot: 0, lastKey: '', visits: 0, sessions: 0, demo: {}, guidedRun: 0, story: 0 }; }
 function defState() { const w = {}; ORDER.concat(ORDER2, ORDER3).forEach(id => { w[id] = defWorld(id); }); return { v: VER, worlds: w, settings: { digits: true, voiceURI: '', visual: false, mins: 12 }, finaleSeen: false, finaleDue: false, flags: [], seq1: true, star5: true, strict2: true, gate: { cool: 0, last: '' },
-    mem: {}, ev: [], days: {}, key: { day: -1, got: 0, short: false }, gems: { n: 0, src: [] }, checks: [], tests: [], notes: [], passFail: {}, flagDays: [], lastDay: 0, v2: 1, v2mig: 0 }; }
+    mem: {}, ev: [], days: {}, key: { day: -1, got: 0, short: false }, gems: { n: 0, src: [] }, checks: [], tests: [], notes: [], passFail: {}, flagDays: [], lastDay: 0, v2: 1, v2mig: 0, v2low: false, rvQuitRun: 0 }; }
 const Store = {
   s: null,
   load() {
@@ -10225,7 +10225,8 @@ const Mem = {
       if (m.b === 0) { if (!(isFact(c) && ctx.own && m.ok < 2)) { m.b = 1; m.due = d + 1; m.up = d; } }
       else if (wasDue && m.up !== d) { m.b = Math.min(7, m.b + 1); m.due = d + IV[m.b]; m.up = d; }
     } else if (m.b > 0) { m.b = Math.max(1, m.b - 2); m.due = d + 1; }
-    if (wasDue && gap >= 1 && m.evd !== d && !ctx.mig) { m.evd = d; const ev = Store.s.ev; ev.push([gap, how === 'ok' ? 1 : 0, d]); if (ev.length > 400) ev.splice(0, ev.length - 400); }
+    if (wasDue && gap >= 1 && m.evd !== d && !ctx.mig && !ctx.probe) {          /* a probe never enters retention (A.23) */
+      m.evd = d; const ev = Store.s.ev; ev.push([gap, how === 'ok' ? 1 : 0, d]); if (ev.length > 400) ev.splice(0, ev.length - 400); }
     m.last = d; Store.save();
   },
   parentNo(c) { const m = this.touch(c), d = DAY(); m.b = Math.min(Math.max(1, m.b), 1); m.due = d + 1; Store.save(); },
@@ -10235,14 +10236,14 @@ const Mem = {
   /* due (a card whose question type is not built yet would never be asked: it is never due - A.4) */
   due() { const d = DAY(); return Object.keys(Store.s.mem).filter(c => { const m = Store.s.mem[c]; return m.b > 0 && m.due <= d && (isFact(c) || SKILLS[c]); }).sort((a, b) => Store.s.mem[a].due - Store.s.mem[b].due); },
   overdue() { const d = DAY(), mig = Store.s.v2mig || 0; return Object.values(Store.s.mem).filter(m => m.b > 0 && m.due < d && !(m.mig && d - mig < 14)).length; },
-  today() { const d = DAY(), D = Store.s.days; if (!D[d]) { D[d] = { ms: 0, newK: 0, newG: 0, q: 0, keyGo: 0, keyEnd: 0, asked: 0, rq: 0, rqQuit: 0, nq: 0, nqQuit: 0 }; const old = Object.keys(D).map(Number).sort((a, b) => a - b); while (old.length > 60) delete D[old.shift()]; } return D[d]; },
+  today() { const d = DAY(), D = Store.s.days; if (!D[d]) { D[d] = { ms: 0, newK: 0, newG: 0, q: 0, keyGo: 0, keyEnd: 0, asked: 0, rq: 0, rqQuit: 0, nq: 0, nqQuit: 0, hello: 0 }; const old = Object.keys(D).map(Number).sort((a, b) => a - b); while (old.length > 60) delete D[old.shift()]; } return D[d]; },
   keep(lo, hi) { const e = Store.s.ev.filter(x => x[0] >= lo && x[0] <= hi); return [e.length ? e.filter(x => x[1]).length / e.length : 0, e.length]; },
   brake() { const [r, n] = this.keep(7, 13); return this.due().length > 15 || (n >= 20 && r < 0.8); },
   /* the support level of the next fact question: two days right at this level -> a probe one level lower (A.7) */
   supFor(c) { const m = this.get(c); if (!m) return { sup: 0, probe: false }; if (m.sup < 2 && m.sd.length >= 2) return { sup: m.sup + 1, probe: true }; return { sup: m.sup, probe: false }; },
 };
 
-const helped = st => (st.assists || []).some(a => /^hint[23]/.test(a));
+const helped = st => !(st.game && st.game.softHint) && (st.assists || []).some(a => /^hint[23]/.test(a));
 /* stand-ins until assets/js/v2games.js arrives (a second after the entry tap): no review card, no corner, no ritual */
 const V2D = { plan: () => ({ pos: [] }), slot: () => null, remember() {}, starTo: () => 'game', quit() {} };
 const MapV2 = { update() {}, hello() {} };

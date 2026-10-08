@@ -153,7 +153,8 @@ const RQ = {
 };
 /* the review game: the host of THIS island asks; built like every game (GameBase) */
 const RevGame = {
-  id: 'review', kind0: 'review', verb: '想！', review: true,
+  /* softHint: its 2nd hint says the question again - no help, so it costs nothing (as in 字字岛's 补句子) */
+  id: 'review', kind0: 'review', verb: '想！', review: true, softHint: true,
   present(st) {
     const t = RQ[st.q.t];
     if (st.missQ) Voice.say('再来一个！', { tag: 'prompt' }); else if (!st.G.rvSaid && !st.G.key && !st.G.test) { st.G.rvSaid = true; Voice.say('老朋友来了！', { tag: 'prompt' }); }
@@ -352,10 +353,17 @@ const MUnload = Object.assign({}, ZB, {
     const d = Math.min(5, o.level), rng = o.rng, hi = [0, 5, 7, 9, 10, 10][d], n = rng.int(3, hi), b = rng.int(1, n - 1), r = n - b;
     const kind = d >= 3 ? bagPick(G, 'z3k' + d, ['left', 'took']) : 'left';
     const ans = kind === 'left' ? r : b;
-    return { k: [d, n, b, kind], n, b, r, kind, answer: ans, opts: numOptions(G, ans, 0, hi), fact: factOf('-', n, b), sup: d >= 4 ? 1 : 0, act: kind === 'left' && d <= 3 };
+    return { k: [d, n, b, kind], n, b, r, kind, answer: ans, opts: numOptions(G, ans, 0, hi), fact: factOf('-', n, b), sup: d >= 4 ? 1 : 0, act: kind === 'left' && d <= 3, sym: d === 5 };
   },
   present(st) {
     const q = st.q, L = K.L(), my = st;
+    if (q.sym) {                                     /* the top level: the number sentence only, no truck (L8) */
+      st.crates = []; st.eqEl = W2X.thing(st, 10, 10, 6, ''); st.eqEl.style.width = st.eqEl.style.height = 'auto'; Object.assign(st.eqEl.style, { padding: '14px 24px', background: '#fff', borderRadius: '26px', boxShadow: '0 0 0 5px #2B2118' });
+      st.eqEl.appendChild(V2G.eq(q.kind === 'left' ? [q.n, '-', q.b, '=', '?'] : [q.n, '-', '?', '=', q.r], 1, 72));
+      this.place(st); K.pop(st, st.eqEl); st.phase = 'ready'; this.cardRow(st, q.opts, q.sup);
+      if (q.kind === 'left') K.say(st, '还剩几箱？'); else W3X.say2(st, '还剩' + CNQ(q.r) + '箱。', '搬走了几箱？');
+      return;
+    }
     st.bed = W2X.thing(st, 10, 10, 3, ''); st.bed.innerHTML = '<svg viewBox="0 0 520 160" width="100%" height="100%" preserveAspectRatio="none"><rect x="6" y="20" width="420" height="96" rx="12" fill="#FFC93C" stroke="#2B2118" stroke-width="7"/><rect x="426" y="40" width="88" height="76" rx="14" fill="#2B2118"/><circle cx="90" cy="130" r="26" fill="#3A3A3A" stroke="#2B2118" stroke-width="6"/><circle cx="350" cy="130" r="26" fill="#3A3A3A" stroke="#2B2118" stroke-width="6"/><circle cx="470" cy="130" r="22" fill="#3A3A3A" stroke="#2B2118" stroke-width="6"/></svg>';
     st.crates = Array.from({ length: q.n }, (_, i) => { const e = K.item(Stage.el, 'assets/props/crate.png', 90, 90); e.style.zIndex = 6; st.els.push(e); K.reg(st, 'cr' + i, e, {}); return { e, off: !q.act && q.kind === 'took' ? i >= q.r : false }; });
     st.eqEl = W2X.thing(st, 10, 10, 6, ''); st.eqEl.style.width = st.eqEl.style.height = 'auto'; Object.assign(st.eqEl.style, { padding: '10px 18px', background: '#fff', borderRadius: '22px', boxShadow: '0 0 0 4px #2B2118' });
@@ -377,7 +385,7 @@ const MUnload = Object.assign({}, ZB, {
        question is how many went (the unknown part is not seen, M5) */
     let k = 0; (st.crates || []).forEach(o => { if (o.off) { if (st.q.kind === 'took' && !st.revealed) place(o.e, -400, -400, 90, 90); else place(o.e, (L ? 700 : 520) + (k % 2) * 94, (L ? 150 : 520) + Math.floor(k++ / 2) * 94, 90, 90); } else { const i = st.crates.filter(x => !x.off).indexOf(o); place(o.e, B.x + 10 + (i % 5) * 100, B.y - 30 + (i >= 5 ? -94 : 0), 90, 90); } });
     if (st.gdoor) place(st.gdoor, L ? 700 : 520, L ? 150 : 520, 190, 190);
-    if (st.eqEl) place(st.eqEl, L ? 250 : 120, L ? 420 : 560);
+    if (st.eqEl) { if (st.q.sym) { const w = st.eqEl.getBoundingClientRect().width / (Stage.scale || 1); place(st.eqEl, Math.round((L ? 512 : 352) - w / 2), L ? 230 : 360); } else place(st.eqEl, L ? 250 : 120, L ? 420 : 560); }
     if (st.cards) st.cards.forEach((c, i) => place(c, (L ? 600 : 352) - (st.cards.length * 150 + (st.cards.length - 1) * 36) / 2 + i * 186, (L ? 600 : 880) - 75, 150, 150));
   },
   onGesture(st, name, p) {
@@ -401,13 +409,14 @@ const MFamily = Object.assign({}, ZB, {
     const alt = [[a, '+', b, '=', w + 1], [w, '-', a, '=', b + 1], [a + 1, '+', b, '=', w], [w, '-', b, '=', a + 1], [w, '-', a, '=', Math.max(0, b - 1)]].filter(x => (x[1] === '+' ? x[0] + x[2] : x[0] - x[2]) !== x[4]).filter(s => s.every(x => typeof x !== 'number' || (x >= 0 && x <= 19)) && JSON.stringify(s) !== JSON.stringify(ok));
     while (bad.length < 2) { const s = rng.pick(alt); if (!bad.some(x => JSON.stringify(x) === JSON.stringify(s))) bad.push(s); }
     const opts = rng.shuffle([ok, bad[0], bad[1]]);
-    return { k: [d, w, a, op], w, a, b, op, eqs: opts, answer: opts.indexOf(ok), opts: [0, 1, 2], fact: op === '+' ? factOf('+', a, b) : factOf('-', w, a), sup: d >= 3 ? 1 : 0 };
+    const hide = d === 5 ? rng.pick(['w', 'a', 'b']) : null;          /* the top level: one number of the family is hidden (L8) */
+    return { k: [d, w, a, op, hide], w, a, b, op, hide, eqs: opts, answer: opts.indexOf(ok), opts: [0, 1, 2], fact: op === '+' ? factOf('+', a, b) : factOf('-', w, a), sup: d >= 3 ? 1 : 0 };
   },
   present(st) {
     const q = st.q, L = K.L(), tri = st.tri = W2X.thing(st, 10, 10, 5, '');
     tri.innerHTML = '<svg viewBox="0 0 300 260" width="100%" height="100%"><path d="M150 30L270 230H30Z" fill="#E8F4FF" stroke="#2B2118" stroke-width="7" stroke-linejoin="round"/></svg>';
-    const put = (n, x, y) => { const c = el('div', '', tri); Object.assign(c.style, { position: 'absolute', left: x + '%', top: y + '%', transform: 'translate(-50%,-50%)', background: '#fff', borderRadius: '50%', width: '96px', height: '96px', boxShadow: '0 0 0 4px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); c.appendChild(q.sup ? UI.num(n, 54) : V2G.numCard(n, 0, 40)); };
-    put(q.w, 50, 20); put(q.a, 14, 86); put(q.b, 86, 86);
+    const put = (n, x, y) => { const c = el('div', '', tri); Object.assign(c.style, { position: 'absolute', left: x + '%', top: y + '%', transform: 'translate(-50%,-50%)', background: '#fff', borderRadius: '50%', width: '96px', height: '96px', boxShadow: '0 0 0 4px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); c.appendChild(n === '?' ? V2G.op('?', 54) : q.sup ? UI.num(n, 54) : V2G.numCard(n, 0, 40)); };
+    put(q.hide === 'w' ? '?' : q.w, 50, 20); put(q.hide === 'a' ? '?' : q.a, 14, 86); put(q.hide === 'b' ? '?' : q.b, 86, 86);
     st.cards = q.eqs.map((s, i) => { const c = W3X.card(st, 'card' + i, 6, 'card'); c.appendChild(V2G.eq(s, 1, 46)); K.pop(st, c, 80 * i); return c; });
     st.opts = [0, 1, 2];
     this.place(st); K.pop(st, tri);
