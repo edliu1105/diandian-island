@@ -10,3 +10,5 @@ __pycache__/
 # the client's brief and raw review-tool transcripts stay on the developer machine (not published)
 docs/TASK.md
 docs/logs/
+# design debates (local)
+debate/
