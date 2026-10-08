@@ -65,7 +65,7 @@ with sync_playwright() as p, serve() as base:
       m.due = d; m.up = d - 1; Mem.answer('cmp10', 'ok', 'b'); m = Mem.get('cmp10'); out.push([m.b, m.due - d]);
       m.due = d; Mem.answer('cmp10', 'ok', 'c'); m = Mem.get('cmp10'); out.push([m.b, m.due - d]);
       m.b = 5; Mem.answer('cmp10', 'wrong', 'd'); m = Mem.get('cmp10'); out.push([m.b, m.due - d]);
-      m.b = 3; Mem.answer('cmp10', 'help', 'e'); m = Mem.get('cmp10'); out.push([m.b, m.due - d]);
+      m.b = 3; m.dn = d - 1; Mem.answer('cmp10', 'help', 'e');          /* another day: one drop a day (V2R2-M2) */ m = Mem.get('cmp10'); out.push([m.b, m.due - d]);
       const f = Mem.touch('F+3+4'); f.b = 3; f.sd = [d - 3, d - 1]; const sp = Mem.supFor('F+3+4');
       Mem.answer('F+3+4', 'probe-no', 'f'); const afterNo = [Mem.get('F+3+4').b, Mem.get('F+3+4').sup];
       Mem.answer('F+3+4', 'probe-ok', 'g'); Mem.get('F+3+4').pd.push(d - 1); Mem.answer('F+3+4', 'probe-ok', 'h');

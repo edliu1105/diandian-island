@@ -10165,33 +10165,21 @@ const W3X = {
 };
 /*@@W3END@@*/
 /*@@V2@@*/
-/* ================================================================ 点点岛 v2 (docs/PLAN-v2.md, agreed by Opus 5.5, Codex GPT-6 Astra
-   and Fable 5.1): the syllabus is a skill map (number sense -> operations), the map keeps its order, the child sets the
-   speed; what is remembered is a skill or a number fact (not a game); review is one set of short question types asked by
-   this island's host, mixed into every game, the daily key and the parent's checks; support is taken away on evidence;
-   new islands always open, nothing caps the day. */
-
-/* ---------------------------------------------------------------- the Transformers arithmetic island: at the start of the sky,
-   or right after the island the child is on (an older save already in the sky), never in the child's way (A.2) */
 Object.assign(WORLDS, { trans3: { map: 3, isl: 'trans3', skin: 'avengers', base: 1, name: '汽车人·云岛', color: '#2E6FD8', color2: '#E8413A', host: 'optimus', runner: 'bumblebee', chars: ['optimus', 'bumblebee'], amb: 'city', games: ['Z1', 'Z2', 'Z3', 'Z4'], hi: '汽车人，变形！' } });
 (() => {
   let at = 0;
-  try { const raw = localStorage.getItem(KEY), o = JSON.parse(raw || 'null'); if (o && o.worlds && o.v2 !== 1 && !localStorage.getItem('ddi.pre-v2')) localStorage.setItem('ddi.pre-v2', raw);      /* the save before v2, kept (A.29) */
+  try { const raw = localStorage.getItem(KEY), o = JSON.parse(raw || 'null'); if (o && o.worlds && o.v2 !== 1 && !localStorage.getItem('ddi.pre-v2')) localStorage.setItem('ddi.pre-v2', raw);
     if (o && o.worlds) ORDER3.forEach((id, i) => { if (o.worlds[id] && o.worlds[id].unlocked) at = i + 1; }); if (o && o.v2pos != null) at = o.v2pos; } catch (e) { at = 0; }
   if (!ORDER3.includes('trans3')) ORDER3.splice(Math.min(at, ORDER3.length), 0, 'trans3');
   window.__v2pos = ORDER3.indexOf('trans3');
 })();
 MAXLV.trans3 = 5; ['Z1', 'Z2', 'Z3', 'Z4'].forEach(g => { REQUIRED[g] = []; });
 MAPPOS3.land.trans3 = [33, 46]; MAPPOS3.port.trans3 = [42, 68];
-/* portrait: the top row of every sea a little lower - the gem chest takes the top right corner */
 [MAPPOS.port, MAPPOS2.port, MAPPOS3.port].forEach(P => Object.keys(P).forEach(k => { if (P[k][1] < 25) P[k] = [P[k][0], P[k][1] + 5]; }));
 Object.assign(CHARS, { optimus: ['擎天柱', 'nod'], bumblebee: ['大黄蜂', 'hop'], ultraman: ['奥特曼', 'hop'], zero: ['赛罗', 'hop'], kaiju1: ['小怪兽', 'hop'], kaiju2: ['小恐龙', 'hop'] });
 Object.assign(META, { optimus: [422, 496, []], bumblebee: [456, 496, []], ultraman: [303, 496, []], zero: [336, 496, []], kaiju1: [418, 496, []], kaiju2: [427, 496, []] });
-
-/* ---------------------------------------------------------------- days, cards, memory */
 const DAY = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
 const IV = [0, 1, 3, 7, 14, 30, 60, 120];
-/* skill cards (node x number range): what each review type asks; fact cards: 'F+a+b' / 'F-a-b' (within 10), by direction */
 const SKILLS = {
   sub5: { t: 'sub', name: '一眼看出几个（5 以内）' }, give10: { t: 'give', name: '按数取物（10 以内）' },
   cmp10: { t: 'cmp', hi: 10, name: '比大小（10 以内）' }, cmp20: { t: 'cmp', hi: 20, name: '比大小（20 以内）' },
@@ -10200,9 +10188,8 @@ const SKILLS = {
   part5: { t: 'part', hi: 5, name: '分合（5 以内）' }, part10: { t: 'part', hi: 10, name: '分合（10 以内）' },
   ten20: { t: 'ten', name: '十和几' }, add10: { t: 'eq', op: '+', name: '加法算式（10 以内）' }, sub10: { t: 'eq', op: '-', name: '减法算式（10 以内）' },
 };
-/* which card a game teaches (its own question then counts as review of it), and the island cards of the pass questions */
 const GAMECARD = { P1: 'sub5', P3: 'give10', P4: 'give10', B1: 'cmp10', B4: 'cmp10', A3: 'next10', A4: 'on10', X1: 'on10', V1: 'on20', H3: 'part10', H4: 'part10', A1: 'part10', X3: 'part10', X4: 'part10', V3: 'part10', A2: 'add10', V2: 'ten20', Z1: 'add10', Z2: 'add10', Z3: 'sub10', Z4: 'sub10' };
-(() => { /* world 2 and the sky by their rule: the number line / number road, the harbour sums, the abacus */
+(() => {
   Object.keys(WORLDS).filter(w => WORLDS[w].map >= 2).forEach(w => WORLDS[w].games.forEach(g => { const r = GAMES[g]; if (!r) return; const k = r.kind0; if (k === 'numline' || k === 'seq') GAMECARD[g] = GAMECARD[g] || 'next20'; if (k === 'sums') GAMECARD[g] = 'add10'; if (k === 'abacus') GAMECARD[g] = 'ten20'; }));
 })();
 const isFact = c => /^F[+-]\d+[+-]\d+$/.test(c);
@@ -10212,52 +10199,41 @@ const cardName = c => isFact(c) ? (f => f.a + (f.op === '+' ? ' + ' : ' − ') +
 const Mem = {
   get(c) { return Store.s.mem[c] || null; },
   touch(c) { const d = DAY(); let m = Store.s.mem[c]; if (!m) { m = Store.s.mem[c] = { b: 0, due: 0, last: d, up: -1, seen: d, pass: [], n: 0, ok: 0, sup: 0, sd: [], pd: [] }; Mem.today().newK++; } return m; },
-  /* how: 'ok' (own first try, no help) | 'help' (right after the 2nd hint) | 'wrong' | 'probe-ok' | 'probe-no' (A.5, A.7) */
   answer(c, how, sid, ctx) {
     if (!c || !(SKILLS[c] || isFact(c))) return;
     ctx = ctx || {};
     const d = DAY(), m = this.touch(c), gap = d - m.last, wasDue = m.b > 0 && d >= m.due;
     m.n++;
-    if (how === 'probe-no') { m.sd = []; m.pd = []; m.last = d; Store.save(); return; }   /* support back, two days again; no box move (A.7) */
+    if (how === 'probe-no') { m.sd = []; m.pd = []; m.last = d; Store.save(); return; }
     if (how === 'probe-ok') { if (!m.pd.includes(d)) m.pd.push(d); if (m.pd.length >= 2) { m.sup = Math.min(2, m.sup + 1); m.sd = []; m.pd = []; } how = 'ok'; ctx = Object.assign({}, ctx, { probe: true }); }
-    /* the form it was right in (a question type or a game): 'known' needs two (A.21) */
     if (how === 'ok' && ctx.form) { const f = m.fm || (m.fm = []); if (!f.includes(ctx.form)) { f.push(ctx.form); if (f.length > 4) f.shift(); } }
-    /* a pass question or a missed card asked again, wrong on a day the card is not due: no box move - the pass rule
-       (two sessions) decides (A.12, R2-M2) */
     if ((ctx.pass || ctx.miss) && m.b > 0 && !wasDue && how !== 'ok') { m.last = d; Store.save(); return; }
-    /* the game's own question: on a day the card is not due it is only evidence (A.6) */
     if (ctx.own && m.b > 0 && !wasDue) { if (how === 'ok') m.ok++; m.last = d; Store.save(); return; }
     if (how === 'ok') {
       m.ok++;
-      if (ctx.rv && sid && !m.pass.includes(sid)) { m.pass.push(sid); if (m.pass.length > 4) m.pass.shift(); }      /* a pass: a review question only (A.12) */
+      if (ctx.rv && sid && !m.pass.includes(sid)) { m.pass.push(sid); if (m.pass.length > 4) m.pass.shift(); }
       if (isFact(c) && ctx.sup === m.sup && !ctx.probe && !m.sd.includes(d)) { m.sd.push(d); if (m.sd.length > 4) m.sd.shift(); }
       if (m.b === 0) { if (!(isFact(c) && ctx.own && m.ok < 2)) { m.b = 1; m.due = d + 1; m.up = d; } }
       else if (wasDue && m.up !== d) { m.b = Math.min(7, m.b + 1); m.due = d + IV[m.b]; m.up = d; }
-    } else if (m.b > 0) { if (m.dn !== d) { m.b = Math.max(1, m.b - 2); m.dn = d; } m.due = d + 1; }        /* at most one drop a day (R2-M2) */
-    if (wasDue && gap >= 1 && m.evd !== d && !ctx.mig && !ctx.probe) {          /* a probe never enters retention (A.23) */
+    } else if (m.b > 0) { if (m.dn !== d) { m.b = Math.max(1, m.b - 2); m.dn = d; } m.due = d + 1; }
+    if (wasDue && gap >= 1 && m.evd !== d && !ctx.mig && !ctx.probe) {
       m.evd = d; const ev = Store.s.ev; ev.push([gap, how === 'ok' ? 1 : 0, d]); if (ev.length > 400) ev.splice(0, ev.length - 400); }
     m.last = d; Store.save();
   },
   parentNo(c) { const m = this.touch(c), d = DAY(); m.b = Math.min(Math.max(1, m.b), 1); m.due = d + 1; Store.save(); },
   passed(c) { const m = this.get(c); return !!m && m.pass.length >= 2; },
-  /* known: a skill right after a week (box 4+); a fact: the same at the symbols level (A.21) */
   state(c) { const m = this.get(c), d = DAY(); if (!m) return 'none'; if (m.b >= 1 && d - m.due > 30) return 'stale'; if (m.b >= 4 && (isFact(c) ? m.sup >= 2 : (m.fm || []).length >= 2)) return 'known'; if (m.b >= 1) return 'learning'; return 'seen'; },
-  /* due (a card whose question type is not built yet would never be asked: it is never due - A.4) */
   due() { const d = DAY(); return Object.keys(Store.s.mem).filter(c => { const m = Store.s.mem[c]; return m.b > 0 && m.due <= d && (isFact(c) || SKILLS[c]); }).sort((a, b) => Store.s.mem[a].due - Store.s.mem[b].due); },
   overdue() { const d = DAY(), mig = Store.s.v2mig || 0; return Object.values(Store.s.mem).filter(m => m.b > 0 && m.due < d && !(m.mig && d - mig < 14)).length; },
   today() { const d = DAY(), D = Store.s.days; if (!D[d]) { D[d] = { ms: 0, newK: 0, newG: 0, q: 0, keyGo: 0, keyEnd: 0, asked: 0, rq: 0, rqQuit: 0, nq: 0, nqQuit: 0, hello: 0 }; const old = Object.keys(D).map(Number).sort((a, b) => a - b); while (old.length > 60) delete D[old.shift()]; } return D[d]; },
   keep(lo, hi) { const e = Store.s.ev.filter(x => x[0] >= lo && x[0] <= hi); return [e.length ? e.filter(x => x[1]).length / e.length : 0, e.length]; },
   brake() { const [r, n] = this.keep(7, 13); return this.due().length > 15 || (n >= 20 && r < 0.8); },
-  /* the support level of the next fact question: two days right at this level -> a probe one level lower (A.7) */
   supFor(c) { const m = this.get(c); if (!m) return { sup: 0, probe: false }; if (m.sup < 2 && m.sd.length >= 2) return { sup: m.sup + 1, probe: true }; return { sup: m.sup, probe: false }; },
 };
-
 const helped = st => !(st.game && st.game.softHint) && (st.assists || []).some(a => /^hint[23]/.test(a));
-/* stand-ins until assets/js/v2games.js arrives (a second after the entry tap): no review card, no corner, no ritual */
 const V2D = { plan: () => ({ pos: [] }), slot: () => null, remember() {}, starTo: () => 'game', quit() {} };
 const MapV2 = { update() {}, hello() {} };
 const StopGo = { maybe: () => false };
-/* the gems' state (keys, flags and extra review stars turn gems even before the screens are in) */
 const Gems = {
   avail() { return Store.s.key.day !== DAY(); },
   island() { const all = ORDER.concat(ORDER2, ORDER3).filter(w => Store.w(w).unlocked && GAMES[WORLDS[w].games[0]]); return all.slice(-1)[0] || 'peppa'; },
@@ -10272,9 +10248,6 @@ const Gems = {
   turn(src) { const a = Store.s.gems; if (a.n >= 360) return; a.n++; a.src.push(src); Store.save(); if (!fast() && this.reveal) this.reveal(a.n); },
   album() {},
 };
-/* ---------------------------------------------------------------- once, for every save from before v2: what was played
-   through becomes "learning" (box 2 with good evidence, else 1) - only a schedule, not proof; the first tests are spread
-   over the first seven active days and do not count for the brake for 14 days (A.29) */
 const V2Mig = {
   run() {
     const S = Store.s; if (S.v2pos == null) { S.v2pos = window.__v2pos; Store.save(); }
