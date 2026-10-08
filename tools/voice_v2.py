@@ -24,7 +24,7 @@ for b in range(1, 10): out.add('搬走' + Q(b) + '箱！')
 for r in range(0, 10): out.add('还剩' + Q(r) + '箱。')
 for c in range(1, 11): out.add('一共' + Q(c) + '块。')
 for n in range(0, 11): out.add('不是' + Q(n) + '箱')
-out |= {'月测开始！', '这边不是空的', '这个不是一家', '再看一看', '新英雄来啦！', '能量宝石！', '找回老朋友！', '月测做完啦', '明天见！', '停船还是继续？'}
+out |= {'两边不一样多', '两边一样多', '哪张让两边一样多？', '两边一样多吗？', '方框里是几？', '一样多！', '不一样多！', '宝石册满啦！', '月测开始！', '这边不是空的', '这个不是一家', '再看一看', '新英雄来啦！', '能量宝石！', '找回老朋友！', '月测做完啦', '明天见！', '停船还是继续？'}
 long = [t for t in out if len(CJK.findall(t)) > 8]
 p = os.path.join(ROOT, 'raw', 'voice_lines.json')
 lines = set(json.load(open(p, encoding='utf-8'))) if os.path.exists(p) else set()

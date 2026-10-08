@@ -51,11 +51,16 @@ const RQ = {
     present(st) {
       const q = st.q, L = K.L(), card = W2X.thing(st, 300, 220, 6, 'card'); place(card, L ? 362 : 202, L ? 150 : 260, 300, 220);
       Object.assign(card.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' }); card.appendChild(V2G.dots(q.n, { per: 3, g: 46, r: 17 }));
-      st.flash = card; K.pop(st, card);
-      st.scope.timeout(() => { if (!Session.alive(st)) return; card.innerHTML = ''; const f = el('div', '', card); Object.assign(f.style, { width: '100%', height: '100%', borderRadius: '18px', background: 'repeating-linear-gradient(45deg,#FFC93C 0 18px,#FFB020 18px 36px)' }); st.covered = true; }, T(1500) + 1);
+      /* covered first; when the host has finished speaking the dots flash 1.5 s, then the question (R2-M1) */
+      const cover = () => { card.innerHTML = ''; const f = el('div', '', card); Object.assign(f.style, { width: '100%', height: '100%', borderRadius: '18px', background: 'repeating-linear-gradient(45deg,#FFC93C 0 18px,#FFB020 18px 36px)' }); st.covered = true; };
+      st.flash = card; cover(); K.pop(st, card);
+      st.flashOnce = ms => { if (!Session.alive(st) || st.revealed) return; card.innerHTML = ''; card.appendChild(V2G.dots(q.n, { per: 3, g: 46, r: 17 })); st.covered = false; st.scope.timeout(() => { if (Session.alive(st) && !st.revealed) cover(); }, T(ms) + 1); };
+      st.scope.guard(Voice.afterSay(150)).then(() => { if (!Session.alive(st)) return; st.flashOnce(1500); st.scope.timeout(() => { if (Session.alive(st)) K.say(st, q.say); }, T(1700) + 1); }).catch(() => {});
       RQ.numCards(st, q.opts, 1);
     },
-    reveal(st) { if (st.flash) { st.flash.innerHTML = ''; st.flash.appendChild(V2G.dots(st.q.n, { per: 3, g: 46, r: 17 })); } },
+    saySelf: true,
+    gestureHint(st) { if (st.reflashed || !st.flashOnce) { Voice.say(st.q.say, { tag: 'prompt' }); return; } st.reflashed = true; st.flashOnce(1200); },
+    reveal(st) { st.revealed = true; if (st.flash) { st.flash.innerHTML = ''; st.flash.appendChild(V2G.dots(st.q.n, { per: 3, g: 46, r: 17 })); } },
   },
   give: {
     gen(G, c, o) { const n = G.rng.int(2, o.level >= 3 ? 10 : 7); return { k: ['give', n], n, answer: n, say: '给我' + CNQ(n) + '个！' }; },
@@ -121,7 +126,8 @@ const RQ = {
     gen(G, c, o) {
       const op = (SKILLS[c] || {}).op || '+';
       let a, b; if (op === '+') { a = G.rng.int(1, 6); b = G.rng.int(1, Math.min(4, 10 - a)); } else { a = G.rng.int(3, 9); b = G.rng.int(1, a - 1); }
-      const r = op === '+' ? a + b : a - b, ok = [a, op, b, '=', r], f1 = [a, op === '+' ? '-' : '+', b, '=', op === '+' ? Math.abs(a - b) : a + b], f2 = [a, op, b, '=', r + (r > 1 && G.rng.chance(0.5) ? -1 : 1)];
+      /* the wrong ones are always false sentences (R2-S1): the other operation with the same result (b >= 1), the result off by one */
+      const r = op === '+' ? a + b : a - b, ok = [a, op, b, '=', r], f1 = [a, op === '+' ? '-' : '+', b, '=', r], f2 = [a, op, b, '=', r + (r > 1 && G.rng.chance(0.5) ? -1 : 1)];
       const opts = G.rng.shuffle([ok, f1, f2]);
       return { k: ['eq', a, op, b], a, b, op, answer: opts.indexOf(ok), opts: [0, 1, 2], eqs: opts, say: '哪个算式对？', fact: factOf(op, a, b) };
     },
@@ -160,7 +166,7 @@ const RevGame = {
     if (st.missQ) Voice.say('再来一个！', { tag: 'prompt' }); else if (!st.G.rvSaid && !st.G.key && !st.G.test) { st.G.rvSaid = true; Voice.say('老朋友来了！', { tag: 'prompt' }); }
     const board = W2X.thing(st, Stage.W, Stage.H, 60, 'v2board'); place(board, 0, 0, Stage.W, Stage.H);
     Object.assign(board.style, { background: st.G.test ? '#FFF8EC' : 'rgba(255,248,236,.94)', pointerEvents: 'auto' });
-    t.present(st); st.taskEl = K.task(st, [['speaker', 'q']]); K.say(st, st.q.say);
+    t.present(st); st.taskEl = K.task(st, [['speaker', 'q']]); if (t.saySelf) st.prompt = st.q.say; else K.say(st, st.q.say);
     st.els.forEach(e => { if (e !== board) e.style.zIndex = String(61 + (parseInt(e.style.zIndex, 10) || 0)); });
   },
   evaluate(st, ans) { return ans === st.q.answer; },
@@ -169,7 +175,7 @@ const RevGame = {
   async feedback(st, ans) { const t = RQ[st.q.t]; if (t.feedback) { t.feedback(st, ans); } else { const i = (st.opts || []).indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); if (typeof ans === 'number' && st.q.t !== 'eq') W3X.say('不是' + (CN[ans] || ans)); else W3X.say('再看一看'); } await st.scope.wait(T(800)); },
   next(st, strat) { const t = RQ[st.q.t]; if (t.next) return t.next(st, strat); if (st.picked) return null; const vals = st.opts, i = strat === 'wrong' ? vals.findIndex(v => v !== st.q.answer) : vals.indexOf(st.q.answer); return { g: 'tap', p: { id: 'card' + i } }; },
   relayoutQ(st) { const t = RQ[st.q.t]; if (t.place) t.place(st); },
-  gestureHint(st) { if (st.hintDone) return; st.hintDone = true; Voice.say(st.q.say, { tag: 'prompt' }); },
+  gestureHint(st) { const t = RQ[st.q.t]; if (t.gestureHint) return t.gestureHint(st); if (st.hintDone) return; st.hintDone = true; Voice.say(st.q.say, { tag: 'prompt' }); },
   workEls(st) { return st.cards || []; },
   snap(st) { return { opts: st.opts || null, rv: st.q.c }; },
   cleanup() {},
@@ -232,13 +238,13 @@ Object.assign(V2D, {
     if (st.rv) {
       const c = st.q.c;
       if (st.supProbe) Mem.answer(c, how === 'ok' ? 'probe-ok' : 'probe-no', G.sid, { rv: true, sup: st.sup });
-      else Mem.answer(c, how, G.sid, { sup: st.sup, rv: true });
+      else Mem.answer(c, how, G.sid, { sup: st.sup, rv: true, pass: st.pass, miss: st.missQ, form: 'rq:' + st.q.t });
       if (!ok && !G.key) G.miss.push({ c, at: G.round + 2 });
       if (st.pass && !ok) { const n = (Store.s.passFail[c] || 0) + 1; Store.s.passFail[c] = n; if (n >= 2) { const m = Mem.touch(c); m.b = 1; m.due = DAY() + 1; Store.s.notes.push([DAY(), c]); Store.s.passFail[c] = 0; } Store.save(); }
       return;
     }
     /* the game's own question: its card (and, for the arithmetic games, the number fact it asked) */
-    const own = GAMECARD[G.id]; if (own) Mem.answer(own, how, G.sid, { own: true });
+    const own = GAMECARD[G.id]; if (own) Mem.answer(own, how, G.sid, { own: true, form: 'g:' + G.id });
     const f = st.q && st.q.fact; if (f && isFact(f)) Mem.answer(f, how, G.sid, { sup: 0, own: true });
     G.recent = (G.recent || []).concat(ok && !st.retest ? 1 : 0).slice(-4);
   },
@@ -272,36 +278,57 @@ const ZB = {
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(this.wrongLine ? this.wrongLine(st, ans) : W2Say.notN(ans)); await st.scope.wait(T(700)); },
   fillSlot(st, n) { const s = st.eqEl && st.eqEl.querySelector('[data-slot]'); if (s) { s.style.border = '0'; s.style.background = 'transparent'; s.appendChild(UI.num(n, 60)); } },
 };
-/* Z1 等号门: the vault door opens when both sides are the same - 0, then two groups put together */
+/* Z1 等号门: the vault door opens when both sides are the same. Every level uses "=" (R2-M3): L1 how many on the left (0
+   too); L2 which card makes both sides the same (dots); L3 the same or not (dots, = or ≠); L4 the same or not (numbers);
+   L5 the balance a + b = ? + c */
 const MDoor = Object.assign({}, ZB, {
   kind0: 'door', verb: '等！', intro: '能量门，两边一样多！', praise: ['两边一样多！'], one: true,
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
-    if (d === 1) { const a = bagPick(G, 'z1a', [0, 1, 2, 3, 4, 5]); return { k: [1, a], a, b: null, answer: a, opts: numOptions(G, a, 0, 6), say: '左边有几块？' }; }
-    const hi = d === 2 ? 5 : 10; let a, b; do { a = rng.int(0, hi - 1); b = rng.int(0, hi - a); } while (a + b === 0 || (d >= 3 && a + b < 4));
-    return { k: [d, a, b], a, b, answer: a + b, opts: numOptions(G, a + b, 0, hi), say: '合起来是几？', fact: factOf('+', a, b), sup: d >= 4 ? 1 : 0, sym: d === 5 };
+    if (d === 1) { const a = bagPick(G, 'z1a', [0, 1, 2, 3, 4, 5]); return { k: [1, a], mode: 'count', a, b: null, answer: a, opts: numOptions(G, a, 0, 6), say: '左边有几块？' }; }
+    if (d === 2) { const n = rng.int(1, 5); return { k: [2, n], mode: 'match', a: n, b: null, answer: n, opts: numOptions(G, n, 1, 6), say: '哪张让两边一样多？' }; }
+    if (d <= 4) {
+      const hi = d === 3 ? 7 : 10; let a, b; do { a = rng.int(1, hi - 1); b = rng.int(1, hi - a); } while (a + b < 3);
+      const same = bagPick(G, 'z1s' + d, [true, false]), s = a + b, c = same ? s : (s >= hi || rng.chance(0.5) ? s - 1 : s + 1);
+      return { k: [d, a, b, c], mode: 'judge', a, b, c, answer: same ? 'eq' : 'ne', opts: ['eq', 'ne'], say: '两边一样多吗？', fact: factOf('+', a, b), sup: d === 4 ? 1 : 0, sym: d === 4 };
+    }
+    let a, b, c; do { a = rng.int(1, 8); b = rng.int(1, 10 - a); c = rng.int(1, Math.max(1, a + b - 1)); } while (a + b < 4 || c >= a + b);
+    const x = a + b - c;
+    return { k: [5, a, b, c], mode: 'bal', a, b, c, answer: x, opts: numOptions(G, x, 0, 10), say: '方框里是几？', fact: factOf('-', a + b, c), sup: 1, sym: true };
   },
   present(st) {
     const q = st.q, L = K.L(), door = st.door = W2X.thing(st, 10, 10, 3, '');
     door.innerHTML = '<svg viewBox="0 0 600 320" width="100%" height="100%" preserveAspectRatio="none"><rect x="6" y="6" width="588" height="308" rx="40" fill="#C9D2DC" stroke="#2B2118" stroke-width="8"/><rect x="24" y="24" width="250" height="272" rx="26" fill="#FFF8EC" stroke="#2B2118" stroke-width="6"/><rect x="326" y="24" width="250" height="272" rx="26" fill="#FFF8EC" stroke="#2B2118" stroke-width="6"/></svg>';
-    const eqs = el('div', '', door); eqs.textContent = '='; Object.assign(eqs.style, { position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', font: '900 74px/1 system-ui,sans-serif', color: '#8892A0' }); st.eqSign = eqs;
-    const left = st.left = el('div', '', door); Object.assign(left.style, { position: 'absolute', left: '4%', top: '7.5%', width: '42%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' });
-    if (q.b == null) { if (q.a) left.appendChild(V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#4FB3FF' })); }
-    else if (q.sym) left.appendChild(V2G.eq([q.a, '+', q.b], 1, 56));
-    else { const grp = (n, c) => n ? V2G.dots(n, { g: 32, r: 12, per: 5, fill: c }) : (() => { const z = el('div', ''); Object.assign(z.style, { width: '44px', height: '44px', borderRadius: '50%', border: '4px dashed #2B2118' }); return z; })(); left.appendChild(grp(q.a, '#4FB3FF')); left.appendChild(V2G.op('+', 40)); left.appendChild(grp(q.b, '#FFC93C')); if (q.sup) { const n = el('div', '', left); n.appendChild(V2G.eq([q.a, '+', q.b], 1, 34)); n.style.width = '100%'; n.style.display = 'flex'; n.style.justifyContent = 'center'; } }
-    st.slot = el('div', '', door); Object.assign(st.slot.style, { position: 'absolute', left: '54%', top: '7.5%', width: '42%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center' }); st.slot.appendChild(V2G.op('?', 90));
+    const mid = st.eqSign = el('div', '', door); mid.textContent = q.mode === 'judge' ? '?' : '='; Object.assign(mid.style, { position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', font: '900 74px/1 system-ui,sans-serif', color: '#8892A0' });
+    const panel = x => { const p = el('div', '', door); Object.assign(p.style, { position: 'absolute', left: x, top: '7.5%', width: '42%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }); return p; };
+    const left = st.left = panel('4%'), right = st.slot = panel('54%');
+    const ring = () => { const z = el('div', ''); Object.assign(z.style, { width: '44px', height: '44px', borderRadius: '50%', border: '4px dashed #2B2118' }); return z; };
+    const grp = (n, c) => n ? V2G.dots(n, { g: 32, r: 12, per: 5, fill: c }) : ring();
+    if (q.mode === 'count' || q.mode === 'match') { if (q.a) left.appendChild(V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#4FB3FF' })); right.appendChild(V2G.op('?', 90)); }
+    else if (q.mode === 'judge' && !q.sym) { left.appendChild(grp(q.a, '#4FB3FF')); left.appendChild(V2G.op('+', 40)); left.appendChild(grp(q.b, '#FFC93C')); right.appendChild(V2G.dots(q.c, { g: 32, r: 12, per: 5, fill: '#5CC46E' })); }
+    else if (q.mode === 'judge') { left.appendChild(V2G.eq([q.a, '+', q.b], 1, 56)); right.appendChild(UI.num(q.c, 96)); }
+    else { left.appendChild(V2G.eq([q.a, '+', q.b], 1, 50)); st.eqR = V2G.eq(['?', '+', q.c], 1, 50); right.appendChild(st.eqR); }
     this.place(st); K.pop(st, door);
-    this.cardRow(st, q.opts, q.b == null ? 0 : q.sup);
+    const spot = { size: 150, gap: q.mode === 'judge' ? 80 : 36, cx: L ? 600 : 352, cy: L ? 600 : 880 };
+    if (q.mode === 'match') W2X.cards(st, q.opts.map(n => V2G.dots(n, { g: 28, r: 11, per: 3, fill: '#4FB3FF' })), q.opts, spot);
+    else if (q.mode === 'judge') W2X.cards(st, ['=', '≠'].map(t => { const e = el('div', ''); e.textContent = t; Object.assign(e.style, { font: '900 100px/1 system-ui,sans-serif', color: t === '=' ? '#2E9E4F' : '#8A5A2E', pointerEvents: 'none' }); return e; }), q.opts, spot);
+    else this.cardRow(st, q.opts, q.mode === 'count' ? 0 : q.sup);
     K.say(st, q.say);
   },
-  place(st) { const L = K.L(); if (st.door) place(st.door, L ? 210 : 52, L ? 70 : 220, 600, 320); (st.cards || []).forEach((c, i) => place(c, (L ? 600 : 352) - (st.cards.length * 150 + (st.cards.length - 1) * 36) / 2 + i * 186, (L ? 600 : 880) - 75, 150, 150)); },
+  place(st) { const L = K.L(), gap = st.q && st.q.mode === 'judge' ? 80 : 36; if (st.door) place(st.door, L ? 210 : 52, L ? 70 : 220, 600, 320); (st.cards || []).forEach((c, i) => place(c, (L ? 600 : 352) - (st.cards.length * 150 + (st.cards.length - 1) * gap) / 2 + i * (150 + gap), (L ? 600 : 880) - 75, 150, 150)); },
   async reveal(st) {
-    const q = st.q; st.slot.innerHTML = ''; st.slot.appendChild(UI.num(q.answer, 120)); st.eqSign.style.color = '#5CC46E';
+    const q = st.q;
+    if (q.mode === 'count') { st.slot.innerHTML = ''; st.slot.appendChild(UI.num(q.answer, 120)); }
+    else if (q.mode === 'match') { st.slot.innerHTML = ''; st.slot.appendChild(V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#5CC46E' })); }
+    else if (q.mode === 'bal') { const s = st.eqR && st.eqR.querySelector('[data-slot]'); if (s) { s.style.border = '0'; s.style.background = 'transparent'; s.appendChild(UI.num(q.answer, 50)); } }
+    else { st.eqSign.textContent = q.answer === 'eq' ? '=' : '≠'; const e = st.cards[q.opts.indexOf(q.answer)]; if (e) K.hop(st, e, 24); }
+    st.eqSign.style.color = q.answer === 'ne' ? '#8A5A2E' : '#5CC46E';
     st.scope.anim(st.eqSign, [{ transform: 'translate(-50%,-50%) scale(1)' }, { transform: 'translate(-50%,-50%) scale(1.6)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: 600, easing: EASE.pop });
-    Sfx.reveal(); if (q.answer === 0) Voice.say('空的就是零！', { tag: 'summary' }); else Voice.say('两边一样多！', { tag: 'summary' });
+    Sfx.reveal();
+    Voice.say(q.mode === 'count' && q.answer === 0 ? '空的就是零！' : q.answer === 'ne' ? '不一样多！' : q.mode === 'judge' ? '一样多！' : '两边一样多！', { tag: 'summary' });
     this.cheerAll(st); await st.scope.wait(T(1300));
   },
-  wrongLine(st, ans) { return ans === 0 ? '这边不是空的' : W2Say.notN(ans); },
+  wrongLine(st, ans) { const q = st.q; if (q.mode === 'judge') return ans === 'eq' ? '两边不一样多' : '两边一样多'; if (q.mode === 'match') return '两边不一样多'; return ans === 0 ? '这边不是空的' : W2Say.notN(ans); },
 });
 /* Z2 机器人合体: Optimus carries a, Bumblebee carries b; together they become one sentence a + b = ?; later one load is in a
    closed chest: a + ? = c (the missing part) */
@@ -449,9 +476,9 @@ Object.assign(Gems, {
     const ov = el('div', '', document.body); ov.id = 'gemshow';
     Object.assign(ov.style, { position: 'fixed', inset: 0, zIndex: 70, background: 'radial-gradient(circle,#FFF6C8 0%,#B57BFF 55%,#4B2F9E 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '20px' });
     const hero = n % 6 === 0, g = el('div', '', ov); g.innerHTML = hero ? '' : this.gemSvg(n - 1, true, 220);
-    if (hero) { const im = img('assets/chars/' + HEROES6[n / 6 - 1] + '.png', '', g); im.style.height = '320px'; }
+    if (hero) { const im = img('assets/chars/' + HEROES6[(n / 6 - 1) % 6] + '.png', '', g); im.style.height = '320px'; }
     g.animate([{ transform: 'scale(.2) rotate(-30deg)', opacity: 0 }, { transform: 'scale(1.1) rotate(0)', opacity: 1, offset: 0.7 }, { transform: 'scale(1)', opacity: 1 }], { duration: T(800) + 1, easing: EASE.pop });
-    Sfx.fanfare(); Fx.confetti(30); Voice.sayNow(hero ? '新英雄来啦！' : '能量宝石！', { tag: 'card' });
+    Sfx.fanfare(); Fx.confetti(30); Voice.sayNow(hero ? '新英雄来啦！' : '能量宝石！', { tag: 'card' }); if (n % 36 === 0) Voice.say('宝石册满啦！', { tag: 'card' });
     const off = () => { ov.remove(); MapView.update && MapView.update(); };
     tapify(ov, off); setTimeout(() => { if (ov.isConnected) off(); }, T(3200) + 200);
   },
@@ -460,7 +487,9 @@ Object.assign(Gems, {
     Object.assign(ov.style, { position: 'fixed', inset: 0, zIndex: 55, background: 'linear-gradient(#2B3E8C,#4B2F9E)', overflowY: 'auto', padding: '120px 20px 40px', boxSizing: 'border-box' });
     const home = el('button', 'btn', ov); Object.assign(home.style, { position: 'fixed', left: 'calc(14px + var(--sl))', top: 'calc(14px + var(--st))', width: '96px', height: '96px', background: '#FFE08A' }); img('assets/props/ui_home.png', '', home).style.width = '74%'; tapify(home, () => ov.remove());
     if (this.avail()) { const go = el('button', 'btn', ov); Object.assign(go.style, { position: 'fixed', right: 'calc(14px + var(--sr))', top: 'calc(14px + var(--st))', width: '140px', height: '96px', background: '#5CC46E' }); img('assets/props/chest.png', '', go).style.height = '80%'; tapify(go, () => { ov.remove(); this.start(); }); go.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 1200, iterations: Infinity }); }
-    const n = Store.s.gems.n;
+    /* the current book: 36 gems each; after the first book the next one starts (the heroes come again) */
+    const all = Store.s.gems.n, book = all > 0 ? Math.floor((all - 1) / 36) : 0, n = all - book * 36;
+    if (book > 0) { const t = el('div', '', ov); t.textContent = '第 ' + (book + 1) + ' 册'; Object.assign(t.style, { color: '#FFE08A', font: '900 28px system-ui,sans-serif', textAlign: 'center', margin: '0 0 12px' }); }
     HEROES6.forEach((h, r) => {
       const row = el('div', '', ov); Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', margin: '0 auto 14px', maxWidth: '900px' });
       for (let i = 0; i < 5; i++) { const k = r * 6 + i, c = el('div', '', row); c.innerHTML = this.gemSvg(k, k < n, 76); }
@@ -480,7 +509,7 @@ Object.assign(MapV2, {
     const b = el('button', 'btn', $('#map')); b.id = 'gemchest'; b.setAttribute('aria-label', '能量宝石');
     Object.assign(b.style, { position: 'absolute', right: 'calc(14px + var(--sr))', top: 'calc(14px + var(--st))', width: '104px', height: '104px', background: '#FFF3C4', borderRadius: '28px', zIndex: 12 });
     const i = img('assets/props/chest.png', '', b); Object.assign(i.style, { width: '84%', height: '84%', objectFit: 'contain' });
-    tapify(b, () => { MapView.closePanel(true); if (Gems.avail()) Gems.start(); else Gems.album(); });
+    tapify(b, () => { MapView.closePanel(true); Gems.album(); });                 /* the album first; its chest button starts the key round (R2-L5) */
   },
   update() {
     this.ensure();
@@ -535,9 +564,11 @@ const Report = {
 /* ---------------------------------------------------------------- the monthly test (A.25): 15 questions from the same types,
    no stars, plain; the first one is the baseline */
 const MonthTest = {
-  plan() { const sk = ['give10', 'on10', 'part10', 'part10', 'part5', 'cmp10', 'cmp10', 'add10', 'add10', 'sub10', 'sub10', 'next10', 'ten20', 'sub5', 'cmp20']; return sk; },
-  start() { Parent.close(); const isl = Gems.island(); Session.start(isl, WORLDS[isl].games[0], { test: true, keyItems: this.plan(), noDemo: true }); },
-  done(G) { const r = G.testRes || [], ok = r.filter(x => x[1]).length; Store.s.tests.push({ day: DAY(), n: r.length, ok, by: r }); Store.save(); },
+  plan() { return ['give10', 'give10', 'sub5', 'cmp10', 'cmp20', 'on10', 'next10', 'part5', 'part10', 'part10', 'ten20', 'add10', 'add10', 'sub10', 'sub10']; },
+  /* a test left half way goes on from where it stopped (within a week) - it can be done in two sittings (A.25) */
+  part() { const P = Store.s.testPart; return P && DAY() - P.day <= 7 && P.by.length < 15 ? P.by : []; },
+  start() { Parent.close(); const isl = Gems.island(), part = this.part(); Session.start(isl, WORLDS[isl].games[0], { test: true, keyItems: this.plan().slice(part.length), noDemo: true, testRes: part }); },
+  done(G) { const r = G.testRes || [], ok = r.filter(x => x[1]).length; Store.s.tests.push({ day: DAY(), n: r.length, ok, by: r }); delete Store.s.testPart; Store.save(); },
 };
 /* ---------------------------------------------------------------- the parent panel, v2 */
 const LIFE = { give10: '拿几个勺子：给我 7 个！', on10: '数楼梯：已经走了 5 级，再走 3 级是几级？', part10: '分零食：8 块饼干分两盘', cmp10: '比一比：谁的积木多？', add10: '买东西：1 块钱和 2 块钱一共几块？', sub10: '吃水果：5 个苹果吃掉 2 个还剩几个？', ten20: '数一捆筷子：十根一捆，再加几根', next10: '电梯里看楼层：5 楼的上一层是几楼？', sub5: '掷骰子：一眼看出几个点', cmp20: '比身高：谁高一点？', next20: '数日历：今天几号，明天几号？', on20: '跳房子：从 12 接着数' };
@@ -556,6 +587,7 @@ const ParentV2 = {
     if (S.v2low) sig.push('孩子在复习题处退出较多：每局只放 1 道复习，复习主要放进钥匙。');
     (S.notes || []).filter(n => n[1] !== 'low').slice(-3).forEach(n => sig.push('“' + cardName(n[1]) + '”换个样子问两次都没对，明天会再复习。'));
     const ch = S.checks.slice(-2); if (ch.length === 2 && n7 >= 20 && ch.every(c => c.n && c.yes / c.n < r7 - 0.2)) sig.push('连续两周考一考比 app 里低 20 个百分点以上：请告诉 Claude。');
+    const fd = (S.flagDays || []).slice(-4); if (fd.length >= 2) sig.push('最近几面旗各用了 ' + fd.slice(1).map((x, i) => Math.max(0, x - fd[i]) + ' 天').join('、') + '。');
     el('h3', '', sh, { text: '早期信号' }); el('div', 'mut', sh, { html: sig.length ? sig.map(x => '• ' + x).join('<br>') : '暂时没有。' });
     el('h3', '', sh, { text: '每周“考一考”（约 5 分钟，用家里的实物，不看屏幕）' });
     const tasks = [['give10', '拿 7 个勺子给我。'], ['on10', '从 6 接着数，数 3 个是几？'], ['part10', '8 可以分成 3 和几？'], ['add10', '3 加 4 是几？'], [null, '在纸上写一个 5。']];
@@ -571,9 +603,11 @@ const ParentV2 = {
     const cur = Object.keys(S.mem).filter(c => !isFact(c) && Mem.state(c) === 'learning')[0] || 'give10';
     el('h3', '', sh, { text: '这周的生活数学' }); el('div', 'mut', sh, { text: LIFE[cur] || LIFE.give10 });
     el('h3', '', sh, { text: '每月小测（约 6 分钟，可以分两次）' });
-    el('div', 'mut', sh, { text: '15 道题，素色、不给星，和以前的结果比曲线。上次：' + (S.tests.length ? S.tests.slice(-3).map(t => t.ok + '/' + t.n).join('、') : '还没测（第一次就是起点）') });
-    const mt = el('button', 'pbtn', sh, { text: '开始月测' }); mt.addEventListener('click', () => MonthTest.start());
+    el('div', 'mut', sh, { text: '15 道题，素色、不给星，和以前的结果比曲线。上次：' + (S.tests.length ? S.tests.slice(-3).map(t => t.ok + '/' + t.n).join('、') : '还没测（第一次就是起点）') + (MonthTest.part().length ? '。这次已经做了 ' + MonthTest.part().length + ' 题，点下面接着做。' : '') });
+    const mt = el('button', 'pbtn', sh, { text: MonthTest.part().length ? '接着做月测' : '开始月测' }); mt.addEventListener('click', () => MonthTest.start());
     el('h3', '', sh, { text: '进度报告 · 存档' });
+    let pre = null; try { pre = localStorage.getItem('ddi.pre-v2'); } catch (e) {}
+    if (pre) { const rb = el('button', 'pbtn', sh, { text: '恢复到升级前的存档' }); rb.addEventListener('click', () => { if (!confirm('回到升级 v2 之前的存档？现在的复习记录和宝石会丢掉。')) return; try { localStorage.setItem(KEY, pre); } catch (e) {} location.reload(); }); }
     const rep = el('button', 'pbtn', sh, { text: '复制进度报告' }), ta = el('textarea', '', sh); Object.assign(ta.style, { width: '100%', height: '120px', display: 'none', fontSize: '14px' });
     rep.addEventListener('click', () => { ta.style.display = ''; ta.value = Report.text(); ta.select(); try { navigator.clipboard.writeText(ta.value); rep.textContent = '已复制，可以直接粘贴给 Claude'; } catch (e) { rep.textContent = '请长按下面的文字全选复制'; } });
     const ex = el('button', 'pbtn', sh, { text: '导出存档' }), im = el('button', 'pbtn', sh, { text: '恢复存档' });

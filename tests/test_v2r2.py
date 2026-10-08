@@ -38,7 +38,7 @@ with sync_playwright() as p, serve() as base:
     log.check(r == 'same', 'C11 a reload keeps the v2 state exactly %s' % r)
     # D2
     r = page.evaluate("""() => { const out = {};
-      ['Z1', 'Z2', 'Z3', 'Z4'].forEach(g => { const R = GAMES[g], f = lv => { const G = { world: 'trans3', W: WORLDS.trans3, rng: RNG(11), bags: {} }; const s = new Set(); for (let i = 0; i < 200; i++) { const qq = R.gen(G, { level: lv, rng: G.rng }); s.add(JSON.stringify([qq.sym || false, qq.hide || null, qq.sup || 0])); } return Array.from(s).sort().join('|'); };
+      ['Z1', 'Z2', 'Z3', 'Z4'].forEach(g => { const R = GAMES[g], f = lv => { const G = { world: 'trans3', W: WORLDS.trans3, rng: RNG(11), bags: {} }; const s = new Set(); for (let i = 0; i < 200; i++) { const qq = R.gen(G, { level: lv, rng: G.rng }); s.add(JSON.stringify([qq.mode || qq.kind || null, qq.sym || false, qq.hide || null, qq.sup || 0])); } return Array.from(s).sort().join('|'); };
         out[g] = f(4) !== f(5); });
       return out; }""")
     log.check(all(r.values()), 'D2 every arithmetic game\'s level 5 differs from level 4 %s' % r)
