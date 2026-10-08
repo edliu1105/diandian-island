@@ -67,7 +67,8 @@ def progress(log):
             Store.s.gateShown = true; Store.s.w2seen = true; Store.s.fin2 = 'seen'; Store.s.flags = LIVE().concat(ORDER2); Store.s.mapSet = 2; Store.save(); }""")
         page.reload(); page.wait_for_function('window.__ready === true', timeout=20000); enter(page)
         st = page.evaluate("() => ({ open: W3.open(), u: ORDER3.map(w => Store.w(w).unlocked), g: ['E1','E2','E3','E4'].map(g => W2.gameOpen('peppa3', g)), set: MapView.set })")
-        log.check(st['open'] and st['u'] == [True] + [False] * 6 and st['g'] == [True, False, False, False] and st['set'] == 2, 'world 2 done: the sky opens with only its first island and first game; the map stays on the evening sea %s' % st)
+        log.check(st['open'] and st['u'] == [True] + [False] * (len(st['u']) - 1) and st['g'] == [True, False, False, False] and st['set'] == 2,      # v2: the first sky island is the arithmetic island
+              'world 2 done: the sky opens with only its first island and first game; the map stays on the evening sea %s' % st)
         page.wait_for_function("Store.s.gate3 === true && document.querySelector('.isl.gate').classList.contains('sky')", timeout=10000)
         said = page.wait_for_function("() => JSON.stringify(window.__speechLog).includes('惊喜来啦')", timeout=8000) is not None
         log.check(said and page.evaluate("MapView.recommend()") == 'gate', 'the middle of the evening sea: the gate turns gold, "惊喜来啦！", the hand points at it')
@@ -92,7 +93,8 @@ def progress(log):
             st = page.evaluate("([g]) => ({ done: W2.gameDone('peppa3', g), stars: W2.stars('peppa3', g), open: WORLDS.peppa3.games.map(x => W2.gameOpen('peppa3', x)), b3: Store.w('bluey3').unlocked })", [g])
             log.check(st['done'] and st['stars'] >= 5, '%s: five right answers, 5 stars, done %s' % (g, st))
             page.wait_for_timeout(1200); page.evaluate("MapView.closePanel(true)")
-        log.check(st['b3'], 'all four games of peppa3 with 5 stars: bluey3 opens %s' % st)
+        st['b3'] = page.evaluate("() => { if (ORDER3.indexOf('trans3') < ORDER3.indexOf('bluey3')) { const ws = Store.w('trans3'); ws.gstars = ws.gstars || {}; WORLDS.trans3.games.forEach(g => { ws.gstars[g] = 5; }); } Progress.check(false); return Store.w('bluey3').unlocked; }")      # v2: the arithmetic island before it is done too
+        log.check(st['b3'], 'all four games of peppa3 (and the arithmetic island) with 5 stars: bluey3 opens %s' % st)
         page.wait_for_function("!MapView.isl.peppa3.flag.classList.contains('gone')", timeout=15000)
         st = page.evaluate("() => ({ flags: Store.s.flags.slice(), banner: !!document.querySelector('#islands .flagpole:not(.gone) .cloth path[d^=\"M2 2H58V30\"]') })")
         log.check(st['flags'][-1] == 'peppa3' and st['banner'], 'peppa3 complete: its sky flag (a hanging banner) is planted and counted %s' % st)

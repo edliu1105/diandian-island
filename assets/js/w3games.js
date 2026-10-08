@@ -2416,4 +2416,4 @@ w3Game(MSorter,   { id: 'T1', world: 'avengers3', bg: 'avengers_factory', chars:
 w3Game(MSuits,    { id: 'T2', world: 'avengers3', bg: 'avengers_armory', chars: ['ironman'], host: 'ironman', iconSrc: IC3.suits, boost: -3 });   /* from 2 x 2 suits; 3 x 3 at L4 (R9-3) */
 w3Game(MArrows,   { id: 'T3', world: 'avengers3', bg: 'avengers_field', chars: ['hawkeye'], host: 'hawkeye', iconSrc: IC3.arrows });
 w3Game(MGears,    { id: 'T4', world: 'avengers3', bg: 'avengers_garage', chars: ['ironman', 'hulk'], host: 'ironman', iconSrc: IC3.gears, boost: 0 });
-W3.loaded = true;
+W3.w3in = true;              /* W3.loaded is set by assets/js/v2games.js, which comes right after */
