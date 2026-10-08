@@ -61,15 +61,16 @@ const RQ = {
     gen(G, c, o) { const n = G.rng.int(2, o.level >= 3 ? 10 : 7); return { k: ['give', n], n, answer: n, say: '给我' + CNQ(n) + '个！' }; },
     present(st) {
       const q = st.q, L = K.L(), pool = 12;
-      st.basket = W2X.thing(st, 260, 200, 4, ''); st.basket.innerHTML = '<svg viewBox="0 0 260 200" width="100%" height="100%"><path d="M20 70H240L214 186H46Z" fill="#E6B98A" stroke="#2B2118" stroke-width="7" stroke-linejoin="round"/><path d="M20 70H240" stroke="#2B2118" stroke-width="10" stroke-linecap="round"/></svg>';
-      st.items = Array.from({ length: pool }, (_, i) => { const e = K.item(Stage.el, 'assets/props/cube.png', 70, 70); e.style.zIndex = 6; st.els.push(e); K.reg(st, 'it' + i, e, {}); return { e, inB: false }; });
+      st.basket = W2X.thing(st, 420, 390, 4, ''); st.basket.innerHTML = '<svg viewBox="0 0 420 390" width="100%" height="100%"><path d="M10 90H410L376 378H44Z" fill="#E6B98A" stroke="#2B2118" stroke-width="8" stroke-linejoin="round"/><path d="M10 90H410" stroke="#2B2118" stroke-width="12" stroke-linecap="round"/></svg>';
+      /* 96 px: the stage is 1024 x 704, a 9.7-inch iPad shows it at scale 1 - every cube stays >= 88 CSS px */
+      st.items = Array.from({ length: pool }, (_, i) => { const e = K.item(Stage.el, 'assets/props/cube.png', 96, 96); e.style.zIndex = 6; st.els.push(e); K.reg(st, 'it' + i, e, {}); return { e, inB: false }; });
       st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {});
       RQ.give.place(st); st.items.forEach((o, i) => K.pop(st, o.e, 30 * i));
     },
     place(st) {
-      const L = K.L(), B = L ? { x: 640, y: 300 } : { x: 222, y: 640 }; place(st.basket, B.x, B.y, 260, 200);
+      const L = K.L(), B = L ? { x: 540, y: 130 } : { x: 120, y: 580 }; place(st.basket, B.x, B.y, 420, 390);
       let a = 0, b = 0;
-      st.items.forEach(o => { if (o.inB) { const k = b++; place(o.e, B.x + 34 + (k % 4) * 48, B.y + 74 + Math.floor(k / 4) * 36 - (k >= 8 ? 70 : 0), 56, 56); } else { const k = a++; place(o.e, (L ? 90 : 70) + (k % 4) * 84, (L ? 170 : 200) + Math.floor(k / 4) * 84, 70, 70); } });
+      st.items.forEach(o => { if (o.inB) { const k = b++; place(o.e, B.x + 18 + (k % 4) * 96, B.y + 94 + Math.floor(k / 4) * 96, 96, 96); } else { const k = a++; place(o.e, (L ? 40 : 110) + (k % 4) * 108, (L ? 130 : 226) + Math.floor(k / 4) * 108, 96, 96); } });
     },
     onGesture(st, name, p) {
       if (name !== 'tap') return false;
@@ -153,7 +154,14 @@ const RQ = {
 /* the review game: the host of THIS island asks; built like every game (GameBase) */
 const RevGame = {
   id: 'review', kind0: 'review', verb: '想！', review: true,
-  present(st) { const t = RQ[st.q.t]; if (!st.G.rvSaid && !st.G.key && !st.G.test) { st.G.rvSaid = true; Voice.say('老朋友来了！', { tag: 'prompt' }); } t.present(st); st.taskEl = K.task(st, [['speaker', 'q']]); K.say(st, st.q.say); },
+  present(st) {
+    const t = RQ[st.q.t];
+    if (st.missQ) Voice.say('再来一个！', { tag: 'prompt' }); else if (!st.G.rvSaid && !st.G.key && !st.G.test) { st.G.rvSaid = true; Voice.say('老朋友来了！', { tag: 'prompt' }); }
+    const board = W2X.thing(st, Stage.W, Stage.H, 60, 'v2board'); place(board, 0, 0, Stage.W, Stage.H);
+    Object.assign(board.style, { background: st.G.test ? '#FFF8EC' : 'rgba(255,248,236,.94)', pointerEvents: 'auto' });
+    t.present(st); st.taskEl = K.task(st, [['speaker', 'q']]); K.say(st, st.q.say);
+    st.els.forEach(e => { if (e !== board) e.style.zIndex = String(61 + (parseInt(e.style.zIndex, 10) || 0)); });
+  },
   evaluate(st, ans) { return ans === st.q.answer; },
   onGesture(st, name, p) { const t = RQ[st.q.t]; if (t.onGesture) return t.onGesture(st, name, p); return W3X.tapCards(st, name, p); },
   async reveal(st) { const t = RQ[st.q.t]; if (t.reveal) t.reveal(st); const i = (st.opts || []).indexOf(st.q.answer); if (st.cards && st.cards[i]) K.hop(st, st.cards[i], 26); Sfx.reveal(); await st.scope.wait(T(700)); },
@@ -180,7 +188,7 @@ Object.assign(V2D, {
     /* this island's pass questions get a slot even when nothing is due (A.12) */
     const pend = this.cardsOf(G.world).filter(c => c !== GAMECARD[G.id] && !Mem.passed(c) && WORLDS[G.world].games.some(g => GAMECARD[g] === c && (G.ws.played || []).includes(g)));
     if (pend.length && n === 0) n = 1;
-    if (G.v2low) n = Math.min(n, 1);                                 /* review was making the child quit: one a session (A.16) */
+    if (G.v2low || G.rounds <= 4) n = Math.min(n, 1);                 /* review made the child quit / a game's first visit: one (A.16, A.8) */
     n = Math.min(n, Math.max(0, rounds - 2));                        /* at least two of the game's own questions */
     return { pos: [1, 3, 4].slice(0, n) };
   },
@@ -222,15 +230,16 @@ Object.assign(V2D, {
     if (res !== 'ok' && res !== 'wrong') return;
     if (st.rv) {
       const c = st.q.c;
-      if (st.supProbe) Mem.answer(c, how === 'ok' ? 'probe-ok' : 'probe-no', G.sid);
-      else Mem.answer(c, how, G.sid, { sup: st.sup });
+      if (st.supProbe) Mem.answer(c, how === 'ok' ? 'probe-ok' : 'probe-no', G.sid, { rv: true, sup: st.sup });
+      else Mem.answer(c, how, G.sid, { sup: st.sup, rv: true });
       if (!ok && !G.key) G.miss.push({ c, at: G.round + 2 });
       if (st.pass && !ok) { const n = (Store.s.passFail[c] || 0) + 1; Store.s.passFail[c] = n; if (n >= 2) { const m = Mem.touch(c); m.b = 1; m.due = DAY() + 1; Store.s.notes.push([DAY(), c]); Store.s.passFail[c] = 0; } Store.save(); }
       return;
     }
     /* the game's own question: its card (and, for the arithmetic games, the number fact it asked) */
-    const own = GAMECARD[G.id]; if (own) Mem.answer(own, how, G.sid, {});
-    const f = st.q && st.q.fact; if (f && isFact(f)) Mem.answer(f, how, G.sid, { sup: 0 });
+    const own = GAMECARD[G.id]; if (own) Mem.answer(own, how, G.sid, { own: true });
+    const f = st.q && st.q.fact; if (f && isFact(f)) Mem.answer(f, how, G.sid, { sup: 0, own: true });
+    G.recent = (G.recent || []).concat(ok && !st.retest ? 1 : 0).slice(-4);
   },
   /* where a star of this question goes: the game's tray (at most 2 review stars counted there) or a gem (A.9) */
   starTo(G, st) {
@@ -278,7 +287,7 @@ const MDoor = Object.assign({}, ZB, {
     const left = st.left = el('div', '', door); Object.assign(left.style, { position: 'absolute', left: '4%', top: '7.5%', width: '42%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' });
     if (q.b == null) { if (q.a) left.appendChild(V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#4FB3FF' })); }
     else if (q.sym) left.appendChild(V2G.eq([q.a, '+', q.b], 1, 56));
-    else { left.appendChild(V2G.dots(Math.max(q.a, 0), { g: 32, r: 12, per: 5, fill: '#4FB3FF' })); left.appendChild(V2G.op('+', 40)); left.appendChild(V2G.dots(Math.max(q.b, 0), { g: 32, r: 12, per: 5, fill: '#FFC93C' })); if (q.sup) { const n = el('div', '', left); n.appendChild(V2G.eq([q.a, '+', q.b], 1, 34)); n.style.width = '100%'; n.style.display = 'flex'; n.style.justifyContent = 'center'; } }
+    else { const grp = (n, c) => n ? V2G.dots(n, { g: 32, r: 12, per: 5, fill: c }) : (() => { const z = el('div', ''); Object.assign(z.style, { width: '44px', height: '44px', borderRadius: '50%', border: '4px dashed #2B2118' }); return z; })(); left.appendChild(grp(q.a, '#4FB3FF')); left.appendChild(V2G.op('+', 40)); left.appendChild(grp(q.b, '#FFC93C')); if (q.sup) { const n = el('div', '', left); n.appendChild(V2G.eq([q.a, '+', q.b], 1, 34)); n.style.width = '100%'; n.style.display = 'flex'; n.style.justifyContent = 'center'; } }
     st.slot = el('div', '', door); Object.assign(st.slot.style, { position: 'absolute', left: '54%', top: '7.5%', width: '42%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center' }); st.slot.appendChild(V2G.op('?', 90));
     this.place(st); K.pop(st, door);
     this.cardRow(st, q.opts, q.b == null ? 0 : q.sup);
@@ -298,15 +307,16 @@ const MDoor = Object.assign({}, ZB, {
 const MCombine = Object.assign({}, ZB, {
   kind0: 'combine', verb: '合！', intro: '机器人合体！', praise: ['合体成功！'],
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng, hi = d <= 2 ? 6 : 10, a = rng.int(1, hi - 2), b = rng.int(1, hi - a), c = a + b;
+    const d = Math.min(5, o.level), rng = o.rng, hi = [0, 5, 7, 9, 10, 10][d], a = rng.int(1, hi - 2), b = rng.int(1, hi - a), c = a + b;
     const miss = d >= 3 && bagPick(G, 'z2m' + d, d === 3 ? ['sum', 'b'] : ['sum', 'b', 'a']) || 'sum';
     const ans = miss === 'sum' ? c : miss === 'b' ? b : a;
-    return { k: [d, a, b, miss], a, b, c, miss, answer: ans, opts: numOptions(G, ans, 0, hi), say: miss === 'sum' ? '一共几块？' : '箱子里有几块？', fact: factOf('+', a, b), sup: d >= 4 ? 1 : 0 };
+    return { k: [d, a, b, miss], a, b, c, miss, answer: ans, opts: numOptions(G, ans, 0, hi), say: miss === 'sum' ? '一共几块？' : '箱子里有几块？', fact: factOf('+', a, b), sup: d >= 4 ? 1 : 0, sym: d === 5 };
   },
   present(st) {
     const q = st.q, L = K.L();
     const mk = (n, hidden, color) => { const e = W2X.thing(st, 10, 10, 5, ''); e.style.width = e.style.height = 'auto'; Object.assign(e.style, { padding: '12px', background: hidden ? '#8A5A2E' : 'rgba(255,255,255,.92)', borderRadius: '20px', boxShadow: '0 0 0 4px #2B2118', minWidth: '120px', minHeight: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }); if (hidden) e.appendChild(V2G.op('?', 56)); else e.appendChild(V2G.dots(n, { g: 30, r: 11, per: 5, fill: color })); return e; };
     st.ga = mk(q.a, q.miss === 'a', '#4FB3FF'); st.gb = mk(q.b, q.miss === 'b', '#FFC93C');
+    if (q.sym) { st.ga.style.display = 'none'; st.gb.style.display = 'none'; }                 /* the top level: the sentence only */
     const parts = q.miss === 'sum' ? [q.a, '+', q.b, '=', '?'] : q.miss === 'b' ? [q.a, '+', '?', '=', q.c] : ['?', '+', q.b, '=', q.c];
     st.eqEl = W2X.thing(st, 10, 10, 6, ''); st.eqEl.style.width = st.eqEl.style.height = 'auto'; Object.assign(st.eqEl.style, { padding: '10px 18px', background: '#fff', borderRadius: '22px', boxShadow: '0 0 0 4px #2B2118' }); st.eqEl.appendChild(V2G.eq(parts, 1, 58));
     this.place(st); K.pop(st, st.ga); K.pop(st, st.gb, 120); K.pop(st, st.eqEl, 240);
@@ -325,8 +335,11 @@ const MCombine = Object.assign({}, ZB, {
     this.fillSlot(st, q.answer);
     if (q.miss !== 'sum') { const h = q.miss === 'a' ? st.ga : st.gb; h.innerHTML = ''; h.style.background = 'rgba(255,255,255,.92)'; h.appendChild(V2G.dots(q.answer, { g: 30, r: 11, per: 5, fill: q.miss === 'a' ? '#4FB3FF' : '#FFC93C' })); }
     /* 合体: the two loads fly together into one */
-    const mid = (L ? 440 : 250);
-    await Promise.all([st.scope.anim(st.ga, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + (mid - (L ? 250 : 80)) * 0.5 + 'px) scale(.9)' }], { duration: 500, fill: 'forwards', easing: EASE.glide }), st.scope.anim(st.gb, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + (mid - (L ? 620 : 420)) * 0.5 + 'px) scale(.9)' }], { duration: 500, fill: 'forwards', easing: EASE.glide })]);
+    if (!q.sym) {
+      await Promise.all([st.scope.anim(st.ga, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + (L ? 180 : 160) + 'px)' }], { duration: 450, fill: 'forwards', easing: EASE.glide }), st.scope.anim(st.gb, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + (L ? -190 : -170) + 'px)' }], { duration: 450, fill: 'forwards', easing: EASE.glide })]);
+      st.gb.style.display = 'none'; st.ga.innerHTML = ''; const row = el('div', '', st.ga); Object.assign(row.style, { display: 'flex', gap: '8px' }); row.appendChild(V2G.dots(q.a, { g: 30, r: 11, per: 5, fill: '#4FB3FF' })); row.appendChild(V2G.dots(q.b, { g: 30, r: 11, per: 5, fill: '#FFC93C' }));
+      st.scope.anim(st.ga, [{ transform: 'translateX(' + (L ? 180 : 160) + 'px) scale(1)' }, { transform: 'translateX(' + (L ? 180 : 160) + 'px) scale(1.15)' }, { transform: 'translateX(' + (L ? 180 : 160) + 'px) scale(1)' }], { duration: 400, fill: 'forwards', easing: EASE.pop });
+    }
     Sfx.reveal(); Fx.burst && Fx.burst((L ? 480 : 300), (L ? 170 : 320), { n: 14 });
     Voice.say('合体成功！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1200));
   },
@@ -336,7 +349,7 @@ const MCombine = Object.assign({}, ZB, {
 const MUnload = Object.assign({}, ZB, {
   kind0: 'unload', verb: '卸！', intro: '帮大黄蜂卸货！', praise: ['卸货真快！'], one: true,
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng, hi = d <= 2 ? 6 : 10, n = rng.int(3, hi), b = rng.int(1, n - 1), r = n - b;
+    const d = Math.min(5, o.level), rng = o.rng, hi = [0, 5, 7, 9, 10, 10][d], n = rng.int(3, hi), b = rng.int(1, n - 1), r = n - b;
     const kind = d >= 3 ? bagPick(G, 'z3k' + d, ['left', 'took']) : 'left';
     const ans = kind === 'left' ? r : b;
     return { k: [d, n, b, kind], n, b, r, kind, answer: ans, opts: numOptions(G, ans, 0, hi), fact: factOf('-', n, b), sup: d >= 4 ? 1 : 0, act: kind === 'left' && d <= 3 };
@@ -344,7 +357,7 @@ const MUnload = Object.assign({}, ZB, {
   present(st) {
     const q = st.q, L = K.L(), my = st;
     st.bed = W2X.thing(st, 10, 10, 3, ''); st.bed.innerHTML = '<svg viewBox="0 0 520 160" width="100%" height="100%" preserveAspectRatio="none"><rect x="6" y="20" width="420" height="96" rx="12" fill="#FFC93C" stroke="#2B2118" stroke-width="7"/><rect x="426" y="40" width="88" height="76" rx="14" fill="#2B2118"/><circle cx="90" cy="130" r="26" fill="#3A3A3A" stroke="#2B2118" stroke-width="6"/><circle cx="350" cy="130" r="26" fill="#3A3A3A" stroke="#2B2118" stroke-width="6"/><circle cx="470" cy="130" r="22" fill="#3A3A3A" stroke="#2B2118" stroke-width="6"/></svg>';
-    st.crates = Array.from({ length: q.n }, (_, i) => { const e = K.item(Stage.el, 'assets/props/crate.png', 64, 64); e.style.zIndex = 6; st.els.push(e); K.reg(st, 'cr' + i, e, {}); return { e, off: !q.act && q.kind === 'took' ? i >= q.r : false }; });
+    st.crates = Array.from({ length: q.n }, (_, i) => { const e = K.item(Stage.el, 'assets/props/crate.png', 90, 90); e.style.zIndex = 6; st.els.push(e); K.reg(st, 'cr' + i, e, {}); return { e, off: !q.act && q.kind === 'took' ? i >= q.r : false }; });
     st.eqEl = W2X.thing(st, 10, 10, 6, ''); st.eqEl.style.width = st.eqEl.style.height = 'auto'; Object.assign(st.eqEl.style, { padding: '10px 18px', background: '#fff', borderRadius: '22px', boxShadow: '0 0 0 4px #2B2118' });
     st.eqEl.appendChild(V2G.eq(q.kind === 'left' ? [q.n, '-', q.b, '=', '?'] : [q.n, '-', '?', '=', q.r], 1, 56));
     this.place(st); K.pop(st, st.bed); st.crates.forEach((o, i) => K.pop(st, o.e, 40 * i));
@@ -353,14 +366,17 @@ const MUnload = Object.assign({}, ZB, {
       st.actRes = () => { if (Session.alive(my)) this.ask(st); };
       return;
     }
-    if (q.kind === 'took') { W3X.say2(st, '还剩' + CNQ(q.r) + '箱。', '搬走了几箱？'); this.cardRow(st, q.opts, q.sup); return; }
+    if (q.kind === 'took') { st.gdoor = W2X.thing(st, 190, 190, 5, ''); st.gdoor.innerHTML = '<svg viewBox="0 0 190 190" width="100%" height="100%"><rect x="6" y="6" width="178" height="178" rx="18" fill="#8A5A2E" stroke="#2B2118" stroke-width="8"/><path d="M20 50H170M20 90H170M20 130H170" stroke="#6B4A2E" stroke-width="6"/></svg>'; const qm = el('div', '', st.gdoor); Object.assign(qm.style, { position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }); qm.appendChild(V2G.op('?', 84)); this.place(st); K.pop(st, st.gdoor); W3X.say2(st, '还剩' + CNQ(q.r) + '箱。', '搬走了几箱？'); this.cardRow(st, q.opts, q.sup); return; }
     this.ask(st);
   },
   ask(st) { const q = st.q; st.phase = 'ready'; K.pop(st, st.eqEl); this.cardRow(st, q.opts, q.sup); K.say(st, '还剩几箱？'); },
   place(st) {
     const L = K.L(), B = L ? { x: 120, y: 200 } : { x: 92, y: 300 };
     if (st.bed) place(st.bed, B.x, B.y + 40, 520, 160);
-    let k = 0; (st.crates || []).forEach(o => { if (o.off) place(o.e, (L ? 760 : 560) + (k % 2) * 70, (L ? 200 : 520) + Math.floor(k++ / 2) * 70, 64, 64); else { const i = st.crates.filter(x => !x.off).indexOf(o); place(o.e, B.x + 20 + (i % 5) * 76, B.y - 2 + (i >= 5 ? -62 : 0), 64, 64); } });
+    /* the unloaded crates: by the truck when the child unloads them (they count them), behind the garage door when the
+       question is how many went (the unknown part is not seen, M5) */
+    let k = 0; (st.crates || []).forEach(o => { if (o.off) { if (st.q.kind === 'took' && !st.revealed) place(o.e, -400, -400, 90, 90); else place(o.e, (L ? 700 : 520) + (k % 2) * 94, (L ? 150 : 520) + Math.floor(k++ / 2) * 94, 90, 90); } else { const i = st.crates.filter(x => !x.off).indexOf(o); place(o.e, B.x + 10 + (i % 5) * 100, B.y - 30 + (i >= 5 ? -94 : 0), 90, 90); } });
+    if (st.gdoor) place(st.gdoor, L ? 700 : 520, L ? 150 : 520, 190, 190);
     if (st.eqEl) place(st.eqEl, L ? 250 : 120, L ? 420 : 560);
     if (st.cards) st.cards.forEach((c, i) => place(c, (L ? 600 : 352) - (st.cards.length * 150 + (st.cards.length - 1) * 36) / 2 + i * 186, (L ? 600 : 880) - 75, 150, 150));
   },
@@ -370,14 +386,14 @@ const MUnload = Object.assign({}, ZB, {
     return W3X.tapCards(st, name, p);
   },
   next(st, strat) { if (st.q.act && st.need > 0) { const i = st.crates.findIndex(o => !o.off); return { g: 'tap', p: { id: 'cr' + i } }; } return ZB.next.call(this, st, strat); },
-  async reveal(st) { this.fillSlot(st, st.q.answer); Sfx.reveal(); Voice.say('卸货真快！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1100)); },
-  wrongLine(st, ans) { return '不是' + (CNQ(ans) || ans) + '箱'; },
+  async reveal(st) { this.fillSlot(st, st.q.answer); st.revealed = true; if (st.gdoor) st.gdoor.style.display = 'none'; this.place(st); Sfx.reveal(); Voice.say('卸货真快！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1100)); },
+  wrongLine(st, ans) { return ans === 0 ? '不是零' : '不是' + (CNQ(ans) || ans) + '箱'; },
 });
 /* Z4 三个数是一家: the triangle of a whole and its two parts - which number sentence belongs to it? */
 const MFamily = Object.assign({}, ZB, {
   kind0: 'family', verb: '连！', intro: '三个数是一家！', praise: ['它们是一家！'], one: true,
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng, hi = d <= 2 ? 6 : 10, w = rng.int(3, hi), a = rng.int(1, w - 1), b = w - a;
+    const d = Math.min(5, o.level), rng = o.rng, hi = [0, 5, 7, 9, 10, 10][d], w = rng.int(3, hi), a = rng.int(1, w - 1), b = w - a;
     const ops = d <= 2 ? ['+'] : ['+', '-'], op = rng.pick(ops);
     const ok = op === '+' ? [a, '+', b, '=', w] : [w, '-', a, '=', b];
     const bad = [];
@@ -483,7 +499,7 @@ Object.assign(StopGo, {
     const ov = el('div', '', $('#map')); Object.assign(ov.style, { position: 'absolute', inset: 0, zIndex: 45, background: 'rgba(12,44,74,.66)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '60px' });
     const h = img('assets/chars/optimus.png', '', ov); h.style.height = '260px';
     const mk = (svgS, fn) => { const b = el('button', 'btn', ov); Object.assign(b.style, { position: 'relative', width: '170px', height: '170px', background: '#fff' }); b.innerHTML = svgS; tapify(b, fn); return b; };
-    mk('<svg viewBox="0 0 60 60" width="80%" height="80%"><path d="M8 40h44l-6 10H14z" fill="#E8862E" stroke="#2B2118" stroke-width="3"/><path d="M30 8v30M30 10l16 24H30" fill="#fff" stroke="#2B2118" stroke-width="3" stroke-linejoin="round"/></svg>', () => { ov.remove(); Voice.sayNow('明天见！', { tag: 'map' }); });
+    mk('<svg viewBox="0 0 60 60" width="78%" height="78%"><path d="M40 8A22 22 0 1 0 52 44A18 18 0 1 1 40 8Z" fill="#FFD84A" stroke="#2B2118" stroke-width="3" stroke-linejoin="round"/><path d="M44 16h8l-8 8h8" fill="none" stroke="#2B2118" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>', () => { ov.remove(); Voice.sayNow('明天见！', { tag: 'map' }); });
     mk('<svg viewBox="0 0 60 60" width="70%" height="70%"><path d="M18 10L48 30L18 50Z" fill="#5CC46E" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/></svg>', () => { ov.remove(); });
     Voice.sayNow('停船还是继续？', { tag: 'map' });
     return true;
@@ -533,14 +549,14 @@ const ParentV2 = {
     const ch = S.checks.slice(-2); if (ch.length === 2 && n7 >= 20 && ch.every(c => c.n && c.yes / c.n < r7 - 0.2)) sig.push('连续两周考一考比 app 里低 20 个百分点以上：请告诉 Claude。');
     el('h3', '', sh, { text: '早期信号' }); el('div', 'mut', sh, { html: sig.length ? sig.map(x => '• ' + x).join('<br>') : '暂时没有。' });
     el('h3', '', sh, { text: '每周“考一考”（约 5 分钟，用家里的实物，不看屏幕）' });
-    const tasks = [['give10', '拿 7 个勺子给我。'], ['on10', '从 6 接着数，数 3 个是几？'], ['part10', '8 可以分成 3 和几？'], ['add10', '3 加 4 是几？'], ['give10', '在纸上写一个 5。']];
+    const tasks = [['give10', '拿 7 个勺子给我。'], ['on10', '从 6 接着数，数 3 个是几？'], ['part10', '8 可以分成 3 和几？'], ['add10', '3 加 4 是几？'], [null, '在纸上写一个 5。']];
     const box = el('div', 'mut', sh); box.innerHTML = '按孩子的表现点“会 / 不会 / 未测”，再问一句“你怎么算的”，记下用了什么方法。点“不会”的那一项明天会复习；“会”不加分。';
     const res = { day: d, n: 0, yes: 0, how: [] };
     tasks.forEach(([c, txt]) => {
       const r = el('div', '', sh); Object.assign(r.style, { display: 'flex', gap: '8px', alignItems: 'center', margin: '6px 0', flexWrap: 'wrap' }); el('span', '', r, { text: txt }).style.minWidth = '210px';
       const sel = el('select', '', r); ['方法…', '直接想起', '数手指', '接着数', '凑十', '不会'].forEach(o => { const op = el('option', '', sel); op.textContent = o; });
       const b = (lbl, f) => { const bt = el('button', 'pbtn', r, { text: lbl }); bt.style.padding = '6px 12px'; bt.addEventListener('click', () => { f(); r.querySelectorAll('button').forEach(x => x.disabled = true); bt.style.background = '#FFE08A'; }); };
-      b('会', () => { res.n++; res.yes++; res.how.push(sel.value); }); b('不会', () => { res.n++; res.how.push(sel.value); Mem.parentNo(c); }); b('未测', () => {});
+      b('会', () => { res.n++; res.yes++; res.how.push(sel.value); }); b('不会', () => { res.n++; res.how.push(sel.value); if (c) Mem.parentNo(c); }); b('未测', () => {});
     });
     const save = el('button', 'pbtn', sh, { text: '保存这次考一考' }); save.addEventListener('click', () => { if (res.n) { S.checks.push(res); Store.save(); save.textContent = '已保存（' + res.yes + '/' + res.n + '）'; } });
     const cur = Object.keys(S.mem).filter(c => !isFact(c) && Mem.state(c) === 'learning')[0] || 'give10';

@@ -2122,6 +2122,7 @@ const Session = {
   },
   async intro(G) {
     const g = G.game, sc = G.scope, ws = G.ws;
+    if (G.key || G.test) { Voice.say(G.key ? '找回老朋友！' : '月测开始！', { tag: 'intro', owner: G }); await sc.wait(600); return; }
     const b = el('div', 'banner', $('#fx'));
     b.textContent = g.verb;
     b.style.color = '#fff';
@@ -2197,7 +2198,8 @@ const Session = {
          test are only review cards */
       if (!G.rv && !G.key && !G.test) G.rv = V2D.plan(G);
       const rv = err ? null : V2D.slot(G);
-      const st = rv ? V2D.newQ(G, rv) : this.newQ(G, { guided, retest: err > 0, err, kind, level, probe: !!pr });
+      const easier = !rv && !level && G.W.map >= 2 && (G.recent || []).filter(x => !x).length >= 2 ? Math.max(1, G.level - 1) : null;     /* 2 of the last 4 wrong: the next one a step easier (A.11) */
+      const st = rv ? V2D.newQ(G, rv) : this.newQ(G, { guided, retest: err > 0, err, kind, level: level || easier, probe: !!pr });
       /* R2-J03: after a wrong answer the retest keeps the skill and the kind (new numbers / positions / layout) */
       if (!rv) { kind = st.kind; level = st.level; }
       const res = await this.runQ(G, st);
@@ -10209,20 +10211,21 @@ const Mem = {
   /* how: 'ok' (own first try, no help) | 'help' (right after the 2nd hint) | 'wrong' | 'probe-ok' | 'probe-no' (A.5, A.7) */
   answer(c, how, sid, ctx) {
     if (!c || !(SKILLS[c] || isFact(c))) return;
+    ctx = ctx || {};
     const d = DAY(), m = this.touch(c), gap = d - m.last, wasDue = m.b > 0 && d >= m.due;
     m.n++;
-    if (how === 'probe-ok' || how === 'probe-no') {                 /* a try with less support: never a box move (A.7) */
-      if (how === 'probe-ok') { if (!m.pd.includes(d)) m.pd.push(d); if (m.pd.length >= 2) { m.sup = Math.min(2, m.sup + 1); m.sd = []; m.pd = []; } }
-      m.last = d; Store.save(); return;
-    }
+    if (how === 'probe-no') { m.sd = []; m.pd = []; m.last = d; Store.save(); return; }   /* support back, two days again; no box move (A.7) */
+    if (how === 'probe-ok') { if (!m.pd.includes(d)) m.pd.push(d); if (m.pd.length >= 2) { m.sup = Math.min(2, m.sup + 1); m.sd = []; m.pd = []; } how = 'ok'; ctx = Object.assign({}, ctx, { probe: true }); }
+    /* the game's own question: on a day the card is not due it is only evidence (A.6) */
+    if (ctx.own && m.b > 0 && !wasDue) { if (how === 'ok') m.ok++; m.last = d; Store.save(); return; }
     if (how === 'ok') {
       m.ok++;
-      if (sid && !m.pass.includes(sid)) { m.pass.push(sid); if (m.pass.length > 4) m.pass.shift(); }
-      if (isFact(c) && ctx && ctx.sup === m.sup && !m.sd.includes(d)) { m.sd.push(d); if (m.sd.length > 4) m.sd.shift(); }
-      if (m.b === 0) { m.b = 1; m.due = d + 1; m.up = d; }
+      if (ctx.rv && sid && !m.pass.includes(sid)) { m.pass.push(sid); if (m.pass.length > 4) m.pass.shift(); }      /* a pass: a review question only (A.12) */
+      if (isFact(c) && ctx.sup === m.sup && !ctx.probe && !m.sd.includes(d)) { m.sd.push(d); if (m.sd.length > 4) m.sd.shift(); }
+      if (m.b === 0) { if (!(isFact(c) && ctx.own && m.ok < 2)) { m.b = 1; m.due = d + 1; m.up = d; } }
       else if (wasDue && m.up !== d) { m.b = Math.min(7, m.b + 1); m.due = d + IV[m.b]; m.up = d; }
     } else if (m.b > 0) { m.b = Math.max(1, m.b - 2); m.due = d + 1; }
-    if (wasDue && gap >= 1 && m.evd !== d && !(ctx && ctx.mig)) { m.evd = d; const ev = Store.s.ev; ev.push([gap, how === 'ok' ? 1 : 0, d]); if (ev.length > 400) ev.splice(0, ev.length - 400); }
+    if (wasDue && gap >= 1 && m.evd !== d && !ctx.mig) { m.evd = d; const ev = Store.s.ev; ev.push([gap, how === 'ok' ? 1 : 0, d]); if (ev.length > 400) ev.splice(0, ev.length - 400); }
     m.last = d; Store.save();
   },
   parentNo(c) { const m = this.touch(c), d = DAY(); m.b = Math.min(Math.max(1, m.b), 1); m.due = d + 1; Store.save(); },
@@ -10234,7 +10237,7 @@ const Mem = {
   overdue() { const d = DAY(), mig = Store.s.v2mig || 0; return Object.values(Store.s.mem).filter(m => m.b > 0 && m.due < d && !(m.mig && d - mig < 14)).length; },
   today() { const d = DAY(), D = Store.s.days; if (!D[d]) { D[d] = { ms: 0, newK: 0, newG: 0, q: 0, keyGo: 0, keyEnd: 0, asked: 0, rq: 0, rqQuit: 0, nq: 0, nqQuit: 0 }; const old = Object.keys(D).map(Number).sort((a, b) => a - b); while (old.length > 60) delete D[old.shift()]; } return D[d]; },
   keep(lo, hi) { const e = Store.s.ev.filter(x => x[0] >= lo && x[0] <= hi); return [e.length ? e.filter(x => x[1]).length / e.length : 0, e.length]; },
-  brake() { const [r, n] = this.keep(7, 13); return this.overdue() > 15 || this.today().newG >= 2 || (n >= 20 && r < 0.8); },
+  brake() { const [r, n] = this.keep(7, 13); return this.due().length > 15 || (n >= 20 && r < 0.8); },
   /* the support level of the next fact question: two days right at this level -> a probe one level lower (A.7) */
   supFor(c) { const m = this.get(c); if (!m) return { sup: 0, probe: false }; if (m.sup < 2 && m.sd.length >= 2) return { sup: m.sup + 1, probe: true }; return { sup: m.sup, probe: false }; },
 };
@@ -10264,7 +10267,8 @@ const Gems = {
    over the first seven active days and do not count for the brake for 14 days (A.29) */
 const V2Mig = {
   run() {
-    const S = Store.s; if (S.v2 === 1) return;
+    const S = Store.s; if (S.v2pos == null) { S.v2pos = window.__v2pos; Store.save(); }
+    if (S.v2 === 1) return;
     S.v2 = 1; S.v2mig = DAY(); S.v2pos = window.__v2pos;
     let k = 0;
     ORDER.concat(ORDER2, ORDER3).forEach(w => (WORLDS[w].games || []).forEach(g => {

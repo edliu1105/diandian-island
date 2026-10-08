@@ -71,7 +71,7 @@ with sync_playwright() as p, serve() as base:
       Mem.answer('F+3+4', 'probe-ok', 'g'); Mem.get('F+3+4').pd.push(d - 1); Mem.answer('F+3+4', 'probe-ok', 'h');
       return { out, sp, afterNo, sup: Mem.get('F+3+4').sup, b: Mem.get('F+3+4').b };
     }""")
-    log.check(r['out'] == [[1, 1], [2, 3], [2, 0], [3, 1], [1, 1]] and r['sp'] == {'sup': 1, 'probe': True} and r['afterNo'] == [3, 0] and r['sup'] == 1 and r['b'] == 3,
+    log.check(r['out'] == [[1, 1], [2, 3], [2, 0], [3, 1], [1, 1]] and r['sp'] == {'sup': 1, 'probe': True} and r['afterNo'] == [3, 0] and r['sup'] == 1 and r['b'] == 4,
               'D-02 memory: new -> 1, due -> up (once a day), wrong / helped -> two down; a probe never moves the box, two probe days take the dots away %s' % r)
     # D-03
     r = page.evaluate("""() => {
@@ -84,7 +84,7 @@ with sync_playwright() as p, serve() as base:
       out.push(V2D.plan(Object.assign(G(), { rounds: 4 })).pos.length);
       return out;
     }""")
-    log.check(r == [0, 1, 2, 3, 1, 2], 'D-03 review slots: 0, 1, 2 by what is due; 3 only braking in a done game; 1 after quitting; at least 2 own questions %s' % r)
+    log.check(r == [0, 1, 2, 3, 1, 1], 'D-03 review slots: 0, 1, 2 by what is due; 3 only braking in a done game; 1 after quitting; a first visit (4 rounds) 1 %s' % r)
     # D-04 stars
     page.evaluate("() => { Store.reset(); Store.s.w2all = true; Store.s.w3 = true; ORDER.concat(ORDER2, ORDER3).forEach(id => { Store.w(id).unlocked = true; Store.w(id).demo = { P1:1,P2:1,P3:1,P4:1,B1:1,B2:1,B3:1,B4:1,Z1:1,Z2:1,Z3:1,Z4:1 }; }); const d = DAY(); Object.keys(SKILLS).forEach(c => { const m = Mem.touch(c); m.b = 2; m.due = d; }); Store.s.days[d].newG = 0; Store.save(); }")
     r = page.evaluate("""() => { const G = { world: 'bluey2', id: 'C2', ws: Store.w('bluey2') }, st = { rv: true }; const a = [V2D.starTo(G, st), V2D.starTo(G, st), V2D.starTo(G, st)]; Store.w('bluey2').gstars = Store.w('bluey2').gstars || {}; Store.w('bluey2').gstars.C2 = 6; Store.w('bluey2').rvs.C2 = 2; return { a, lv: W2.level('bluey2', 'C2'), lvAll: clamp(WORLDS.bluey2.base + Math.floor(6 / 5), 1, 5) }; }""")
@@ -135,7 +135,7 @@ with sync_playwright() as p, serve() as base:
       ['Z1', 'Z2', 'Z3', 'Z4'].forEach(g => { const R = GAMES[g]; for (let lv = 1; lv <= 5; lv++) { const G = { world: 'trans3', W: WORLDS.trans3, rng: RNG(lv * 7 + 1), bags: {} };
         for (let i = 0; i < 300; i++) { const qq = R.gen(G, { level: lv, rng: G.rng }); const opts = qq.opts || [];
           if (!opts.includes(qq.answer) || new Set(opts.map(String)).size !== opts.length) bad.push(g + ' L' + lv + ' opts ' + JSON.stringify(qq.k));
-          const nums = JSON.stringify(qq).match(/-?\\d+/g).map(Number); if (lv <= 2 && g !== 'Z4' && typeof qq.answer === 'number' && qq.answer > 6) bad.push(g + ' L' + lv + ' big ' + qq.answer);
+          const nums = JSON.stringify(qq).match(/-?\\d+/g).map(Number); if (g !== 'Z4' && typeof qq.answer === 'number' && qq.answer > (g === 'Z1' ? (lv <= 2 ? 6 : 10) : [0, 5, 7, 9, 10, 10][lv])) bad.push(g + ' L' + lv + ' big ' + qq.answer);
           if (g === 'Z1' && lv === 1 && qq.answer > 5) bad.push('Z1 L1 ' + qq.answer);
           if (g === 'Z4') { const tru = qq.eqs.filter(e => (e[1] === '+' ? e[0] + e[2] : e[0] - e[2]) === e[4]); if (tru.length !== 1 || qq.eqs.indexOf(tru[0]) !== qq.answer) bad.push('Z4 true sentences ' + JSON.stringify(qq.eqs)); } } } });
       return bad.slice(0, 8);
