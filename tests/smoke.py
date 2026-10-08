@@ -44,7 +44,7 @@ def main():
     req = urllib.request.Request(URL, headers={'Accept-Encoding': 'gzip', 'User-Agent': 'Mozilla/5.0 (iPad) smoke'})
     with urllib.request.urlopen(req, timeout=30) as r:
         enc, raw = r.headers.get('Content-Encoding', ''), r.read()
-    log.check(enc == 'gzip' and len(raw) <= 200 * 1024,   # the budget is the first-screen TOTAL <= 450 KB (tests/test_boot.py: 436 KB with the 28-game world 2); this is a coarse guard
+    log.check(enc == 'gzip' and len(raw) <= 210 * 1024,   # the budget is the first-screen TOTAL <= 450 KB (tests/test_boot.py: 449 KB with v2's memory in the page); this is a coarse guard (200 -> 210 KB with v2)
               'index.html travels compressed: Content-Encoding %s, %.1f KB on the wire' % (enc or 'none', len(raw) / 1024))
     st2, _, _, sw = get(URL + 'sw.js')
     sw = sw.decode('utf-8')
