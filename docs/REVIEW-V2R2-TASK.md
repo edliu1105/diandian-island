@@ -2,7 +2,7 @@
 
 你是独立评审。对象是 `index.html`（点点岛）：给 4 岁中文孩子的 iPad 数学 PWA。
 
-**这是第 2 轮。** 第 1 轮（`docs/REVIEW-V2R1.md`，6/10）的每一条，回应在 `docs/RESPONSE-V2R1.md`，验收在 `tests/test_v2r1.py`。请先逐条核对它们是否真的改好了（自己用真实点按验证，不要只信测试），再按下面的要求全面看一遍。
+**这是第 2 轮。** 第 1 轮（`docs/REVIEW-V2R1.md`，6/10）的每一条，回应在 `docs/RESPONSE-V2R1.md`，验收在 `tests/test_v2r1.py`。请先逐条核对它们是否真的改好了（自己用真实点按验证，不要只信测试），再按下面的要求全面看一遍。这一轮第一次运行时，评审在写报告前中断了；它已经发现的几处问题已经修好，写在 `docs/RESPONSE-V2R1.md` 末尾的附录里，验收在 `tests/test_v2r2.py`，也请一并核对。
 
 **这次评审的是 v2 第一期**，也就是 `docs/PLAN-v2.md`（Opus、Codex、Fable 三方共识的终极方案）的实现。请先读：
 - `docs/PLAN-v2.md`：方案；
@@ -62,7 +62,7 @@
 - 用 `tests/harness.py` 和 Playwright 自己操作、截图。
   - 测试钩子：`window.__go(world, game, level, opt)`、`window.__q`、`window.__state()`、`gesture()`。
   - 可以用 `opt.test` + `opt.keyItems` 直接出某种复习题，见 `tests/test_v2.py`。
-- 已有的测试：`tests/test_v2.py`、`tests/test_v2r1.py`、`test_w3`、`test_stars`、`spotcheck`、`depth_audit`、`test_boot`、`strict2_check`、`gate3_flow`、`trace_check`。可以跑，但要自己验证，不要只信测试。
+- 已有的测试：`tests/test_v2.py`、`tests/test_v2r1.py`、`tests/test_v2r2.py`、`test_w3`、`test_stars`、`spotcheck`、`depth_audit`、`test_boot`、`strict2_check`、`gate3_flow`、`trace_check`。可以跑，但要自己验证，不要只信测试。
 - 截图和数据放 `tests/logs/`。不要改 app 的代码。
 
 ## 输出
