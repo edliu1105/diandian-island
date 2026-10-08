@@ -49,7 +49,7 @@ with sync_playwright() as p, serve() as base:
                   const els = (st.cards || []).concat(st.items ? st.items.map(x => x.e) : []);
                   els.forEach((e, i) => { const r = e.getBoundingClientRect(); let cov = 0; for (const fx of [.3, .5, .7]) for (const fy of [.3, .5, .7]) { const h = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy); if (!(h === e || (h && e.contains(h)))) cov++; } if (cov > 1) out.push('covered' + i); if (Math.min(r.width, r.height) < 88) out.push('small' + i + ':' + Math.round(r.width)); });
                   /* nor do the review pieces cover the game's own buttons: home, the host, the question pill, done */
-                  [document.querySelector('#home'), document.querySelector('#avatar')].concat(st.els.filter(e => e.isConnected && (e.classList.contains('task') || e._done))).forEach(e => { if (!e) return; const r = e.getBoundingClientRect(); if (!r.width) return; const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); if (!(h === e || (h && e.contains(h)))) out.push('chrome ' + (e.id || e.className)); });
+                  [document.querySelector('#home'), document.querySelector('#avatar')].concat(st.els.filter(e => e.isConnected && (e.classList.contains('task') || e._done))).forEach(e => { if (!e) return; const r = e.getBoundingClientRect(); if (!r.width) return; const pe = e.style.pointerEvents; e.style.pointerEvents = 'auto'; const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); e.style.pointerEvents = pe; if (!(h === e || (h && e.contains(h)))) out.push('chrome ' + (e.id || e.className)); });     /* the pill takes no taps itself: probe it as if it did */
                   return { out, t: st.q.t }; }""")
                 if info['out']: bad.append((g, c, info['out'][:3]))
                 # a real click on the right answer (give: the cubes then the done button)
@@ -125,12 +125,12 @@ with sync_playwright() as p, serve() as base:
     r = page.evaluate("""() => { const src = String(Session.round); return src.includes('G.level - 1'); }""")
     page.evaluate("window.__go('bluey2', 'C2', 3, { seed: 3, noDemo: true })")
     lv, gen = [], None
-    for k in range(5):
+    for k in range(6):
         cur = wait_phase(page, gen=gen, timeout=30000); gen = cur['gen']
-        lv.append((cur['level'], cur['retest']))
+        lv.append((cur['level'], cur['retest'], bool(cur.get('rv'))))
         answer_question(page, 'wrong' if k < 2 else 'right')
     page.evaluate("gesture('home')"); page.wait_for_timeout(200)
-    fresh = [l for l, rt in lv[1:] if not rt]
+    fresh = [l for l, rt, rv in lv[1:] if not rt and not rv]          # the game's own new questions (a review card keeps its own form)
     log.check(r and lv[0][0] == 3 and fresh and fresh[0] == 2, 'M7 two wrong answers -> the next new question a level lower %s' % lv)
     # L1 / L6 / L7
     r = page.evaluate("""() => { Store.reset(); const d = DAY(); Mem.today().newG = 5; Object.keys(SKILLS).slice(0, 4).forEach(c => { const m = Mem.touch(c); m.b = 2; m.due = d; });

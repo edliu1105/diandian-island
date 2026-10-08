@@ -75,7 +75,8 @@ AUDIT_JS = r"""() => {
 
 HOOK_JS = """(audit) => {
   window.__aud = []; const A = new Function('return (' + audit + ')')();
-  const rec = tag => { try { Stand.sort(); const st = Session.st; window.__aud.push({ tag, game: Session.G && Session.G.id, level: st && st.level, kind: st && st.kind, v: A() }); } catch (e) { window.__aud.push({ tag, err: String(e) }); } };
+  /* a review question covers the scene with its own board on purpose (V2R1-S1, checked by tests/test_v2r1.py): only the games' own questions here */
+  const rec = tag => { try { if (Session.st && Session.st.rv) return; Stand.sort(); const st = Session.st; window.__aud.push({ tag, game: Session.G && Session.G.id, level: st && st.level, kind: st && st.kind, v: A() }); } catch (e) { window.__aud.push({ tag, err: String(e) }); } };
   const oa = Hints.arm; Hints.arm = function (st) { rec('arm'); return oa.apply(this, arguments); };
   const oc = K.cards; K.cards = function () { const r = oc.apply(this, arguments); rec('cards'); return r; };
   const oe = Session.endQ; Session.endQ = function (st) { rec('reveal-end'); return oe.apply(this, arguments); };
