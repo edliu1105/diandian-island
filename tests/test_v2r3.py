@@ -32,6 +32,11 @@ with sync_playwright() as p, serve() as base:
       for (let i = 0; i < 500; i++) { const qq = RQ.eq.gen(G, c, { level: 3 }); const tru = qq.eqs.filter(e => (e[1] === '+' ? e[0] + e[2] : e[0] - e[2]) === e[4]); if (tru.length > 1) two++; if (tru.length < 1 || qq.eqs.indexOf(tru[0]) !== qq.answer) none++; }
       out[c] = [two, none]; }); return out; }""")
     log.check(r == {'add10': [0, 0], 'sub10': [0, 0]}, 'S1 "哪个算式对？": exactly one true sentence, and it is the answer (500 each) %s' % r)
+    # the final round (docs/REVIEW-V2R3.md): Z1 has no praise of its own; "= 11" never shown; the balance records an addition fact
+    r = page.evaluate("""() => { const G = { rng: RNG(9), bags: {} }; let eleven = 0; for (let i = 0; i < 1000; i++) { const qq = RQ.eq.gen(G, 'add10', { level: 3 }); if (qq.eqs.some(e => e[4] > 10)) eleven++; }
+      const G2 = { world: 'trans3', W: WORLDS.trans3, rng: RNG(3), bags: {} }; let sub = 0; for (let i = 0; i < 200; i++) { const qq = GAMES.Z1.gen(G2, { level: 5, rng: G2.rng }); if (!/^F\+/.test(qq.fact || '')) sub++; }
+      return { praise: (GAMES.Z1.praise || []).length, eleven, sub }; }""")
+    log.check(r == {'praise': 0, 'eleven': 0, 'sub': 0}, 'R3 Z1 has no praise of its own (no "两边一样多！" after a right "≠"); no "= 11" option; the balance records an addition fact %s' % r)
     # M2
     r = page.evaluate("""() => { Store.reset(); const d = DAY();
       const a = Mem.touch('sub10'); a.b = 4; a.due = d; Mem.answer('sub10', 'wrong', 's1', { rv: true }); Mem.answer('sub10', 'wrong', 's1', { rv: true, miss: true }); const due2 = [Mem.get('sub10').b, Mem.get('sub10').due - d];

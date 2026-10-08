@@ -127,7 +127,7 @@ const RQ = {
       const op = (SKILLS[c] || {}).op || '+';
       let a, b; if (op === '+') { a = G.rng.int(1, 6); b = G.rng.int(1, Math.min(4, 10 - a)); } else { a = G.rng.int(3, 9); b = G.rng.int(1, a - 1); }
       /* the wrong ones are always false sentences (R2-S1): the other operation with the same result (b >= 1), the result off by one */
-      const r = op === '+' ? a + b : a - b, ok = [a, op, b, '=', r], f1 = [a, op === '+' ? '-' : '+', b, '=', r], f2 = [a, op, b, '=', r + (r > 1 && G.rng.chance(0.5) ? -1 : 1)];
+      const r = op === '+' ? a + b : a - b, ok = [a, op, b, '=', r], f1 = [a, op === '+' ? '-' : '+', b, '=', r], f2 = [a, op, b, '=', r + (r > 1 && (r >= 10 || G.rng.chance(0.5)) ? -1 : 1)];
       const opts = G.rng.shuffle([ok, f1, f2]);
       return { k: ['eq', a, op, b], a, b, op, answer: opts.indexOf(ok), opts: [0, 1, 2], eqs: opts, say: '哪个算式对？', fact: factOf(op, a, b) };
     },
@@ -240,13 +240,14 @@ Object.assign(V2D, {
       if (st.supProbe) Mem.answer(c, how === 'ok' ? 'probe-ok' : 'probe-no', G.sid, { rv: true, sup: st.sup });
       else Mem.answer(c, how, G.sid, { sup: st.sup, rv: true, pass: st.pass, miss: st.missQ, form: 'rq:' + st.q.t });
       if (!ok && !G.key) G.miss.push({ c, at: G.round + 2 });
+      if (st.pass && ok && Store.s.passFail[c]) { Store.s.passFail[c] = 0; Store.save(); }
       if (st.pass && !ok) { const n = (Store.s.passFail[c] || 0) + 1; Store.s.passFail[c] = n; if (n >= 2) { const m = Mem.touch(c); m.b = 1; m.due = DAY() + 1; Store.s.notes.push([DAY(), c]); Store.s.passFail[c] = 0; } Store.save(); }
       return;
     }
     /* the game's own question: its card (and, for the arithmetic games, the number fact it asked) */
     const own = GAMECARD[G.id]; if (own) Mem.answer(own, how, G.sid, { own: true, form: 'g:' + G.id });
     const f = st.q && st.q.fact; if (f && isFact(f)) Mem.answer(f, how, G.sid, { sup: 0, own: true });
-    G.recent = (G.recent || []).concat(ok && !st.retest ? 1 : 0).slice(-4);
+    G.recent = (G.recent || []).concat(ok ? 1 : 0).slice(-4);          /* each question by its own answer: 2 of the last 4 really wrong (A.11, R3-M2) */
   },
   /* where a star of this question goes: the game's tray (at most 2 review stars counted there) or a gem (A.9) */
   starTo(G, st) {
@@ -282,7 +283,7 @@ const ZB = {
    too); L2 which card makes both sides the same (dots); L3 the same or not (dots, = or ≠); L4 the same or not (numbers);
    L5 the balance a + b = ? + c */
 const MDoor = Object.assign({}, ZB, {
-  kind0: 'door', verb: '等！', intro: '能量门，两边一样多！', praise: ['两边一样多！'], one: true,
+  kind0: 'door', verb: '等！', intro: '能量门，两边一样多！', praise: [], one: true,          /* no own praise: after a right "≠" it would say the opposite (R3-M1) */
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     if (d === 1) { const a = bagPick(G, 'z1a', [0, 1, 2, 3, 4, 5]); return { k: [1, a], mode: 'count', a, b: null, answer: a, opts: numOptions(G, a, 0, 6), say: '左边有几块？' }; }
@@ -294,7 +295,7 @@ const MDoor = Object.assign({}, ZB, {
     }
     let a, b, c; do { a = rng.int(1, 8); b = rng.int(1, 10 - a); c = rng.int(1, Math.max(1, a + b - 1)); } while (a + b < 4 || c >= a + b);
     const x = a + b - c;
-    return { k: [5, a, b, c], mode: 'bal', a, b, c, answer: x, opts: numOptions(G, x, 0, 10), say: '方框里是几？', fact: factOf('-', a + b, c), sup: 1, sym: true };
+    return { k: [5, a, b, c], mode: 'bal', a, b, c, answer: x, opts: numOptions(G, x, 0, 10), say: '方框里是几？', fact: factOf('+', x, c), sup: 1, sym: true };
   },
   present(st) {
     const q = st.q, L = K.L(), door = st.door = W2X.thing(st, 10, 10, 3, '');
@@ -304,7 +305,7 @@ const MDoor = Object.assign({}, ZB, {
     const left = st.left = panel('4%'), right = st.slot = panel('54%');
     const ring = () => { const z = el('div', ''); Object.assign(z.style, { width: '44px', height: '44px', borderRadius: '50%', border: '4px dashed #2B2118' }); return z; };
     const grp = (n, c) => n ? V2G.dots(n, { g: 32, r: 12, per: 5, fill: c }) : ring();
-    if (q.mode === 'count' || q.mode === 'match') { if (q.a) left.appendChild(V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#4FB3FF' })); right.appendChild(V2G.op('?', 90)); }
+    if (q.mode === 'count' || q.mode === 'match') { left.appendChild(q.a ? V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#4FB3FF' }) : ring()); right.appendChild(V2G.op('?', 90)); }
     else if (q.mode === 'judge' && !q.sym) { left.appendChild(grp(q.a, '#4FB3FF')); left.appendChild(V2G.op('+', 40)); left.appendChild(grp(q.b, '#FFC93C')); right.appendChild(V2G.dots(q.c, { g: 32, r: 12, per: 5, fill: '#5CC46E' })); }
     else if (q.mode === 'judge') { left.appendChild(V2G.eq([q.a, '+', q.b], 1, 56)); right.appendChild(UI.num(q.c, 96)); }
     else { left.appendChild(V2G.eq([q.a, '+', q.b], 1, 50)); st.eqR = V2G.eq(['?', '+', q.c], 1, 50); right.appendChild(st.eqR); }
@@ -615,7 +616,7 @@ const ParentV2 = {
     im.addEventListener('click', () => { if (ta.style.display === 'none' || !ta.value) { ta.style.display = ''; ta.value = ''; ta.placeholder = '把导出的存档粘贴到这里，再按一次“恢复存档”'; return; } try { Report.import(ta.value); im.textContent = '已恢复'; } catch (e) { im.textContent = '这段文字不是存档'; } });
     const mins = el('button', 'pbtn', sh, { text: '' }), opts = [12, 15, 20, 30, 10, 0], lab = () => { mins.textContent = '“停船还是继续”：' + (S.settings.mins ? '玩到 ' + S.settings.mins + ' 分钟时问一次' : '关'); };
     lab(); mins.addEventListener('click', () => { S.settings.mins = opts[(opts.indexOf(S.settings.mins) + 1) % opts.length]; Store.save(); lab(); });
-    el('div', 'mut', sh, { text: '建议：先玩字字岛 12–18 分钟，再玩点点岛 10–15 分钟。“停船还是继续”只是提醒，没有上限。两个 app 能否共享存储：' + (S.probe ? (S.probe.zzi ? '能（同一个存储）' : '不能（各自独立）') : '还没检测') + '。' });
+    el('div', 'mut', sh, { text: '建议：先玩字字岛 12–18 分钟，再玩点点岛 10–15 分钟。“停船还是继续”只是提醒，没有上限。两个 app 能否共享存储：' + (S.probe ? (S.probe.zzi ? '能（同一个存储）' : '还没检测到字字岛的存档（字字岛装在同一个网址下、玩过以后才能判断）') : '还没检测') + '。' });
   },
 };
 

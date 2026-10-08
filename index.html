@@ -604,7 +604,7 @@ const Store = {
     if (Array.isArray(o.ev)) d.ev = o.ev.filter(x => Array.isArray(x) && x.length === 3 && x.every(v => typeof v === 'number')).slice(-400);
     if (o.days && typeof o.days === 'object') for (const k in o.days) { const x = o.days[k]; if (/^\d+$/.test(k) && x && typeof x === 'object') { const y = {}; ['ms', 'newK', 'newG', 'q', 'keyGo', 'keyEnd', 'asked', 'rq', 'rqQuit', 'nq', 'nqQuit', 'hello'].forEach(f => { y[f] = num(x[f], 0, 0, 1e9); }); d.days[k] = y; } }
     if (o.key && typeof o.key === 'object') d.key = { day: num(o.key.day, -1, -1, 1e7), got: num(o.key.got, 0, 0, 1e6), short: o.key.short === true };
-    if (o.gems && typeof o.gems === 'object') d.gems = { n: Math.round(num(o.gems.n, 0, 0, 360)), src: Array.isArray(o.gems.src) ? o.gems.src.filter(x => typeof x === 'string').slice(-200) : [] };
+    if (o.gems && typeof o.gems === 'object') d.gems = { n: Math.round(num(o.gems.n, 0, 0, 9999)), src: Array.isArray(o.gems.src) ? o.gems.src.filter(x => typeof x === 'string').slice(-200) : [] };
     ['checks', 'tests'].forEach(f => { if (Array.isArray(o[f])) d[f] = o[f].filter(x => x && typeof x === 'object' && typeof x.day === 'number').slice(-60); });
     if (Array.isArray(o.notes)) d.notes = o.notes.filter(x => Array.isArray(x) && x.length === 2).slice(-40);
     if (o.passFail && typeof o.passFail === 'object') for (const c in o.passFail) if (cardOk(c)) d.passFail[c] = num(o.passFail[c], 0, 0, 9);
@@ -10245,7 +10245,7 @@ const Gems = {
     W3.load().then(() => Session.start(isl, g, { key: true, keyItems: due.slice(0, n), noDemo: true }));
   },
   grant(why) { const k = Store.s.key; k.day = DAY(); k.got = (k.got || 0) + 1; Store.save(); this.turn(why || 'key'); },
-  turn(src) { const a = Store.s.gems; if (a.n >= 360) return; a.n++; a.src.push(src); Store.save(); if (!fast() && this.reveal) this.reveal(a.n); },
+  turn(src) { const a = Store.s.gems; if (a.n >= 9999) return; a.n++; a.src.push(src); Store.save(); if (!fast() && this.reveal) this.reveal(a.n); },
   album() {},
 };
 const V2Mig = {
