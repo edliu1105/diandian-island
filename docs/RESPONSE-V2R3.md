@@ -34,7 +34,9 @@
 ## 回归
 
 本机 Chromium：
-- `test_v2r3` 11/11；
-- `test_v2` 19/19；
-- `test_boot` 24/24（首屏 ≤ 450 KB）；
-- 其余套件见提交说明。
+- `test_v2r3` 11/11、`test_v2r2` 6/6、`test_v2r1` 10/10、`test_v2` 19/19；
+- `test_boot` 24/24（首屏 ≤ 450 KB）、`test_offline` 20/20；
+- `test_stars` 263/263、`spotcheck` 56/56、`depth_audit` 182/182；
+- `test_w2` 189/189、`test_w3` 500/500；
+- `gate3_flow` 9/9、`strict2_check` 9/9、`trace_check` 10/10；
+- 线上 `smoke` 171/171。
