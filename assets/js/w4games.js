@@ -2068,7 +2068,7 @@ const W4R = {};
     next(st, strat) { return cardNext(st, strat); },
     workEls(st) { return st.cards || []; },
     gestureHint(st) { if (st.cells) K.flash(st, st.cells); },
-    snap(st) { return { kind: st.q.kind }; },
+    snap(st) { return { pat: st.q.kind }; },          /* the step pattern; the question kind stays 'numseq' (a retest keeps it) */
   };
 })();
 /* ================================================================ ⑥ 西游记·星宫 (10 以内减, from level 2): F5 两次被吃 ·

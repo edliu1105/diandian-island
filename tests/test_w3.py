@@ -109,7 +109,7 @@ def progress(log):
         page.wait_for_function("Screens.cur === 'finale'", timeout=60000)
         log.check(page.evaluate("Store.s.fin3") == 'seen', 'the whole sky done: the rainbow castle opens and the finale plays')
         page.evaluate("gesture('home')"); page.wait_for_timeout(400)
-        log.check(page.evaluate("MapView.recommend() === 'rainbow' && !MapView.isl.rainbow.d.classList.contains('locked')"), 'afterwards the rainbow castle stays open')
+        log.check(page.evaluate("MapView.recommend() === (W4.open() ? 'gate' : 'rainbow') && !MapView.isl.rainbow.d.classList.contains('locked')"), 'afterwards the rainbow castle stays open, and the hand points at the gate up to the stars (world 4)')
         log.check(not page.errors, 'progress: zero page errors %s' % page.errors[:3])
         br.close()
 
