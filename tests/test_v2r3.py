@@ -127,6 +127,19 @@ with sync_playwright() as p, serve() as base:
     m = {k: sorted(v) for k, v in modes.items()}
     log.check(not bad and m[1] == ['count:n'] and m[2] == ['match:n'] and set(m[3]) == {'judge:eq', 'judge:ne'} and set(m[4]) == {'judge:eq', 'judge:ne'} and m[5] == ['bal:n'],
               'M3 Z1 uses "=" at every level (count, match, same or not with dots / numbers, balance); real clicks answer, >= 88 px, L and P %s %s' % (m, bad[:4]))
+    # the client's rule (2026-10-08): each question by itself - the wrong one earns nothing, the next one answered right earns its star
+    pg = new_page(br, base, 1180, 820); enter(pg); pg.evaluate(OPEN); pg.evaluate("() => W3.load()")
+    out = {}
+    for w, g in (('peppa', 'P1'), ('bluey2', 'C2'), ('trans3', 'Z3')):
+        pg.evaluate("() => { Store.reset(); }"); pg.evaluate(OPEN)
+        pg.evaluate("([w, g]) => window.__go(w, g, 2, { seed: 5, noDemo: true })", [w, g])
+        a = wait_phase(pg, timeout=30000); s0 = pg.evaluate("Session.G.stars")
+        answer_question(pg, 'wrong'); b = wait_phase(pg, gen=a['gen'], timeout=30000); s1 = pg.evaluate("Session.G.stars")
+        answer_question(pg, 'right'); wait_phase(pg, gen=b['gen'], timeout=30000); s2 = pg.evaluate("Session.G.stars")
+        out[g] = [s1 - s0, s2 - s1]
+        pg.evaluate("gesture('home')"); pg.wait_for_timeout(300)
+    pg.context.close()
+    log.check(all(v == [0, 1] for v in out.values()), 'client rule: a wrong answer earns nothing, the next question answered right earns its star %s' % out)
     # M1 real time: the flash after the host has spoken, then the question; the 2nd hint flashes again
     pg = new_page(br, base, 1180, 820, fast=False); enter(pg); pg.evaluate(OPEN); pg.evaluate("() => W3.load()")
     pg.evaluate("() => { window.__sv = []; const o = Voice.say; Voice.say = function (t, x) { window.__sv.push([Math.round(performance.now()), t]); return o.call(this, t, x); }; }")

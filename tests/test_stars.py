@@ -48,7 +48,7 @@ def rules(log):
         br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True); enter(page)
         page.evaluate("() => { LIVE().forEach(w => { Store.w(w).pass = true; }); Store.s.gateShown = true; Store.s.w2seen = true; Store.save(); }")
         page.reload(); page.wait_for_function('window.__ready === true', timeout=20000); enter(page); page.wait_for_timeout(600)
-        # a session: right, wrong (+ its new question right), right, wrong (+ right), wrong (+ right) -> 2 stars
+        # a session of 5 questions, each by itself (client rule 2026-10-08): right, wrong, right, right, wrong -> 3 stars
         page.evaluate("window.__go('peppa2', 'Q1', 0, {noDemo: true, seed: 3})")
         plan = ['right', 'wrong', 'right', 'right', 'wrong', 'right', 'wrong', 'right', 'right', 'right', 'right']
         for s in plan:
@@ -119,7 +119,7 @@ def main():
         if 'err' in r:
             log.fail('%s: %s' % (r['g'], r['err'])); continue
         log.check(all(r['diff']) and all(r['kind']), '%s: three wrong answers -> three new questions, same kind, retest %s %s' % (r['g'], r['diff'], r['kind']))
-        log.check(r['stars'] == [0, 0], '%s: the round with mistakes earns no star (session, game) %s' % (r['g'], r['stars']))
+        log.check(r['stars'] == [1, 1], '%s: the wrong answers earn nothing, the next question answered right earns its star (session, game) %s' % (r['g'], r['stars']))
         log.check(not r['pe'], '%s: no page error %s' % (r['g'], r['pe']))
     rules(log)
     return log.close()

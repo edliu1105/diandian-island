@@ -2191,7 +2191,8 @@ const Session = {
   async round(G) {
     let err = 0;
     const pr = this.probeFor(G);
-    let kind = pr ? pr.kind : null, level = pr ? pr.level : null;
+    const carry = G.carry; G.carry = null;          /* after a wrong answer: the same kind and level next, new numbers (R2-J03) */
+    let kind = pr ? pr.kind : (carry ? carry.kind : null), level = pr ? pr.level : (carry ? carry.level : null);
     while (!G.dead) {
       const guided = false;          /* client rule: never lead the child to the answer (was: after two wrong answers) */
       /* client rule: after a wrong answer a NEW question of the same kind and level (the same one again could be solved by
@@ -2199,9 +2200,9 @@ const Session = {
       /* v2: a review card in its slot (never as the replacement after a wrong answer); the key round and the monthly
          test are only review cards */
       if (!G.rv && !G.key && !G.test) G.rv = V2D.plan(G);
-      const rv = err ? null : V2D.slot(G);
+      const rv = err || carry ? null : V2D.slot(G);
       const easier = !rv && !level && G.W.map >= 2 && (G.recent || []).filter(x => !x).length >= 2 ? Math.max(1, G.level - 1) : null;     /* 2 of the last 4 wrong: the next one a step easier (A.11) */
-      const st = rv ? V2D.newQ(G, rv) : this.newQ(G, { guided, retest: err > 0, err, kind, level: level || easier, probe: !!pr });
+      const st = rv ? V2D.newQ(G, rv) : this.newQ(G, { guided, retest: err > 0 || !!carry, err, kind, level: level || easier, probe: !!pr });
       /* R2-J03: after a wrong answer the retest keeps the skill and the kind (new numbers / positions / layout) */
       if (!rv) { kind = st.kind; level = st.level; }
       const res = await this.runQ(G, st);
@@ -2214,12 +2215,16 @@ const Session = {
       if (res === 'ok') {
         if (!rv) Mastery.guidedRound(G, guided);
         G.idleQs = st.childOps ? 0 : G.idleQs + 1;
-        /* client rule: a question with a mistake earns no star; v2: nor one answered after the 2nd hint (A.12); a review
-           star beyond two in a game goes to the gems (A.9) */
-        if (!err && !helped(st)) { const to = V2D.starTo(G, st); if (to === 'game') await this.reward(G, st); else Gems.turn('star'); }
+        /* client rule (2026-10-08): each question by itself - a wrong answer earns nothing, the next question answered
+           right at its first try earns its star; v2: none after the 2nd hint (A.12); a review star beyond two in a game
+           goes to the gems (A.9) */
+        if (!helped(st)) { const to = V2D.starTo(G, st); if (to === 'game') await this.reward(G, st); else Gems.turn('star'); }
         return 'ok';
       }
-      err++;
+      /* client rule (2026-10-08): a wrong answer earns nothing and the session goes straight on - the next question is the
+         next round (it counts), the same kind of question with new numbers / positions so the skill is practised at once */
+      if (!rv) G.carry = { kind: st.kind, level: st.level };
+      return 'wrong';
     }
     return 'dead';
   },
