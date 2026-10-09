@@ -142,8 +142,8 @@ const W4R = {};
   /* ================================================================ F2 选符号: a ○ b = c - plus or minus? (0 often: 5 − 5 = 0, 0 + 3 = 3) */
   W4R.F2 = {
     kind0: 'sign4', verb: '选！', intro: '帮猪爸爸选符号！', praise: ['符号选对啦！'],
-    /* L1 dots under the numbers (5), + or −; from L2 three cards + − = ("=" never makes a true sentence: a guess is a 1 in 3);
-       L2 numerals (5); L3 10; L4 the "=" on the left (7 = 5 ○ 2); L5 two signs (a ○ b ○ c = d) */
+    /* three cards + − = at every level up to L4 ("=" never makes a true sentence: a guess is a 1 in 3); L1 dots under the
+       numbers (5); L2 numerals (5); L3 10; L4 the "=" on the left (7 = 5 ○ 2); L5 two signs (a ○ b ○ c = d) */
     gen(G, o) {
       const d = lvOf(o), rng = o.rng;
       if (d === 5) {
@@ -160,7 +160,7 @@ const W4R = {};
       if (op === '+') { if (zero) { a = 0; b = rng.int(1, max); } else { a = rng.int(1, max - 1); b = rng.int(1, max - a); } }
       else if (zero) { a = rng.int(1, max); b = a; } else { a = rng.int(2, max); b = rng.int(1, a - 1); }
       /* b is never 0: "3 + 0 = 3" and "3 − 0 = 3" would both be right */
-      return { k: [d, a, op, b], a, b, c: calc(a, op, b), op, left: d === 4, dots: d === 1, answer: op, opts: d === 1 ? ['+', '-'] : ['+', '-', '='], fact: factOf(op, a, b) };
+      return { k: [d, a, op, b], a, b, c: calc(a, op, b), op, left: d === 4, dots: d === 1, answer: op, opts: ['+', '-', '='], fact: factOf(op, a, b) };
     },
     parts(q) { return q.two ? [q.a, 'o', q.b, 'o', q.c, '=', q.d] : q.left ? [q.c, '=', q.a, 'o', q.b] : [q.a, 'o', q.b, '=', q.c]; },
     geo(st) { const L = K.L(), two = st.q.two; return L ? { ew: two ? 720 : 540, eh: st.q.dots ? 240 : 190, ey: 150, cw: two ? 200 : 150, ch: two ? 140 : 150, cgap: two ? 32 : st.q.opts.length === 3 ? 60 : 110, cy: 560 } : { ew: two ? 668 : 540, eh: st.q.dots ? 240 : 190, ey: 272, cw: two ? 204 : 160, ch: two ? 140 : 160, cgap: two ? 24 : st.q.opts.length === 3 ? 40 : 100, cy: 730 }; },
@@ -191,7 +191,7 @@ const W4R = {};
       this.place(st);
       K.pop(st, st.eqCard); st.cards.forEach((c, i) => K.pop(st, c, 200 + 80 * i));
       K.task(st, [[W3X.ic('<circle cx="50" cy="50" r="38" fill="#FFF7D6" stroke="#2B2118" stroke-width="6" stroke-dasharray="10 7"/><path d="M32 50H68M50 32V68" stroke="#2E9E4F" stroke-width="10" stroke-linecap="round"/>')], ['q']]);
-      K.say(st, q.two ? '填哪两个符号？' : q.opts.length === 3 ? '填哪个符号？' : '加还是减？');
+      K.say(st, q.two ? '填哪两个符号？' : '填哪个符号？');
     },
     onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
     async reveal(st) {
@@ -215,7 +215,7 @@ const W4R = {};
     workEls(st) { return st.cards || []; },
     snap(st) { return { op: st.q.op }; },
     lines() {
-      const out = [this.intro, '加还是减？', '填哪个符号？', '填哪两个符号？'].concat(this.praise);
+      const out = [this.intro, '填哪个符号？', '填哪两个符号？'].concat(this.praise);
       SUMS().forEach(s => { if (s[2] < 1) return; out.push(words(s) + '！'); const q = { a: s[0], b: s[2], c: s[4], op: s[1] }; [false, true].forEach(left => ['+', '-', '='].forEach(x => { if (x !== q.op) out.push(this.wrongLine(Object.assign({ left }, q), x)); })); });
       for (let b = 1; b <= 4; b++) for (let c = 1; c <= 4; c++) { if (b === c || b + c > 5) continue; for (let a = b + c; a <= 10 - b - c; a++) ['++', '+-', '-+', '--'].forEach(s => out.push(this.sumLine({ two: true, a, b, c, op: s, d: calc(calc(a, s[0], b), s[1], c) }))); }
       for (let v = 0; v <= 10; v++) out.push('这样等于' + CN[v]);
@@ -1056,10 +1056,10 @@ const W4R = {};
   };
 
   /* ================================================================ M3 谁 Catboy and Luna Girl each hold balloons, some fly away:
-     whose are more now? (tap the one) · L1 the same number at first (3-4), the balloons fly off · L2 the same number (4-5), how
-     many fly off is a number on a tag (with dots) · L3 different at first (half the time the one who had more has fewer now),
-     the tag without dots, and a third card "the same" · L4 only number boards (5 − 2), three cards · L5 the number boards,
-     "Catboy has more - how many more?" (three number cards). The two rests are never the same: "the same" is never right. */
+     whose are more now? (tap the one, or the third card "the same") · L1 the same number at first (3-4), the balloons fly off
+     · L2 the same number (4-5), how many fly off is a number on a tag (with dots) · L3 different at first (half the time the one
+     who had more has fewer now), the tag without dots · L4 only number boards (5 − 2) · L5 the number boards, "Catboy has more
+     - how many more?" (three number cards). The two rests are never the same: "the same" is never right. */
   const BCOL = ['#FF6B5B', '#FFC93C', '#4FB3FF', '#5CC46E', '#B57BFF'];
   const BPOS = { 1: [[150, 104]], 2: [[110, 104], [190, 104]], 3: [[76, 112], [150, 88], [224, 112]], 4: [[112, 80], [188, 80], [74, 164], [226, 164]], 5: [[74, 82], [150, 70], [226, 82], [112, 164], [188, 164]] };
   const UPB = '<svg viewBox="0 0 40 46" width="100%" height="100%"><path d="M20 30V44" stroke="#2B2118" stroke-width="2.5"/><ellipse cx="20" cy="17" rx="12" ry="14" fill="#FF6B5B" stroke="#2B2118" stroke-width="3"/><path d="M34 26V6M28 12L34 5L40 12" fill="none" stroke="#2B2118" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -1068,7 +1068,7 @@ const W4R = {};
     who: ['catboy', 'luna_girl'], name: { catboy: '猫小子', luna_girl: '月亮女孩' },
     gen(G, o) {
       const d = Math.min(5, o.level), rng = o.rng, win = bagPick(G, 'm3w' + d, [0, 1]), trap = d === 3 ? bagPick(G, 'm3trap', [true, false]) : false;
-      const mode = [null, 'see', 'tag', 'tag', 'num', 'diff'][d], same = d === 3 || d === 4;
+      const mode = [null, 'see', 'tag', 'tag', 'num', 'diff'][d], same = d <= 4;
       for (let t = 0; t < 600; t++) {
         let a, b;
         if (d <= 2) { a = b = rng.pick(d === 1 ? [3, 4] : [4, 5]); } else { a = rng.int(2, 5); b = rng.int(2, 5); if (d === 3 && a === b) continue; }
@@ -1907,35 +1907,39 @@ const W4R = {};
   /* ---------------------------------------------------------------- O2 走！ stepping stones to the planet. A small grid of number
      stones; the gourd boy starts below the bottom-left stone, the goal planet (with N on it) is right of the top-right stone.
      The child steps one stone at a time - only onto the next stone up or to the right - and the question is judged at the
-     planet: right only if the stones stepped on add up to N. Exactly one way does; every way adds up to 10 at most.
-     L1 2 x 2 (two ways of three stones), stones 1-3, N <= 6, dots on the stones and a running total (dots on a bar) ·
-     L2 stones to 4, N <= 9 · L3 3 x 2 or 2 x 3 (three ways of four stones), no running total: the sum is kept in the head
-     (the support fades with the level, as the dots do) · L4 numerals only, a stone can be 0 · L5 3 x 3, six ways of five. */
+     planet: right only if the stones stepped on add up to N. Exactly one way does; every way adds up to 10 at most; there
+     are always at least three ways (never a 50 % guess).
+     L1 3 x 2 or 2 x 3 (three ways of four stones), stones 1-2, N 4-7, dots on the stones and a running total (dots on a
+     bar) · L2 stones 1-3, N 5-9 · L3 3 x 3 (six ways of five stones), stones 1-3, no running total: the sum is kept in
+     the head (the support fades with the level, as the dots do) · L4 3 x 3, numerals only, a stone can be 0 ·
+     L5 4 x 3 or 3 x 4 (ten ways of six stones), stones 0-2 (now and then 3). */
   W4R.O2 = {
     kind0: 'steps', verb: '走！', intro: '找对的路！', praise: ['路找对啦！'], props: [],
     ways(C, R) { const out = [], rec = (r, c, acc) => { acc = acc.concat([[r, c]]); if (r === 0 && c === C - 1) { out.push(acc); return; } if (r > 0) rec(r - 1, c, acc); if (c < C - 1) rec(r, c + 1, acc); }; rec(R - 1, 0, []); return out; },
     gen(G, o) {
       const d = Math.min(5, Math.max(1, o.level || 1)), rng = o.rng;
-      const [C, R] = d <= 2 ? [2, 2] : d <= 4 ? bagPick(G, 'o2g' + d, [[3, 2], [2, 3]]) : [3, 3];
-      const P = this.ways(C, R), v0 = d >= 4 ? 0 : 1, mx = [0, 3, 4, 3, 3, 3][d], lo = [0, 3, 4, 5, 5, 6][d], hi = [0, 6, 9, 10, 10, 10][d];
+      const [C, R] = d <= 2 ? bagPick(G, 'o2g' + d, [[3, 2], [2, 3]]) : d <= 4 ? [3, 3] : bagPick(G, 'o2g5', [[4, 3], [3, 4]]);
+      const P = this.ways(C, R), lo = [0, 4, 5, 5, 4, 4][d], hi = [0, 7, 9, 10, 10, 10][d];
+      const val = () => (d === 1 ? rng.int(1, 2) : d === 2 ? rng.int(1, 3) : d === 3 ? rng.int(1, 2) + (rng.chance(0.25) ? 1 : 0) : d === 4 ? rng.int(0, 3) : rng.int(0, 2) + (rng.chance(0.12) ? 1 : 0));
       const dir = bagPick(G, 'o2d' + d, ['U', 'R']), first = p => (p[1][0] < p[0][0] ? 'U' : 'R');     /* the right way's first turn: up or right, in turn */
-      for (let t = 0; t < 2000; t++) {
-        const v = Array.from({ length: R }, () => Array.from({ length: C }, () => rng.int(v0, mx)));
-        const sums = P.map(p => p.reduce((s, [r, c]) => s + v[r][c], 0));
+      for (let t = 0; t < 4000; t++) {
+        const v = Array.from({ length: R }, () => Array.from({ length: C }, val));
+        const sums = P.map(p => p.reduce((sm, [r, c]) => sm + v[r][c], 0));
         if (Math.max(...sums) > 10) continue;
-        const cand = P.map((_, i) => i).filter(i => sums.filter(x => x === sums[i]).length === 1 && sums[i] >= lo && sums[i] <= hi && (t > 1500 || first(P[i]) === dir));
+        const cand = P.map((_, i) => i).filter(i => sums.filter(x => x === sums[i]).length === 1 && sums[i] >= lo && sums[i] <= hi && (t > 3000 || first(P[i]) === dir));
         if (!cand.length) continue;
         const ri = rng.pick(cand), N = sums[ri];
         const wi = P.map((_, i) => i).filter(i => i !== ri).sort((x, y) => Math.abs(sums[x] - N) - Math.abs(sums[y] - N))[0];
         return { k: [d, C, R, v.map(r => r.join('')).join('')], d, C, R, v, N, right: P[ri], wrong: P[wi], answer: N, dotsOn: d <= 3, bar: d <= 2 };
       }
-      return { k: [d, 'x'], d, C: 2, R: 2, v: [[1, 2], [1, 1]], N: 4, right: [[1, 0], [0, 0], [0, 1]], wrong: [[1, 0], [1, 1], [0, 1]], answer: 4, dotsOn: true, bar: true };
+      return { k: [d, 'x'], d, C: 3, R: 2, v: [[1, 2, 1], [1, 1, 2]], N: 5, right: [[1, 0], [0, 0], [0, 1], [0, 2]], wrong: [[1, 0], [1, 1], [1, 2], [0, 2]], answer: 5, dotsOn: true, bar: true };
     },
     geo(st) {
-      const L = K.L(), q = st.q, n = q.C * q.R;
-      const s = (L ? { 4: 130, 6: 120, 9: 110 } : { 4: 140, 6: 128, 9: 116 })[n], g = L ? 44 : 40, ps = L ? 120 : 112;
-      const W = q.C * s + (q.C - 1) * g, H = q.R * s + (q.R - 1) * g;
-      const cx = L ? 480 : Math.min(352, 704 - 14 - ps - 26 - W / 2), cy = L ? 340 : 530, x0 = Math.round(cx - W / 2), y0 = Math.round(cy - H / 2);
+      const L = K.L(), q = st.q, shape = q.C + 'x' + q.R;
+      const [s, g] = (L ? { '3x2': [120, 44], '2x3': [120, 44], '3x3': [110, 44], '4x3': [100, 40], '3x4': [92, 32] } : { '3x2': [128, 40], '2x3': [128, 40], '3x3': [116, 40], '4x3': [100, 36], '3x4': [110, 36] })[shape];
+      const ps = L ? 120 : 112, W = q.C * s + (q.C - 1) * g, H = q.R * s + (q.R - 1) * g;
+      const cx = L ? Math.min(480, 1024 - 150 - 26 - ps - W / 2) : Math.min(352, 704 - 14 - 26 - ps - W / 2), x0 = Math.round(cx - W / 2);
+      const y0 = Math.max(L ? 116 : 216, Math.round((L ? 330 : 520) - H / 2));          /* below the task card */
       const boy = { x: x0 + s / 2 - 36, y: y0 + H + 30 };
       return { s, g, W, H, x0, y0, ps, boy, planet: { x: x0 + W + 26, y: Math.round(y0 + s / 2 - ps / 2) }, bar: { x: boy.x + 96, y: boy.y + 6, w: 250, h: 60 } };
     },
@@ -2007,6 +2011,10 @@ const W4R = {};
       this.place(st); this.mark(st);
       st.stones.forEach((row, r) => row.forEach((o, c) => popIn(st, o.e, 60 * (r + c))));
       popIn(st, st.planet, 200); popIn(st, st.boy, 260);
+      const pl = el('span', ''); Object.assign(pl.style, { position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '60px', height: '56px' });
+      pl.innerHTML = '<svg viewBox="0 0 120 120" width="56" height="56" style="position:absolute;left:2px;top:0"><ellipse cx="60" cy="64" rx="58" ry="15" fill="none" stroke="#2B2118" stroke-width="10"/><circle cx="60" cy="60" r="52" fill="#B57BFF" stroke="#2B2118" stroke-width="7"/><circle cx="60" cy="60" r="36" fill="#fff" stroke="#2B2118" stroke-width="5"/></svg>';
+      const pn = UI.num(q.N, 30); pn.style.position = 'relative'; pl.appendChild(pn);
+      K.task(st, [[W3X.ic('<rect x="6" y="58" width="26" height="26" rx="6" fill="#FFE9A8" stroke="#2B2118" stroke-width="4"/><rect x="6" y="16" width="26" height="26" rx="6" fill="#FFE9A8" stroke="#2B2118" stroke-width="4"/><rect x="50" y="16" width="26" height="26" rx="6" fill="#FFE9A8" stroke="#2B2118" stroke-width="4"/><path d="M19 54V48M36 29H44" stroke="#2B2118" stroke-width="5" stroke-linecap="round"/><path d="M14 50L19 44L24 50M41 24L47 29L41 34" fill="none" stroke="#2B2118" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="90" cy="29" r="9" fill="#B57BFF" stroke="#2B2118" stroke-width="3"/>', 56)], [{ node: pl }]]);
       W3X.say2(st, '走到星球去！', '加起来要是' + CN[q.N] + '！');
     },
     onGesture(st, name, p) {
@@ -3055,7 +3063,8 @@ const W4R = {};
 
   /* ================================================================ I8 猜数 (reasoning): a number line 0-10 on top; clues one by
      one - "比三大" "比六小" "不是四" - each as a picture that stays (? > 3, ? < 6, a crossed-out 4, pairs of dots for "是双数");
-     tap the number on the line. At L1-L3 each clue greys out the numbers it rules out; at L4-L5 nothing is greyed. Only one
+     tap the number on the line. At L1-L3 every clue but the last greys out the numbers it rules out; at L4-L5 nothing is
+     greyed. The answer is never 0. Only one
      number fits, and every clue is needed. L1 two clues (> and <), cards 0-6, dots · L2 cards 0-10, > and <, or one of
      them and "不是" · L3 three clues · L4 three clues in any order (two "不是" too), numbers only · L5 one clue is "是双数". */
   const CLUE = {
@@ -3067,14 +3076,14 @@ const W4R = {};
     kind0: 'guess', verb: '猜数！', intro: '猜猜是几！', praise: ['猜中啦！'], props: ['alien'],
     gen(G, o) {
       const d = Math.min(5, o.level), rng = o.rng, top = d === 1 ? 6 : 10, all = Array.from({ length: top + 1 }, (_, i) => i);
-      const pats = { 1: [['gt', 'lt']], 2: [['gt', 'lt'], ['gt', 'not'], ['lt', 'not']], 3: [['gt', 'lt', 'not']], 4: [['gt', 'lt', 'not'], ['gt', 'not', 'not'], ['lt', 'not', 'not']], 5: [['gt', 'lt', 'even'], ['gt', 'not', 'even'], ['lt', 'not', 'even']] }[d];
+      const pats = { 1: [['gt', 'lt']], 2: [['gt', 'lt'], ['gt', 'lt'], ['gt', 'not']], 3: [['gt', 'lt', 'not']], 4: [['gt', 'lt', 'not'], ['gt', 'lt', 'not'], ['gt', 'not', 'not'], ['lt', 'not', 'not']], 5: [['gt', 'lt', 'even'], ['gt', 'lt', 'even'], ['gt', 'lt', 'even'], ['gt', 'not', 'even']] }[d];          /* the line's middle more often than its ends (an answer 0 is never asked) */
       const pick = pats.length > 1 ? bagPick(G, 'i8p' + d, pats.map((_, i) => i)) : 0;
       const cands = cl => all.filter(n => cl.every(c => CLUE.holds(c, n)));
       for (let t = 0; t < 6000; t++) {
         const kinds = pats[t < 4000 ? pick : t % pats.length];
         const cl = kinds.map(k => (k === 'gt' ? ['gt', rng.int(0, top - 1)] : k === 'lt' ? ['lt', rng.int(1, top)] : k === 'not' ? ['not', rng.int(0, top)] : ['even', 0]));
         const nots = cl.filter(c => c[0] === 'not').map(c => c[1]); if (new Set(nots).size !== nots.length) continue;
-        const left = cands(cl); if (left.length !== 1) continue;
+        const left = cands(cl); if (left.length !== 1 || left[0] === 0) continue;          /* never 0 (it stays on the line) */
         if (cl.some((_, i) => cands(cl.filter((__, j) => j !== i)).length < 2)) continue;          /* every clue is needed */
         const clues = d >= 4 ? rng.shuffle(cl) : cl;
         return { k: [d, clues.map(c => c[0] + c[1]).join()], clues, top, answer: left[0], opts: all.slice(), sup: d <= 3 ? 0 : 1 };
@@ -3133,8 +3142,9 @@ const W4R = {};
       }
       return e;
     },
-    /* the clues one by one; at L1-L3 each one greys out on the line what it rules out (at L4-L5 the child does it in his
-       head - the line is shaded only after a right answer, as the explanation) */
+    /* the clues one by one; at L1-L3 each one but the last greys out on the line what it rules out - at least two numbers
+       stay white and the last clue is applied by the child (at L4-L5 nothing is greyed); after a right answer the whole line
+       is shaded, as the explanation */
     async present(st) {
       const q = st.q, my = st, g = this.geo(st);
       st.tracks = Array.from({ length: g.ln.rows }, () => { const t = W2X.thing(st, 10, 10, 4, ''); Object.assign(t.style, { borderRadius: '24px', background: 'rgba(46,58,107,.78)', boxShadow: '0 0 0 4px ' + INK }); return t; });
@@ -3156,7 +3166,7 @@ const W4R = {};
       const lines = q.clues.map(c => CLUE.line(c));
       for (let i = 0; i < q.clues.length; i++) {
         const e = this.clueCard(st, q.clues[i], q.sup); st.clueEls.push(e); this.place(st); K.pop(st, e); Sfx.pop();
-        if (!q.sup) this.shade(st, q.clues[i], 350);
+        if (!q.sup && i < q.clues.length - 1) this.shade(st, q.clues[i], 350);          /* the last clue the child applies himself */
         if (i === q.clues.length - 1) break;
         await V7.talk(st, lines[i], 2200); if (!Session.alive(my)) return;
         await st.scope.wait(T(300)); if (!Session.alive(my)) return;
