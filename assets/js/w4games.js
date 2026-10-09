@@ -139,7 +139,7 @@ const W4R = {};
     },
   };
 
-  /* ================================================================ F2 选符号: a ○ b = c - plus or minus? (0 often: 5 − 5 = 0, 0 + 3 = 3) */
+  /* ================================================================ F2 选符号: a ○ b = c - plus, minus or (never right) equals? (0 often: 0 + 3 = 3, 3 = 0 + 3) */
   W4R.F2 = {
     kind0: 'sign4', verb: '选！', intro: '帮猪爸爸选符号！', praise: ['符号选对啦！'],
     /* three cards + − = at every level up to L4 ("=" never makes a true sentence: a guess is a 1 in 3); L1 dots under the
@@ -155,11 +155,14 @@ const W4R = {};
           return { k: [5, a, b, c, ok], two: true, a, b, c, d: val(ok), op: ok, answer: ok, opts, vals: opts.map(val) };
         }
       }
-      const max = d <= 2 ? 5 : 10, op = bagPick(G, 'f2o' + d, ['+', '-']), zero = rng.chance(0.25);
+      const max = d <= 2 ? 5 : 10, op = bagPick(G, 'f2o' + d, ['+', '-']), zero = op === '+' && rng.chance(0.35);
       let a, b;
-      if (op === '+') { if (zero) { a = 0; b = rng.int(1, max); } else { a = rng.int(1, max - 1); b = rng.int(1, max - a); } }
-      else if (zero) { a = rng.int(1, max); b = a; } else { a = rng.int(2, max); b = rng.int(1, a - 1); }
-      /* b is never 0: "3 + 0 = 3" and "3 − 0 = 3" would both be right */
+      do {
+        if (op === '+') { if (zero) { a = 0; b = rng.int(1, max); } else { a = rng.int(1, max - 1); b = rng.int(1, max - a); } }
+        else { a = rng.int(2, max); b = rng.int(1, a - 1); }
+      } while (a === b);
+      /* b is never 0: "3 + 0 = 3" and "3 − 0 = 3" would both be right; a is never b: with the "=" card in the slot "1 = 1"
+         would read true (so 0 comes as 0 + 3 = 3, not as 5 − 5 = 0) */
       return { k: [d, a, op, b], a, b, c: calc(a, op, b), op, left: d === 4, dots: d === 1, answer: op, opts: ['+', '-', '='], fact: factOf(op, a, b) };
     },
     parts(q) { return q.two ? [q.a, 'o', q.b, 'o', q.c, '=', q.d] : q.left ? [q.c, '=', q.a, 'o', q.b] : [q.a, 'o', q.b, '=', q.c]; },
@@ -205,7 +208,7 @@ const W4R = {};
     /* what the chosen sign would make (never which one is right): 三加二是五 / 二减三不够减 / 五不等于三 */
     wrongLine(q, ans) {
       if (q.two) return '这样等于' + CN[q.vals[q.opts.indexOf(ans)]];
-      if (ans === '+') return CN[q.a] + '加' + CN[q.b] + '是' + CN[q.a + q.b];
+      if (ans === '+') return CN[q.a] + '加' + CN[q.b] + (q.a + q.b > 10 ? '比十大' : '是' + CN[q.a + q.b]);          /* a world within 10 */
       if (ans === '-') return CN[q.a] + '减' + CN[q.b] + (q.a >= q.b ? '是' + CN[q.a - q.b] : '不够减');
       const t = q.left ? [q.c, q.a, q.b] : [q.a, q.b, q.c];
       return t[0] !== t[1] ? CN[t[0]] + '不等于' + CN[t[1]] : CN[t[1]] + '不等于' + CN[t[2]];
@@ -216,7 +219,7 @@ const W4R = {};
     snap(st) { return { op: st.q.op }; },
     lines() {
       const out = [this.intro, '填哪个符号？', '填哪两个符号？'].concat(this.praise);
-      SUMS().forEach(s => { if (s[2] < 1) return; out.push(words(s) + '！'); const q = { a: s[0], b: s[2], c: s[4], op: s[1] }; [false, true].forEach(left => ['+', '-', '='].forEach(x => { if (x !== q.op) out.push(this.wrongLine(Object.assign({ left }, q), x)); })); });
+      SUMS().forEach(s => { if (s[2] < 1 || s[0] === s[2]) return; out.push(words(s) + '！'); const q = { a: s[0], b: s[2], c: s[4], op: s[1] }; [false, true].forEach(left => ['+', '-', '='].forEach(x => { if (x !== q.op) out.push(this.wrongLine(Object.assign({ left }, q), x)); })); });
       for (let b = 1; b <= 4; b++) for (let c = 1; c <= 4; c++) { if (b === c || b + c > 5) continue; for (let a = b + c; a <= 10 - b - c; a++) ['++', '+-', '-+', '--'].forEach(s => out.push(this.sumLine({ two: true, a, b, c, op: s, d: calc(calc(a, s[0], b), s[1], c) }))); }
       for (let v = 0; v <= 10; v++) out.push('这样等于' + CN[v]);
       return uniq(out);
@@ -726,7 +729,8 @@ const W4R = {};
 
   /* ================================================================ I4 数图形 (reasoning): a line drawing - how many triangles / squares?
      L1 shapes apart; L2 more, sizes and turns, look-alikes (a long rectangle is not a square); L3 a big triangle cut in two
-     (3: the big one counts too); L4 that and a square cut corner to corner (2 more); L5 a 2 x 2 grid of squares (5) */
+     (3: the big one counts too); L4 that (point up or down) and a square cut corner to corner or a triangle cut across (2 more);
+     L5 a 2 x 2 grid of squares (5) */
   const VB = { w: 500, h: 400 };
   const triPts = (cx, cy, r, rot) => { const P = [[0, -r], [r * 0.95, r * 0.72], [-r * 0.95, r * 0.72]], a = (rot || 0) * Math.PI / 180; return P.map(([x, y]) => [cx + x * Math.cos(a) - y * Math.sin(a), cy + x * Math.sin(a) + y * Math.cos(a)]); };
   const sqPts = (cx, cy, s) => [[cx - s / 2, cy - s / 2], [cx + s / 2, cy - s / 2], [cx + s / 2, cy + s / 2], [cx - s / 2, cy + s / 2]];
@@ -753,7 +757,7 @@ const W4R = {};
         const k = d === 1 ? rng.int(1, 2) : rng.int(2, 3), spots = rng.shuffle(cells).slice(0, n + k);
         spots.forEach(([x, y], i) => { const r = d === 1 ? 54 : rng.int(36, 52); items.push(small(i < n ? ask : other(), x, y, r, d === 2 && ask === 'tri' ? rng.pick([0, 90, 180, 270]) : 0)); });
       } else if (d <= 4) {
-        const flip = rng.chance(0.5), bx = flip ? 360 : 140, A = [bx, 70], B = [bx + 120, 300], C = [bx - 120, 300], M = mid(B, C);
+        const flip = rng.chance(0.5), bx = flip ? 360 : 140, dn = d === 4 && rng.chance(0.5), A = [bx, dn ? 300 : 70], B = [bx + 120, dn ? 70 : 300], C = [bx - 120, dn ? 70 : 300], M = mid(B, C);
         items.push({ kind: 'split', pts: [A, B, C], lines: [[A, M]], count: [[A, M, C], [A, B, M], [A, B, C]] });
         const side = flip ? 125 : 375;          /* the other shapes keep clear of the big figure */
         let extra;
@@ -764,8 +768,13 @@ const W4R = {};
           items.push(small('circle', cells[extra][0], cells[extra][1], 42));
           n = 3 + extra;
         } else {
-          const s = 150, Q = sqPts(side, 130, s), dg = rng.chance(0.5) ? [Q[0], Q[2]] : [Q[1], Q[3]];
-          items.push({ kind: 'diag', pts: Q, lines: [dg], count: dg[0] === Q[0] ? [[Q[0], Q[1], Q[2]], [Q[0], Q[2], Q[3]]] : [[Q[1], Q[2], Q[3]], [Q[1], Q[3], Q[0]]] });
+          if (rng.chance(0.5)) {          /* a square cut corner to corner: 2 triangles (the square is not one) */
+            const s = 150, Q = sqPts(side, 130, s), dg = rng.chance(0.5) ? [Q[0], Q[2]] : [Q[1], Q[3]];
+            items.push({ kind: 'diag', pts: Q, lines: [dg], count: dg[0] === Q[0] ? [[Q[0], Q[1], Q[2]], [Q[0], Q[2], Q[3]]] : [[Q[1], Q[2], Q[3]], [Q[1], Q[3], Q[0]]] });
+          } else {          /* a triangle cut across: the small top one and the big one, 2 (the lower part has four sides) */
+            const up = rng.chance(0.5), ap = [side, up ? 55 : 215], b1 = [side + 85, up ? 215 : 55], b2 = [side - 85, up ? 215 : 55], m1 = mid(ap, b1), m2 = mid(ap, b2);
+            items.push({ kind: 'cut', pts: [ap, b1, b2], lines: [[m1, m2]], count: [[ap, m1, m2], [ap, b1, b2]] });
+          }
           extra = rng.int(0, 1);
           const cells = rng.shuffle([[side - 52, 312], [side + 52, 312]]);
           if (extra) items.push(small('tri', cells[0][0], cells[0][1], 42, 0));
@@ -781,7 +790,7 @@ const W4R = {};
         items.push(small(rng.pick(['circle', 'tri']), cells[extra][0], cells[extra][1], 42));
         n = 5 + extra;
       }
-      const key = items.map(it => it.kind + (it.pts ? it.pts[0].map(Math.round).join('.') : it.c.join('.'))).join();
+      const xy = p => p.map(Math.round).join('.'), key = items.map(it => it.kind + (it.pts ? it.pts.map(xy).join('/') : it.c.join('.')) + (it.lines ? '|' + it.lines.map(L => L.map(xy).join('-')).join('/') : '')).join();
       const opts = d <= 2 ? numOptions(G, n, 1, 9) : placeOptions(G, [n - 1, n, n + 1], n);
       return { k: [d, ask, key], d, ask, items, n, answer: n, opts };
     },
@@ -880,16 +889,19 @@ const W4R = {};
 
   /* ================================================================ M1 找 a − b: which picture is it? (a things, b crossed out)
      L1 a ≤ 3 · L2 a ≤ 4 (numbers with dots) · L3 a ≤ 5, numbers only · L4 a − b = c, one picture has the right total but not
-     the right rest, one the right rest but not the right total · L5 the "take away" picture: some stay in the crater, some fly
-     off. The wrong pictures never show a − b (another total or another number taken away). */
+     the right rest, one the right rest but not the right total · L5 a ≤ 7, numbers only, the "take away" picture: some stay
+     in the crater, some fly off (the total is the two together); the wrong ones are one off in one part (one more or one fewer
+     flying off, or one more or one fewer in all). The wrong pictures never show a − b. */
   W4R.M1 = {
     kind0: 'eqpic', verb: '找！', intro: '算式找图！', praise: ['图找对啦！'],
     things: ['alien', 'astronaut', 'rocket', 'crystal'], props: ['alien', 'astronaut', 'rocket', 'crystal'],
     gen(G, o) {
       const d = Math.min(5, o.level), rng = o.rng, hi = [0, 3, 4, 5, 5, 5][d], thing = bagPick(G, 'm1t', this.things);
-      const a = rng.int(2, hi), b = rng.int(1, a - 1), c = a - b, ok = { n: a, x: b, why: 'ok' };
-      const xs = []; for (let x = 1; x <= a; x++) if (x !== b) xs.push(x);
-      const fx = { n: a, x: rng.pick(xs), why: 'x' };                    /* the right total, another number gone */
+      let a = rng.int(2, hi), b = rng.int(1, a - 1);
+      if (d === 5) { a = rng.int(5, 7); b = rng.int(Math.max(2, a - 5), Math.min(5, a - 1)); }          /* 2-5 fly off, 1-5 stay */
+      const c = a - b, ok = { n: a, x: b, why: 'ok' };
+      const xs = []; for (let x = 1; x <= a; x++) if (x !== b && (d < 5 || Math.abs(x - b) === 1)) xs.push(x);
+      const fx = { n: a, x: rng.pick(xs), why: 'x' };                    /* the right total, another number gone (L5: one off) */
       let fn;
       if (d === 4) {                                                         /* the right rest, the wrong total */
         const up = { n: a + 1, x: b + 1, why: 'n' }, dn = { n: a - 1, x: b - 1, why: 'n' };
@@ -918,12 +930,12 @@ const W4R = {};
       svg('ellipse', { cx: cr.x, cy: cr.y, rx: cr.rx, ry: cr.ry, fill: '#E4E8F0', stroke: INK, 'stroke-width': 4 }, s);
       svg('ellipse', { cx: cr.x, cy: cr.y + cr.ry * 0.6, rx: cr.rx * 0.78, ry: cr.ry * 0.24, fill: '#D3D9E4' }, s);
       /* (rows of, size) for the ones that stay and the ones that fly off - as big as the room allows */
-      const sl = L ? [[1, 84], [1, 84], [1, 84], [2, 70], [2, 66], [3, 52]][stay] : [[1, 66], [1, 66], [2, 66], [3, 66], [4, 64], [5, 54]][stay];
+      const sl = L ? [[1, 84], [1, 84], [1, 84], [2, 70], [2, 66], [3, 52], [3, 48]][stay] : [[1, 66], [1, 66], [2, 66], [3, 66], [4, 64], [5, 54], [3, 54]][stay];
       grid(stay, cr.x, cr.y, sl[1] + 2, sl[1] + 2, sl[0]).forEach(([x, y]) => put(x, y, sl[1], false));
       const ax = cr.x + cr.rx + 4, ay = cr.y;
       svg('path', { d: 'M' + ax + ' ' + ay + 'H' + (ax + 22), stroke: INK, 'stroke-width': 7, 'stroke-linecap': 'round' }, s);
       svg('path', { d: 'M' + (ax + 14) + ' ' + (ay - 11) + 'L' + (ax + 26) + ' ' + ay + 'L' + (ax + 14) + ' ' + (ay + 11), fill: 'none', stroke: INK, 'stroke-width': 7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
-      const x0 = ax + 30, gl = L ? [[1, 76], [1, 76], [1, 74], [1, 62], [2, 46], [2, 46]][go] : [[1, 62], [1, 62], [2, 62], [3, 56], [3, 50], [3, 50]][go];
+      const x0 = ax + 30, gl = L ? [[1, 76], [1, 76], [1, 74], [1, 62], [2, 46], [2, 46], [2, 44]][go] : [[1, 62], [1, 62], [2, 62], [3, 56], [3, 50], [3, 50], [3, 50]][go];
       grid(go, (x0 + W) / 2, ay, gl[1] + 2, gl[1] + 2, gl[0]).forEach(([x, y]) => put(x, y, gl[1], false, -14));
       return s;
     },
@@ -3065,7 +3077,7 @@ const W4R = {};
      one - "比三大" "比六小" "不是四" - each as a picture that stays (? > 3, ? < 6, a crossed-out 4, pairs of dots for "是双数");
      tap the number on the line. At L1-L3 every clue but the last greys out the numbers it rules out; at L4-L5 nothing is
      greyed. The answer is never 0. Only one
-     number fits, and every clue is needed. L1 two clues (> and <), cards 0-6, dots · L2 cards 0-10, > and <, or one of
+     number fits, and every clue is needed; at L1-L3 at least three numbers are still white when the last clue comes. L1 two clues (> and <), cards 0-6, dots · L2 cards 0-10, > and <, or one of
      them and "不是" · L3 three clues · L4 three clues in any order (two "不是" too), numbers only · L5 one clue is "是双数". */
   const CLUE = {
     holds(c, n) { return c[0] === 'gt' ? n > c[1] : c[0] === 'lt' ? n < c[1] : c[0] === 'not' ? n !== c[1] : n % 2 === 0; },
@@ -3085,7 +3097,8 @@ const W4R = {};
         const nots = cl.filter(c => c[0] === 'not').map(c => c[1]); if (new Set(nots).size !== nots.length) continue;
         const left = cands(cl); if (left.length !== 1 || left[0] === 0) continue;          /* never 0 (it stays on the line) */
         if (cl.some((_, i) => cands(cl.filter((__, j) => j !== i)).length < 2)) continue;          /* every clue is needed */
-        const clues = d >= 4 ? rng.shuffle(cl) : cl;
+        const clues = rng.shuffle(cl);
+        if (d <= 3 && cands(clues.slice(0, -1)).length < 3) continue;          /* L1-L3: at least three numbers still white before the last clue (greyed: all but the last) */
         return { k: [d, clues.map(c => c[0] + c[1]).join()], clues, top, answer: left[0], opts: all.slice(), sup: d <= 3 ? 0 : 1 };
       }
       return { k: [d, 'x'], clues: [['gt', 2], ['lt', 4]], top, answer: 3, opts: all.slice(), sup: d <= 3 ? 0 : 1 };
