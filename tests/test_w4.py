@@ -141,6 +141,8 @@ def progress(log):
         page.wait_for_timeout(5000)
         st = page.evaluate("() => ({ flags: Store.s.flags.slice(-1), html: (MapView.isl.peppa4 && MapView.isl.peppa4.flag.innerHTML) || '' })")
         log.check(st['flags'] == ['peppa4'] and '#FFD84A' in st['html'], 'peppa4 complete: its star pennant is planted and counted %s' % st['flags'])
+        n = page.evaluate("Store.s.flags.length"); line = page.evaluate("(n) => CNQ(n) + '面旗子啦！'", n)
+        log.check(n > 20 and 'undefined' not in line and page.evaluate("(t) => Bank.has(t)", line), 'the flag count past 20 is said and recorded: "%s" (%d flags)' % (line, n))
         # the whole world: the star castle and the space party
         page.evaluate("""() => { ORDER4.forEach(w => { const ws = Store.w(w); ws.unlocked = true; WORLDS[w].games.forEach(g => { (ws.gstars = ws.gstars || {})[g] = 5; }); }); Store.save(); Progress.check(false); MapView.enter(); }""")
         page.wait_for_timeout(9000)

@@ -142,7 +142,8 @@ const W4R = {};
   /* ================================================================ F2 选符号: a ○ b = c - plus or minus? (0 often: 5 − 5 = 0, 0 + 3 = 3) */
   W4R.F2 = {
     kind0: 'sign4', verb: '选！', intro: '帮猪爸爸选符号！', praise: ['符号选对啦！'],
-    /* L1 dots under the numbers (5); L2 numerals (5); L3 10; L4 the "=" on the left (7 = 5 ○ 2); L5 two signs (a ○ b ○ c = d) */
+    /* L1 dots under the numbers (5), + or −; from L2 three cards + − = ("=" never makes a true sentence: a guess is a 1 in 3);
+       L2 numerals (5); L3 10; L4 the "=" on the left (7 = 5 ○ 2); L5 two signs (a ○ b ○ c = d) */
     gen(G, o) {
       const d = lvOf(o), rng = o.rng;
       if (d === 5) {
@@ -159,17 +160,17 @@ const W4R = {};
       if (op === '+') { if (zero) { a = 0; b = rng.int(1, max); } else { a = rng.int(1, max - 1); b = rng.int(1, max - a); } }
       else if (zero) { a = rng.int(1, max); b = a; } else { a = rng.int(2, max); b = rng.int(1, a - 1); }
       /* b is never 0: "3 + 0 = 3" and "3 − 0 = 3" would both be right */
-      return { k: [d, a, op, b], a, b, c: calc(a, op, b), op, left: d === 4, dots: d === 1, answer: op, opts: ['+', '-'], fact: factOf(op, a, b) };
+      return { k: [d, a, op, b], a, b, c: calc(a, op, b), op, left: d === 4, dots: d === 1, answer: op, opts: d === 1 ? ['+', '-'] : ['+', '-', '='], fact: factOf(op, a, b) };
     },
     parts(q) { return q.two ? [q.a, 'o', q.b, 'o', q.c, '=', q.d] : q.left ? [q.c, '=', q.a, 'o', q.b] : [q.a, 'o', q.b, '=', q.c]; },
-    geo(st) { const L = K.L(), two = st.q.two; return L ? { ew: two ? 720 : 540, eh: st.q.dots ? 240 : 190, ey: 150, cw: two ? 200 : 150, ch: two ? 140 : 150, cgap: two ? 32 : 110, cy: 560 } : { ew: two ? 668 : 540, eh: st.q.dots ? 240 : 190, ey: 272, cw: two ? 204 : 160, ch: two ? 140 : 160, cgap: two ? 24 : 100, cy: 730 }; },
+    geo(st) { const L = K.L(), two = st.q.two; return L ? { ew: two ? 720 : 540, eh: st.q.dots ? 240 : 190, ey: 150, cw: two ? 200 : 150, ch: two ? 140 : 150, cgap: two ? 32 : st.q.opts.length === 3 ? 60 : 110, cy: 560 } : { ew: two ? 668 : 540, eh: st.q.dots ? 240 : 190, ey: 272, cw: two ? 204 : 160, ch: two ? 140 : 160, cgap: two ? 24 : st.q.opts.length === 3 ? 40 : 100, cy: 730 }; },
     decor(G) { W3X.decor2(G, this.chars); },
     place(st) {
       const g = this.geo(st), cx = Stage.W / 2;
       if (st.eqCard) place(st.eqCard, cx - g.ew / 2, g.ey, g.ew, g.eh);
       (st.cards || []).forEach((c, i) => { const p = rowAt(st.cards.length, cx, g.cy, g.cw, g.ch, g.cgap)[i]; place(c, p.x, p.y, g.cw, g.ch); });
     },
-    signFace(t, size) { return sym(t, size, t === '+' ? '#2E9E4F' : '#2E6FD8'); },
+    signFace(t, size) { return sym(t, size, t === '+' ? '#2E9E4F' : t === '-' ? '#2E6FD8' : INK); },
     present(st) {
       const q = st.q, P = !K.L();
       st.eqCard = panel(st, 4);
@@ -190,7 +191,7 @@ const W4R = {};
       this.place(st);
       K.pop(st, st.eqCard); st.cards.forEach((c, i) => K.pop(st, c, 200 + 80 * i));
       K.task(st, [[W3X.ic('<circle cx="50" cy="50" r="38" fill="#FFF7D6" stroke="#2B2118" stroke-width="6" stroke-dasharray="10 7"/><path d="M32 50H68M50 32V68" stroke="#2E9E4F" stroke-width="10" stroke-linecap="round"/>')], ['q']]);
-      K.say(st, q.two ? '填哪两个符号？' : '加还是减？');
+      K.say(st, q.two ? '填哪两个符号？' : q.opts.length === 3 ? '填哪个符号？' : '加还是减？');
     },
     onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
     async reveal(st) {
@@ -201,14 +202,21 @@ const W4R = {};
       await st.scope.wait(T(1300));
     },
     sumLine(q) { return (q.two ? words([q.a, q.op[0], q.b, q.op[1], q.c, '=', q.d]) : words([q.a, q.op, q.b, '=', q.c])) + '！'; },
-    wrongLine(q, ans) { if (q.two) return '这样等于' + CN[q.vals[q.opts.indexOf(ans)]]; return ans === '+' ? '加了会变多' : '减了会变少'; },
+    /* what the chosen sign would make (never which one is right): 三加二是五 / 二减三不够减 / 五不等于三 */
+    wrongLine(q, ans) {
+      if (q.two) return '这样等于' + CN[q.vals[q.opts.indexOf(ans)]];
+      if (ans === '+') return CN[q.a] + '加' + CN[q.b] + '是' + CN[q.a + q.b];
+      if (ans === '-') return CN[q.a] + '减' + CN[q.b] + (q.a >= q.b ? '是' + CN[q.a - q.b] : '不够减');
+      const t = q.left ? [q.c, q.a, q.b] : [q.a, q.b, q.c];
+      return t[0] !== t[1] ? CN[t[0]] + '不等于' + CN[t[1]] : CN[t[1]] + '不等于' + CN[t[2]];
+    },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(this.wrongLine(st.q, ans)); await st.scope.wait(T(600)); },
     next(st, strat) { if (st.picked || !st.cards) return null; const i = strat === 'wrong' ? st.opts.findIndex(v => v !== st.q.answer) : st.opts.indexOf(st.q.answer); return { g: 'tap', p: { id: 'card' + i } }; },
     workEls(st) { return st.cards || []; },
     snap(st) { return { op: st.q.op }; },
     lines() {
-      const out = [this.intro, '加还是减？', '填哪两个符号？', '加了会变多', '减了会变少'].concat(this.praise);
-      SUMS().forEach(s => { if (s[2] >= 1) out.push(words(s) + '！'); });
+      const out = [this.intro, '加还是减？', '填哪个符号？', '填哪两个符号？'].concat(this.praise);
+      SUMS().forEach(s => { if (s[2] < 1) return; out.push(words(s) + '！'); const q = { a: s[0], b: s[2], c: s[4], op: s[1] }; [false, true].forEach(left => ['+', '-', '='].forEach(x => { if (x !== q.op) out.push(this.wrongLine(Object.assign({ left }, q), x)); })); });
       for (let b = 1; b <= 4; b++) for (let c = 1; c <= 4; c++) { if (b === c || b + c > 5) continue; for (let a = b + c; a <= 10 - b - c; a++) ['++', '+-', '-+', '--'].forEach(s => out.push(this.sumLine({ two: true, a, b, c, op: s, d: calc(calc(a, s[0], b), s[1], c) }))); }
       for (let v = 0; v <= 10; v++) out.push('这样等于' + CN[v]);
       return uniq(out);
@@ -249,9 +257,10 @@ const W4R = {};
       const cards = order.map(i => nums[i]).concat(signs);
       /* a false sentence for the test's "wrong" path: the same cards, the numbers moved round */
       const wrong = [[sent[4], sent[1], sent[0], '=', sent[2]], [sent[2], sent[1], sent[4], '=', sent[0]], [sent[0], sent[1], sent[4], '=', sent[2]]].find(s => truth(s) === 'false');
-      return { k: [d, cards.join('')], d, op, sent, cards, nN: nums.length, nS: signs.length, dots: d <= 2, answer: sent.join(' '), wrong, fact: op === '+' ? factOf('+', a, b) : factOf('-', c, a) };
+      return { k: [d, cards.join('')], d, op, sent, cards, nN: nums.length, nS: signs.length, dots: d <= 2, answer: sent.join(' '), wrong };
     },
-    evaluate(st, ans) { return truth(ans) === 'ok'; },
+    /* the number fact is the one the child built (5 = 2 + 3 -> 2 + 3); a false sentence records none */
+    evaluate(st, ans) { const ok = truth(ans) === 'ok'; if (ok) { const n = ans[1] === '=' ? [ans[2], ans[3], ans[4], '=', ans[0]] : ans; st.q.fact = factOf(n[1], n[0], n[2]); } else delete st.q.fact; return ok; },
     geo() { return K.L() ? { sy: 226, ny: 412, oy: 560, gap: 22, sgap: 12 } : { sy: 300, ny: 494, oy: 652, gap: 22, sgap: 9 }; },
     decor(G) { W3X.decor2(G, this.chars); },
     slotXY(i) { const g = this.geo(); return rowAt(5, Stage.W / 2, g.sy, SW, SH, g.sgap)[i]; },
@@ -422,18 +431,18 @@ const W4R = {};
   W4R.I1 = {
     kind0: 'jar4', verb: '装！', intro: '流星装进罐子！', praise: ['记得真牢！'], props: ['shootingstar'],
     /* L1 sum 3, all seen; L2 sum 5, the jar is covered after both drops; L3 sum 5, covered before the second drop (count on);
-       L4 sum 7, the same; L5 three drops after the cover (a + b + c <= 9) */
+       L4 sum 7, the same; L5 the closed jar only says how many are inside (a number card on the lid), then b fall in: count
+       on from a numeral (sum 9) */
     gen(G, o) {
       const d = lvOf(o), rng = o.rng, hi = [0, 3, 5, 5, 7, 9][d];
-      let a, b, c = 0;
+      let a, b;
       for (let t = 0; t < 200; t++) {
-        a = rng.int(1, hi - 1); b = rng.int(1, hi - a); c = d === 5 ? rng.int(1, Math.max(1, hi - a - b)) : 0;
-        if (a + b + c > hi || (d === 5 && hi - a - b < 1)) continue;
-        if ((d >= 2 && a + b + c < 3) || (d >= 4 && a + b + c < 5)) continue;
+        a = rng.int(d === 5 ? 2 : 1, d === 5 ? 7 : hi - 1); b = rng.int(1, hi - a);
+        if (a + b > hi || (d >= 2 && a + b < 3) || (d >= 4 && a + b < 5)) continue;
         break;
       }
-      const n = a + b + c, v = rng.int(0, 2);
-      return { k: [d, a, b, c, v], d, a, b, c, n, v, drops: c ? [a, b, c] : [a, b], cover: d === 1 ? -1 : d === 2 ? 2 : 1, answer: n, opts: numOptions(G, n, 1, d === 1 ? 5 : 10), fact: c ? undefined : factOf('+', a, b) };
+      const n = a + b, v = rng.int(0, 2);
+      return { k: [d, a, b, v], d, a, b, n, v, pre: d === 5 ? a : 0, drops: d === 5 ? [b] : [a, b], cover: d === 1 ? -1 : d === 2 ? 2 : d === 5 ? -1 : 1, answer: n, opts: numOptions(G, n, 1, d === 1 ? 5 : 10), fact: factOf('+', a, b) };
     },
     geo() { return K.L() ? { jx: 266, jy: 318, hy: 196, cs: 136, cgap: 24, cx: 780, cy: 372, col: true } : { jx: 232, jy: 404, hy: 288, cs: 136, cgap: 34, cx: 352, cy: 800 }; },
     decor(G) { W3X.decor2(G, this.chars); },
@@ -442,6 +451,7 @@ const W4R = {};
       const g = this.geo();
       if (st.jar) place(st.jar, g.jx, g.jy, JW, JH);
       if (st.coverEl) place(st.coverEl, g.jx, g.jy, JW, JH);
+      if (st.tag) place(st.tag, g.jx + JW / 2 - 56, g.jy + 140, 112, 112);
       (st.inside || []).forEach((e, i) => { const p = this.slotXY(i); place(e, p.x, p.y, STAR, STAR); });
       (st.flying || []).forEach(o => { const r = Math.floor(o.k / 4), c = g.jx + JW / 2 + [-36, 0, 36][st.q.v], p = rowAt(Math.min(4, o.n - 4 * r), c, g.hy + (r - (Math.ceil(o.n / 4) - 1) / 2) * 74, 66, 66, 10)[o.k % 4]; if (!o.gone) place(o.e, p.x, p.y, 66, 66); });
       cardRow(st, g);
@@ -465,17 +475,18 @@ const W4R = {};
       const my = st, g = this.geo(), list = Array.from({ length: n }, (_, k) => ({ e: this.star(5), n, k, gone: false }));
       list.forEach(o => st.els.push(o.e));
       st.flying = list; this.place(st);
-      list.forEach((o, k) => K.pop(st, o.e, 70 * k)); Sfx.sparkle && Sfx.sparkle();
-      await st.scope.wait(T(1300));
+      list.forEach((o, k) => K.pop(st, o.e, 50 * k)); Sfx.sparkle && Sfx.sparkle();
+      await st.scope.wait(T(900));
       if (!Session.alive(my)) return;
       const mouth = { x: g.jx + JW / 2 - 33, y: g.jy - 6 };
-      await Promise.all(list.map((o, k) => (async () => {
-        await st.scope.wait(T(220 * k)); if (!Session.alive(my)) return;
-        await K.flyTo(st, o.e, mouth.x, mouth.y, 300, 30); if (!Session.alive(my)) return;
+      await Promise.all(list.map((o, k) => (async () => {          /* the group falls together, a little apart */
+        await st.scope.wait(T(60 * k)); if (!Session.alive(my)) return;
+        await K.flyTo(st, o.e, mouth.x, mouth.y, 220, 24); if (!Session.alive(my)) return;
         const i = st.inside.length; st.inside.push(o.e); o.gone = true;
         const p = this.slotXY(i); o.e.style.width = o.e.style.height = STAR + 'px';
-        await K.flyTo(st, o.e, p.x, p.y, 260, 0); Sfx.place();
+        await K.flyTo(st, o.e, p.x, p.y, 190, 0);
       })()));
+      Sfx.place();
       st.flying = [];
     },
     async present(st) {
@@ -483,14 +494,20 @@ const W4R = {};
       st.inside = []; st.flying = [];
       st.jar = W2X.thing(st, JW, JH, 4, ''); st.jar.appendChild(this.jarSvg());
       st.coverEl = W2X.thing(st, JW, JH, 6, ''); st.coverEl.appendChild(this.coverSvg()); st.coverEl.style.visibility = 'hidden'; st.coverEl.style.transformOrigin = '50% 0';
-      this.place(st); K.pop(st, st.jar);
+      if (q.pre) {          /* L5: already closed; the lid says how many are inside (they are there, under it) */
+        for (let i = 0; i < q.pre; i++) st.inside.push(this.star(5)); st.inside.forEach(e => st.els.push(e));
+        st.covered = true; st.coverEl.style.visibility = '';
+        st.tag = panel(st, 7); st.tag.appendChild(UI.num(q.pre, 84));
+      }
+      this.place(st); K.pop(st, st.jar); if (st.tag) K.pop(st, st.tag, 200);
       K.task(st, [['assets/props/shootingstar.png'], [W3X.ic('<path d="M28 18H72V30Q90 36 90 56V82Q90 92 80 92H20Q10 92 10 82V56Q10 36 28 30Z" fill="#F59A4A" stroke="#2B2118" stroke-width="5" stroke-linejoin="round"/>')], ['q']]);
-      await st.scope.wait(T(500)); if (!Session.alive(my)) return;
+      if (q.pre) { W3X.tip('罐里有' + CNQ(q.pre) + '颗。'); await st.scope.wait(T(1500)); } else await st.scope.wait(T(350));
+      if (!Session.alive(my)) return;
       for (let i = 0; i < q.drops.length; i++) {
         if (i === q.cover) { await this.cover(st); if (!Session.alive(my)) return; }
-        W3X.tip(i === 0 ? '流星来啦！' : '又来流星啦！');
+        W3X.tip(i === 0 && !q.pre ? '流星来啦！' : '又来流星啦！');
         await this.drop(st, q.drops[i]); if (!Session.alive(my)) return;
-        await st.scope.wait(T(500)); if (!Session.alive(my)) return;
+        await st.scope.wait(T(350)); if (!Session.alive(my)) return;
       }
       if (q.cover === q.drops.length) { await this.cover(st); if (!Session.alive(my)) return; }
       numCards(st, q.opts, this.geo(), q.d >= 4);
@@ -500,13 +517,14 @@ const W4R = {};
     async cover(st) {
       W3X.tip('盖上罐子！'); st.covered = true; st.coverEl.style.visibility = '';
       Sfx.whoosh(0.3);
-      await st.scope.anim(st.coverEl, [{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }], { duration: T(520) + 1, easing: EASE.out });
-      await st.scope.wait(T(500));
+      await st.scope.anim(st.coverEl, [{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }], { duration: T(380) + 1, easing: EASE.out });
+      await st.scope.wait(T(350));
     },
     onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
     async reveal(st) {
       const q = st.q, my = st, c = st.cards[st.opts.indexOf(q.answer)];
       if (c) K.ring(st, [box(c)], 6, '#FFC93C');
+      if (st.tag) st.tag.style.display = 'none';
       if (st.covered) { await st.scope.anim(st.coverEl, [{ transform: 'scaleY(1)' }, { transform: 'scaleY(0)' }], { duration: T(420) + 1, easing: EASE.glide, fill: 'forwards' }); if (!Session.alive(my)) return; st.coverEl.style.visibility = 'hidden'; }
       Sfx.reveal();
       for (let i = 0; i < st.inside.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.inside[i], 12); await Count.beat(st.scope, 240, i + 1); }
@@ -520,6 +538,7 @@ const W4R = {};
     snap(st) { return { n: st.q.n, covered: !!st.covered }; },
     lines() {
       const out = [this.intro, '流星来啦！', '又来流星啦！', '盖上罐子！', '罐里一共几颗？'].concat(this.praise);
+      for (let n = 2; n <= 7; n++) out.push('罐里有' + CNQ(n) + '颗。');
       for (let n = 1; n <= 9; n++) out.push('一共' + CNQ(n) + '颗！');
       for (let n = 0; n <= 10; n++) out.push('不是' + CNQ(n) + '颗');
       return uniq(out);
@@ -608,46 +627,40 @@ const W4R = {};
   const PETS = [['duck', '小鸭'], ['chick', '小鸡'], ['bunny', '小兔'], ['kitten', '小猫']];
   W4R.I3 = {
     kind0: 'comic4', verb: '看！', intro: '看两格漫画！', praise: ['看得真明白！'], props: ['duck', 'chick', 'bunny', 'kitten'],
-    /* L1 sum 3, the story told with its numbers; L2 sum 5; L3 the story without numbers (count the frames yourself); L4 which
-       number sentence (a + b = c, a + b = c ± 1, a − b = c); L5 frame 2 is "now there are c": how many came? */
+    /* L1 sum 3, the story told with its numbers; L2 sum 5; L3 the story without numbers (count the frames yourself); L4 the
+       newcomers are only a number card ("又来了 b 只"): count on from the picture; L5 frame 2 is "now there are c": how many came? */
     gen(G, o) {
       const d = lvOf(o), rng = o.rng, hi = d === 1 ? 3 : 5, pet = bagPick(G, 'i3p', [0, 1, 2, 3]);
       let a, b; do { a = rng.int(1, hi - 1); b = rng.int(1, hi - a); } while (d >= 2 && a + b < 3);
-      const c = a + b, q = { k: [d, a, b, pet], d, a, b, c, pet, told: d !== 3, fact: factOf('+', a, b) };
-      if (d === 4) {
-        const ok = { s: [a, '+', b, '=', c], why: 'ok' }, res = { s: [a, '+', b, '=', c + (rng.chance(0.5) ? 1 : -1)], why: 'res' }, op = { s: [Math.max(a, b), '-', Math.min(a, b), '=', c], why: 'op' };
-        const eqs = rng.shuffle([ok, res, op]);
-        return Object.assign(q, { eqs, answer: eqs.indexOf(ok), opts: [0, 1, 2] });
-      }
-      const ans = d === 5 ? b : c;
-      return Object.assign(q, { ask: d === 5 ? 'came' : 'now', answer: ans, opts: numOptions(G, ans, 1, d === 5 ? 5 : 6) });
+      const c = a + b, ans = d === 5 ? b : c;
+      return { k: [d, a, b, pet], d, a, b, c, pet, told: d !== 3, numNew: d === 4, ask: d === 5 ? 'came' : 'now', answer: ans, opts: numOptions(G, ans, 1, d === 5 ? 5 : 6), fact: factOf('+', a, b) };
     },
-    geo(st) {
-      const L = K.L(), eq = st && st.q && st.q.eqs;
-      return L ? { pw: 400, ph: 290, py: eq ? 108 : 118, gap: 44, ani: 84, cs: 136, cgap: 40, cy: 556, ew: 250, eh: 108, ey: 470 }
-        : { pw: 326, ph: 300, py: 214, gap: 20, ani: 66, cs: 150, cgap: 36, cy: 690, ew: 420, eh: 100, ey: 560 };
-    },
-    decor(G) { const st = Session.st && Session.st.G === G ? Session.st : null; if (st && st.q && st.q.eqs && K.L()) W2X.hideAll(G, this.chars); else W3X.decor2(G, this.chars); },
+    geo() { return K.L() ? { pw: 400, ph: 290, py: 118, gap: 44, ani: 84, cs: 136, cgap: 40, cy: 556 } : { pw: 326, ph: 300, py: 214, gap: 20, ani: 66, cs: 150, cgap: 36, cy: 690 }; },
+    decor(G) { W3X.decor2(G, this.chars); },
     /* where a pet stands in a frame: the first ones on the top row, the newcomers on the bottom row */
-    spot(st, f, i, n, row) { const g = this.geo(st), x0 = f ? Stage.W / 2 + g.gap / 2 : Stage.W / 2 - g.gap / 2 - g.pw, per = Math.max(n, 1); const cx = x0 + g.pw / 2 + (i - (per - 1) / 2) * (g.ani + 8), cy = g.py + g.ph * (row ? 0.72 : 0.32); return { x: cx - g.ani / 2, y: cy - g.ani / 2 }; },
+    spot(st, f, i, n, row) { const g = this.geo(), x0 = f ? Stage.W / 2 + g.gap / 2 : Stage.W / 2 - g.gap / 2 - g.pw, per = Math.max(n, 1); const cx = x0 + g.pw / 2 + (i - (per - 1) / 2) * (g.ani + 8), cy = g.py + g.ph * (row ? 0.72 : 0.32); return { x: cx - g.ani / 2, y: cy - g.ani / 2 }; },
     place(st) {
-      const g = this.geo(st), cx = Stage.W / 2, q = st.q;
+      const g = this.geo(), cx = Stage.W / 2, q = st.q;
       (st.frames || []).forEach((e, i) => place(e, i ? cx + g.gap / 2 : cx - g.gap / 2 - g.pw, g.py, g.pw, g.ph));
       if (st.arrow) place(st.arrow, cx - 34, g.py + g.ph / 2 - 34, 68, 68);
-      if (st.band) { const p0 = this.spot(st, 1, 0, q.b, 1), p1 = this.spot(st, 1, q.b - 1, q.b, 1), fx = cx + g.gap / 2 + g.pw, room = fx - (p1.x + g.ani + 10) >= 50; place(st.band, p0.x - 10, p0.y - 8, p1.x + g.ani - p0.x + 20, g.ani + 16); if (room) place(st.inArrow, p1.x + g.ani + 10, p0.y + g.ani / 2 - 20, 44, 40); else place(st.inArrow, p1.x + g.ani - 40, p0.y - 46, 44, 40); }          /* no room on the right: above the last newcomer */
+      if (st.band) {          /* the newcomers' band: around their pictures, or around the number card that stands for them */
+        const tile = q.numNew && !st.shown, ts = Math.max(g.ani + 20, 98), p0 = tile ? { x: cx + g.gap / 2 + g.pw / 2 - ts / 2, y: g.py + g.ph * 0.72 - ts / 2 } : this.spot(st, 1, 0, q.b, 1);
+        const right = tile ? p0.x + ts : this.spot(st, 1, q.b - 1, q.b, 1).x + g.ani, h = tile ? ts : g.ani, fx = cx + g.gap / 2 + g.pw;
+        if (st.numTile) place(st.numTile, p0.x, p0.y, ts, ts);
+        place(st.band, p0.x - 10, p0.y - 8, right - p0.x + 20, h + 16);
+        if (fx - (right + 10) >= 50) place(st.inArrow, right + 10, p0.y + h / 2 - 20, 44, 40); else place(st.inArrow, right - 40, p0.y - 46, 44, 40);          /* no room on the right: above the last newcomer */
+      }
       (st.pets || []).forEach(o => { const p = q.d === 5 && o.f === 1 ? this.spot(st, 1, o.i % 3, Math.min(3, q.c - 3 * Math.floor(o.i / 3)), Math.floor(o.i / 3)) : this.spot(st, o.f, o.i, o.row ? q.b : q.a, o.row); place(o.e, p.x, p.y, g.ani, g.ani); });
-      if (q.eqs && st.cards) st.cards.forEach((c, i) => { const p = K.L() ? rowAt(3, cx, g.ey + g.eh / 2, g.ew, g.eh, 20)[i] : { x: cx - g.ew / 2, y: g.ey + i * (g.eh + 14) }; place(c, p.x, p.y, g.ew, g.eh); });
-      else cardRow(st, Object.assign({ cx }, g));
+      cardRow(st, Object.assign({ cx }, g));
     },
     pet(st, f, i, row) {
-      const g = this.geo(st), e = W2X.thing(st, g.ani, g.ani, 6, '');
+      const g = this.geo(), e = W2X.thing(st, g.ani, g.ani, 6, '');
       const im = img('assets/props/' + PETS[st.q.pet][0] + '.png', '', e); Object.assign(im.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'contain' });
       return { e, f, i, row };
     },
-    eqNode(s) { const r = flex('row', 8); s.forEach(t => r.appendChild(typeof t === 'number' ? UI.num(t, 52) : sym(t, 40))); return r; },
+    arrive(st, list) { list.forEach((o, i) => st.scope.anim(o.e, [{ transform: 'translateX(220px)', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: T(700) + 1, delay: T(300 + 150 * i), easing: EASE.glide, fill: 'backwards' })); },
     async present(st) {
       const q = st.q, my = st, nm = PETS[q.pet][1];
-      this.layout(st.G);
       st.frames = [panel(st, 4), panel(st, 4)];
       st.arrow = W2X.thing(st, 68, 68, 5, ''); Object.assign(st.arrow.style, { borderRadius: '50%', background: '#FFC93C', boxShadow: '0 0 0 4px ' + INK, display: 'flex', alignItems: 'center', justifyContent: 'center' });
       st.arrow.innerHTML = '<svg viewBox="0 0 40 40" width="44" height="44"><path d="M6 20H30M21 10L32 20L21 30" fill="none" stroke="#2B2118" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -661,29 +674,33 @@ const W4R = {};
       K.pop(st, st.frames[1]); K.pop(st, st.arrow, 100);
       const add = [];
       if (q.d === 5) { for (let i = 0; i < q.c; i++) add.push(this.pet(st, 1, i, 0)); }
-      else { for (let i = 0; i < q.a; i++) add.push(this.pet(st, 1, i, 0)); for (let i = 0; i < q.b; i++) add.push(Object.assign(this.pet(st, 1, i, 1), { isNew: true })); }
-      if (q.d !== 5) {          /* the newcomers: on a band of their own, an arrow shows where they came from */
+      else {
+        for (let i = 0; i < q.a; i++) add.push(this.pet(st, 1, i, 0));
+        if (!q.numNew) for (let i = 0; i < q.b; i++) add.push(Object.assign(this.pet(st, 1, i, 1), { isNew: true }));
+        /* the newcomers: on a band of their own, an arrow shows where they came from (L4: only their number) */
         st.band = W2X.thing(st, 10, 10, 5, ''); Object.assign(st.band.style, { borderRadius: '18px', background: 'rgba(79,179,255,.18)', border: '4px dashed #2E6FD8' });
         st.inArrow = W2X.thing(st, 44, 40, 7, ''); st.inArrow.innerHTML = '<svg viewBox="0 0 44 40" width="44" height="40"><path d="M40 20H8M18 8L6 20L18 32" fill="none" stroke="#2B2118" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/><path d="M40 20H8M18 8L6 20L18 32" fill="none" stroke="#4FB3FF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        if (q.numNew) { st.numTile = panel(st, 6); st.numTile.appendChild(UI.num(q.b, Math.round(Math.max(this.geo().ani + 20, 98) * 0.66))); }
       }
       st.pets = st.pets.concat(add); this.place(st);
       if (st.band) { K.pop(st, st.band, 300); st.scope.anim(st.inArrow, [{ transform: 'translateX(40px)', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: T(500) + 1, delay: T(300), easing: EASE.out, fill: 'backwards' }); }
-      add.forEach((o, i) => { if (o.isNew) st.scope.anim(o.e, [{ transform: 'translateX(' + 220 + 'px)', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: T(700) + 1, delay: T(300 + 150 * i), easing: EASE.glide, fill: 'backwards' }); else K.pop(st, o.e, 60 * i); });
+      if (st.numTile) K.pop(st, st.numTile, 400);
+      this.arrive(st, add.filter(o => o.isNew)); add.filter(o => !o.isNew).forEach((o, i) => K.pop(st, o.e, 60 * i));
       W3X.tip(q.told && q.d !== 5 ? '又来了' + CNQ(q.b) + '只！' : '又来了一些！');
       await st.scope.wait(T(1500)); if (!Session.alive(my)) return;
-      if (q.eqs) {
-        st.cards = q.eqs.map((o, i) => { const c = W3X.card(st, 'card' + i, 6, 'card'); c.appendChild(this.eqNode(o.s)); K.pop(st, c, 80 * i); return c; });
-        st.opts = [0, 1, 2]; this.place(st);
-        K.say(st, '哪个算式对？');
-      } else {
-        numCards(st, q.opts, Object.assign({ cx: Stage.W / 2 }, this.geo(st)), q.d >= 3); this.place(st);
-        if (q.ask === 'came') W3X.say2(st, '现在有' + CNQ(q.c) + '只。', '来了几只？'); else K.say(st, '现在几只？');
-      }
+      numCards(st, q.opts, Object.assign({ cx: Stage.W / 2 }, this.geo()), q.d >= 3); this.place(st);
+      if (q.ask === 'came') W3X.say2(st, '现在有' + CNQ(q.c) + '只。', '来了几只？'); else K.say(st, '现在几只？');
     },
     onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
     async reveal(st) {
       const q = st.q, my = st, c = st.cards[st.opts.indexOf(q.answer)];
       if (c) K.ring(st, [box(c)], 6, '#FFC93C'); Sfx.reveal();
+      if (q.numNew) {          /* after the right answer: the number card turns into the newcomers */
+        st.shown = true; st.numTile.style.display = 'none';
+        const add = Array.from({ length: q.b }, (_, i) => Object.assign(this.pet(st, 1, i, 1), { isNew: true }));
+        st.pets = st.pets.concat(add); this.place(st); this.arrive(st, add);
+        await st.scope.wait(T(900)); if (!Session.alive(my)) return;
+      }
       const here = st.pets.filter(o => o.f === 1), news = q.d === 5 ? here.slice(q.a) : here.filter(o => o.row);
       const list = q.ask === 'came' ? news : here;
       for (let i = 0; i < list.length; i++) { if (!Session.alive(my)) return; K.hop(st, list[i].e, 14); await Count.beat(st.scope, 240, i + 1); }
@@ -691,18 +708,17 @@ const W4R = {};
       st.summary = q.ask === 'came' ? '来了' + CNQ(q.b) + '只！' : sumLine(q.a, q.b); Voice.say(st.summary, { tag: 'summary' });
       await st.scope.wait(T(1200));
     },
-    wrongLine(q, ans) { if (!q.eqs) return '不是' + CNQ(ans) + '只'; const o = q.eqs[ans]; return o.why === 'op' ? '是来了，不是走了' : CN[o.s[0]] + '加' + CN[o.s[2]] + '不等于' + CN[o.s[4]]; },
-    async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(this.wrongLine(st.q, ans)); await st.scope.wait(T(600)); },
+    async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '只'); await st.scope.wait(T(600)); },
     next(st, strat) { return pickCard(st, strat); },
     workEls(st) { return st.cards || []; },
     gestureHint(st) { if (st.frames) K.flash(st, st.frames); },
-    snap(st) { return { ask: st.q.ask || 'eq' }; },
+    snap(st) { return { ask: st.q.ask, numNew: !!st.q.numNew }; },
     lines() {
-      const out = [this.intro, '又来了一些！', '现在几只？', '哪个算式对？', '来了几只？', '是来了，不是走了'].concat(this.praise);
+      const out = [this.intro, '又来了一些！', '现在几只？', '来了几只？'].concat(this.praise);
       PETS.forEach(p => { out.push('有一些' + p[1] + '。'); for (let a = 1; a <= 4; a++) out.push('有' + CNQ(a) + '只' + p[1] + '。'); });
       for (let b = 1; b <= 4; b++) out.push('又来了' + CNQ(b) + '只！', '来了' + CNQ(b) + '只！');
       for (let c = 2; c <= 5; c++) out.push('现在有' + CNQ(c) + '只。');
-      for (let a = 1; a <= 4; a++) for (let b = 1; a + b <= 5; b++) { out.push(sumLine(a, b)); [a + b - 1, a + b + 1].forEach(x => out.push(CN[a] + '加' + CN[b] + '不等于' + CN[x])); }
+      for (let a = 1; a <= 4; a++) for (let b = 1; a + b <= 5; b++) out.push(sumLine(a, b));
       for (let n = 0; n <= 7; n++) out.push('不是' + CNQ(n) + '只');
       return uniq(out);
     },
@@ -950,8 +966,9 @@ const W4R = {};
   };
 
   /* ================================================================ M2 坐 a row of n seats, m astronauts sit: how many seats are
-     empty? (the whole and its parts - not "taking away"). L1 n ≤ 4, the seats seen · L2 n ≤ 5 · L3 the seats are hidden: only
-     "five seats" (a sign) and the ones sitting (a window) · L4 n ≤ 7 · L5 only told: n seats, e empty - how many sit? */
+     empty? (the whole and its parts - not "taking away"). An empty seat is drawn as an outline (as on the task card).
+     L1 n 2-4, the seats seen · L2 the seats are hidden: only "five seats" (a number sign, with dots) and the ones sitting (a
+     window), n 3-5 · L3 n 4-6, the sign without dots · L4 n 4-7, numbers only · L5 only told: n seats, e empty - how many sit? */
   const CHAIR = (empty) => '<svg viewBox="0 0 100 110" width="100%" height="100%" style="overflow:visible">' +
     '<rect x="20" y="6" width="60" height="66" rx="16" fill="' + (empty ? '#FFFFFF' : '#4F7BFF') + '" stroke="#2B2118" stroke-width="5"' + (empty ? ' stroke-dasharray="9 6"' : '') + '/>' +
     (empty ? '' : '<rect x="31" y="16" width="38" height="42" rx="10" fill="#8FB0FF"/>') +
@@ -960,13 +977,13 @@ const W4R = {};
   W4R.M2 = {
     kind0: 'seats', verb: '坐！', intro: '飞船上有空座！', praise: ['座位算对啦！'], props: ['astronaut'],
     gen(G, o) {
-      const d = Math.min(5, o.level), rng = o.rng, n = rng.int([0, 2, 3, 3, 4, 4][d], [0, 4, 5, 5, 7, 7][d]);
+      const d = Math.min(5, o.level), rng = o.rng, n = rng.int([0, 2, 3, 4, 4, 4][d], [0, 4, 5, 6, 7, 7][d]);
       if (d === 5) {
         const e = rng.int(1, n - 1), m = n - e, seats = rng.shuffle(Array.from({ length: n }, (_, i) => i < m));
         return { k: [d, n, e], n, m, e, seats, mode: 'told', answer: m, opts: numOptions(G, m, 0, n), fact: factOf('-', n, e) };
       }
-      const m = rng.int(1, n - 1), e = n - m, seats = rng.shuffle(Array.from({ length: n }, (_, i) => i < m)), see = d <= 2;
-      return { k: [d, n, m, see ? seats.map(Number).join('') : ''], n, m, e, seats, mode: see ? 'see' : 'hid', dots: d <= 3, answer: e, opts: numOptions(G, e, 0, n), fact: factOf('-', n, m) };
+      const m = rng.int(1, n - 1), e = n - m, seats = rng.shuffle(Array.from({ length: n }, (_, i) => i < m)), see = d === 1;
+      return { k: [d, n, m, see ? seats.map(Number).join('') : ''], n, m, e, seats, mode: see ? 'see' : 'hid', dots: d <= 2, answer: e, opts: numOptions(G, e, 0, n), fact: factOf('-', n, m) };
     },
     geo(st) {
       const L = K.L(), md = st.q.mode, open = st.open;
@@ -981,7 +998,7 @@ const W4R = {};
     row(host, occ) {
       host.innerHTML = '';
       return occ.map(on => {
-        const s = el('div', '', host); s.innerHTML = CHAIR(false); Object.assign(s.style, { position: 'absolute', pointerEvents: 'none' });
+        const s = el('div', '', host); s.innerHTML = CHAIR(!on); Object.assign(s.style, { position: 'absolute', pointerEvents: 'none' });
         let a = null; if (on) { a = el('div', '', host); Object.assign(a.style, { position: 'absolute', pointerEvents: 'none' }); const im = img('assets/props/astronaut.png', '', a); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain' }); }
         return { s, a };
       });
@@ -1015,7 +1032,7 @@ const W4R = {};
       this.place(st);
       [st.s1, st.s2, st.win].filter(Boolean).forEach((e, i) => K.pop(st, e, 90 * i));
       const sz = this.cardSpot(st);
-      K.cards(st, q.opts, { cx: sz.cx, cy: sz.cy, size: 136, gap: 34, numOnly: digits() && st.level >= 4 });
+      K.cards(st, q.opts, { cx: sz.cx, cy: sz.cy, size: 136, gap: 34, numOnly: digits() && q.k[0] >= 4 });
       const chairIc = { node: (() => { const d = el('span', ''); Object.assign(d.style, { display: 'inline-block', width: '46px', height: '50px' }); d.innerHTML = CHAIR(true); return d; })() };
       if (q.mode === 'told') { K.task(st, [['assets/props/astronaut.png'], ['q']]); W3X.say2(st, CNQ(q.n) + '个座位，空' + CNQ(q.e) + '个。', '坐了几个？'); }
       else { K.task(st, [[chairIc], ['q']]); if (q.mode === 'see') K.say(st, '还空几个座位？'); else W3X.say2(st, '一共' + CNQ(q.n) + '个座位。', '还空几个座位？'); }
@@ -1039,38 +1056,41 @@ const W4R = {};
   };
 
   /* ================================================================ M3 谁 Catboy and Luna Girl each hold balloons, some fly away:
-     whose are more now? (tap the one) · L1 the same number at first (3-4) · L2 the same (4-5) · L3 different at first, and
-     half the time the one who had more has fewer now · L4 only number boards (5 − 2) · L5 the number boards, "Catboy has
-     more - how many more?" (three cards). The two rests are never the same. */
+     whose are more now? (tap the one) · L1 the same number at first (3-4), the balloons fly off · L2 the same number (4-5), how
+     many fly off is a number on a tag (with dots) · L3 different at first (half the time the one who had more has fewer now),
+     the tag without dots, and a third card "the same" · L4 only number boards (5 − 2), three cards · L5 the number boards,
+     "Catboy has more - how many more?" (three number cards). The two rests are never the same: "the same" is never right. */
   const BCOL = ['#FF6B5B', '#FFC93C', '#4FB3FF', '#5CC46E', '#B57BFF'];
   const BPOS = { 1: [[150, 104]], 2: [[110, 104], [190, 104]], 3: [[76, 112], [150, 88], [224, 112]], 4: [[112, 80], [188, 80], [74, 164], [226, 164]], 5: [[74, 82], [150, 70], [226, 82], [112, 164], [188, 164]] };
-  const HAND = [150, 236];
+  const UPB = '<svg viewBox="0 0 40 46" width="100%" height="100%"><path d="M20 30V44" stroke="#2B2118" stroke-width="2.5"/><ellipse cx="20" cy="17" rx="12" ry="14" fill="#FF6B5B" stroke="#2B2118" stroke-width="3"/><path d="M34 26V6M28 12L34 5L40 12" fill="none" stroke="#2B2118" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   W4R.M3 = {
     kind0: 'balloons', verb: '谁！', intro: '气球飞走啦！', praise: ['看得真仔细！'],
     who: ['catboy', 'luna_girl'], name: { catboy: '猫小子', luna_girl: '月亮女孩' },
     gen(G, o) {
       const d = Math.min(5, o.level), rng = o.rng, win = bagPick(G, 'm3w' + d, [0, 1]), trap = d === 3 ? bagPick(G, 'm3trap', [true, false]) : false;
+      const mode = [null, 'see', 'tag', 'tag', 'num', 'diff'][d], same = d === 3 || d === 4;
       for (let t = 0; t < 600; t++) {
         let a, b;
         if (d <= 2) { a = b = rng.pick(d === 1 ? [3, 4] : [4, 5]); } else { a = rng.int(2, 5); b = rng.int(2, 5); if (d === 3 && a === b) continue; }
         const c = rng.int(1, a - 1), e = rng.int(1, b - 1), ra = a - c, rb = b - e;
         if (ra === rb || (ra > rb ? 0 : 1) !== win) continue;
         if (d === 3 && ((a > b) !== (ra > rb)) !== trap) continue;
-        if (d === 5) { const diff = Math.abs(ra - rb); return { k: [d, a, b, c, e], a, b, c, e, r: [ra, rb], win, mode: 'diff', answer: diff, opts: numOptions(G, diff, 1, 4) }; }
-        return { k: [d, a, b, c, e], a, b, c, e, r: [ra, rb], win, mode: d === 4 ? 'num' : 'see', answer: win, opts: [0, 1] };
+        if (d === 5) { const diff = Math.abs(ra - rb); return { k: [d, a, b, c, e], a, b, c, e, r: [ra, rb], win, mode, answer: diff, opts: numOptions(G, diff, 1, 4) }; }
+        return { k: [d, a, b, c, e], a, b, c, e, r: [ra, rb], win, mode, same, dots: d === 2, answer: win, opts: same ? [0, 1, 2] : [0, 1] };
       }
-      return { k: [d, 4, 4, 1, 2], a: 4, b: 4, c: 1, e: 2, r: [3, 2], win: 0, mode: d >= 4 ? (d === 5 ? 'diff' : 'num') : 'see', answer: d === 5 ? 1 : 0, opts: d === 5 ? [1, 2, 3] : [0, 1] };
+      return { k: [d, 4, 4, 1, 2], a: 4, b: 4, c: 1, e: 2, r: [3, 2], win: 0, mode, same, dots: d === 2, answer: d === 5 ? 1 : 0, opts: d === 5 ? [1, 2, 3] : same ? [0, 1, 2] : [0, 1] };
     },
     geo(st) {
-      const L = K.L(), dm = st && st.q && st.q.mode === 'diff';
-      return L ? (dm ? { w: 300, h: 400, xs: [182, 542], y: 100, cy: 594 } : { w: 340, h: 480, xs: [150, 534], y: 108 }) : (dm ? { w: 310, h: 480, xs: [32, 362], y: 216, cy: 806 } : { w: 310, h: 560, xs: [32, 362], y: 230 });
+      const L = K.L(), q = st && st.q, small = q && (q.mode === 'diff' || q.same);
+      return L ? (small ? { w: 300, h: 400, xs: [182, 542], y: 100, cy: 594, sx: 512, sy: 528, sw: 240, sh: 120 } : { w: 340, h: 480, xs: [150, 534], y: 108 })
+        : (small ? { w: 310, h: 480, xs: [32, 362], y: 216, cy: 806, sx: 352, sy: 732, sw: 260, sh: 124 } : { w: 310, h: 560, xs: [32, 362], y: 230 });
     },
     cardSpot(st) { return { cx: K.L() ? 512 : 352, cy: this.geo(st).cy }; },
     decor(G) { W2X.hideAll(G, this.chars); },
     layer(host) { const d = fill(el('div', '', host)); const s = svg('svg', { viewBox: '20 8 260 412', width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet' }, d); s.style.overflow = 'visible'; return { d, s }; },
-    balloon(host, x, y, col) {
+    balloon(host, x, y, col, hand) {
       const L = this.layer(host), s = L.s;
-      svg('path', { d: 'M' + x + ' ' + (y + 38) + 'Q' + ((x + HAND[0]) / 2 + 14) + ' ' + ((y + HAND[1]) / 2 + 20) + ' ' + HAND[0] + ' ' + HAND[1], fill: 'none', stroke: INK, 'stroke-width': 2.5 }, s);
+      svg('path', { d: 'M' + x + ' ' + (y + 38) + 'Q' + ((x + hand[0]) / 2 + 14) + ' ' + ((y + hand[1]) / 2 + 20) + ' ' + hand[0] + ' ' + hand[1], fill: 'none', stroke: INK, 'stroke-width': 2.5 }, s);
       svg('ellipse', { cx: x, cy: y, rx: 31, ry: 37, fill: col, stroke: INK, 'stroke-width': 4 }, s);
       svg('ellipse', { cx: x - 11, cy: y - 14, rx: 7, ry: 10, fill: '#fff', opacity: 0.6 }, s);
       svg('path', { d: 'M' + (x - 6) + ' ' + (y + 43) + 'L' + x + ' ' + (y + 35) + 'L' + (x + 6) + ' ' + (y + 43) + 'Z', fill: col, stroke: INK, 'stroke-width': 3, 'stroke-linejoin': 'round' }, s);
@@ -1080,17 +1100,26 @@ const W4R = {};
     place(st) {
       const g = this.geo(st);
       (st.P || []).forEach((P, i) => place(P.el, g.xs[i], g.y, g.w, g.h));
+      if (st.same) place(st.same, g.sx - g.sw / 2, g.sy, g.sw, g.sh);
       if (st.cards) K.cardsPlace(st, this.cardSpot(st));
     },
+    /* the last `gone` balloons of a bunch fly off */
+    flyOff(st, P) { return Promise.all(P.bl.slice(P.n - P.gone).map((b, k) => st.scope.anim(b, [{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-60%) rotate(-6deg)', opacity: 1, offset: 0.5 }, { transform: 'translateY(-120%) rotate(8deg)', opacity: 0 }], { duration: 1300, delay: 180 * k, easing: EASE.glide }).then(() => { b.style.visibility = 'hidden'; }))); },
     async present(st) {
-      const q = st.q, my = st, num = q.mode !== 'see';
+      const q = st.q, my = st, num = q.mode === 'num' || q.mode === 'diff', tag = q.mode === 'tag';
       st.P = this.who.map((id, i) => {
         const e = W3X.card(st, q.mode === 'diff' ? null : 'who' + i, 5, 'card');
-        const base = this.layer(e), W = 300 * (META[id] ? META[id][0] / META[id][1] : 0.6) * 0.66;
-        svg('image', { href: 'assets/chars/' + id + '.png', x: 150 - W / 2, y: 224, width: W, height: 190 }, base.s);
-        const n = i ? q.b : q.a, gone = i ? q.e : q.c, P = { el: e, id, n, gone, bl: [], sign: null, eq: null };
-        if (!num) BPOS[n].forEach((xy, k) => P.bl.push(this.balloon(e, xy[0], xy[1], BCOL[(k + i * 2) % 5])));
-        else {
+        const cx = tag ? 122 : 150, hand = [cx, 236], base = this.layer(e), W = 300 * (META[id] ? META[id][0] / META[id][1] : 0.6) * 0.66;
+        svg('image', { href: 'assets/chars/' + id + '.png', x: cx - W / 2, y: 224, width: W, height: 190 }, base.s);
+        const n = i ? q.b : q.a, gone = i ? q.e : q.c, P = { el: e, id, n, gone, bl: [], sign: null, eq: null, tag: null };
+        if (!num) BPOS[n].forEach((xy, k) => P.bl.push(this.balloon(e, xy[0] + (tag ? -22 : 0), xy[1], BCOL[(k + i * 2) % 5], hand)));
+        if (tag) {          /* how many fly off: a number on a tag (and its dots at L2) */
+          const t = P.tag = el('div', '', e);
+          Object.assign(t.style, { position: 'absolute', right: '3%', top: '55%', width: '25%', padding: '8px 4px', background: '#FFF8E1', borderRadius: '16px', boxShadow: '0 0 0 4px ' + INK, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'none', visibility: 'hidden' });
+          const ic = el('div', '', t); Object.assign(ic.style, { width: '40px', height: '46px' }); ic.innerHTML = UPB;
+          t.appendChild(numNode(gone, 46, q.dots, '#FF6B5B'));
+        }
+        if (num) {
           const sg = el('div', '', e); P.sign = sg;
           Object.assign(sg.style, { position: 'absolute', left: '50%', top: '5%', transform: 'translateX(-50%)', padding: '10px 18px', background: '#FFF8E1', borderRadius: '20px', boxShadow: '0 0 0 4px ' + INK, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', pointerEvents: 'none' });
           const ic = el('div', '', sg); Object.assign(ic.style, { width: '64px', height: '64px' }); ic.innerHTML = this.miniBalloons();
@@ -1099,16 +1128,20 @@ const W4R = {};
         }
         return P;
       });
+      if (q.same) {          /* the third card: "the same" (both heroes, =) - never right, the rests always differ */
+        st.same = W3X.card(st, 'who2', 5, 'card'); st.same.style.flexDirection = 'row'; st.same.style.gap = '10px';
+        ['catboy', 'luna_girl'].forEach((id, i) => { if (i) st.same.appendChild(opNode('=', 44)); const im = img('assets/chars/' + id + '.png', '', st.same); Object.assign(im.style, { height: '78%', width: 'auto', pointerEvents: 'none' }); });
+      }
       this.place(st);
-      st.P.forEach((P, i) => K.pop(st, P.el, 100 * i));
+      st.P.forEach((P, i) => K.pop(st, P.el, 100 * i)); if (st.same) K.pop(st, st.same, 200);
       await st.scope.wait(900); if (!Session.alive(my)) return;
-      /* some fly away (the last ones of each bunch) - or on the number board: "− c" with a balloon going up */
+      /* some fly away (the last ones of each bunch) - or a tag says how many fly off - or on the number board: "− c" */
       Sfx.whoosh(0.3);
       await Promise.all(st.P.map(P => {
-        if (!num) return Promise.all(P.bl.slice(P.n - P.gone).map((b, k) => st.scope.anim(b, [{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-60%) rotate(-6deg)', opacity: 1, offset: 0.5 }, { transform: 'translateY(-120%) rotate(8deg)', opacity: 0 }], { duration: 1300, delay: 180 * k, easing: EASE.glide }).then(() => { b.style.visibility = 'hidden'; })));
-        P.eq.appendChild(opNode('-', 44)); const g = numNode(P.gone, 58, false); P.eq.appendChild(g);
-        const up = el('div', '', P.sign); Object.assign(up.style, { position: 'absolute', right: '-6px', top: '-26px', width: '38px', height: '38px', pointerEvents: 'none' }); up.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><path d="M20 30V40" stroke="#2B2118" stroke-width="2"/><ellipse cx="20" cy="16" rx="12" ry="14" fill="#FF6B5B" stroke="#2B2118" stroke-width="3"/></svg>';
-        st.scope.anim(g, [{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: 300, easing: EASE.pop });
+        if (q.mode === 'see') return this.flyOff(st, P);
+        const up = el('div', '', tag ? P.tag : P.sign); Object.assign(up.style, { position: 'absolute', right: '-6px', top: '-26px', width: '38px', height: '38px', pointerEvents: 'none' }); up.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%"><path d="M20 30V40" stroke="#2B2118" stroke-width="2"/><ellipse cx="20" cy="16" rx="12" ry="14" fill="#FF6B5B" stroke="#2B2118" stroke-width="3"/></svg>';
+        if (tag) { P.tag.style.visibility = ''; st.scope.anim(P.tag, [{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: 300, easing: EASE.pop }); }
+        else { P.eq.appendChild(opNode('-', 44)); const g = numNode(P.gone, 58, false); P.eq.appendChild(g); st.scope.anim(g, [{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: 300, easing: EASE.pop }); }
         return st.scope.anim(up, [{ transform: 'translateY(30px)', opacity: 1 }, { transform: 'translateY(-90px)', opacity: 0 }], { duration: 1300, easing: EASE.glide }).then(() => { up.remove(); });
       }));
       if (!Session.alive(my)) return;
@@ -1118,19 +1151,20 @@ const W4R = {};
         W3X.say2(st, this.name[this.who[q.win]] + '剩的多。', '多几个？');
       } else {
         K.task(st, [['assets/chars/catboy.png', 'assets/chars/luna_girl.png'], ['q']]);
-        K.say(st, '谁剩的多？');
+        if (tag) W3X.say2(st, '牌子上是飞走的。', '谁剩的多？'); else K.say(st, '谁剩的多？');
       }
     },
     onGesture(st, name, p) {
       if (st.q.mode === 'diff') return W3X.tapCards(st, name, p);
-      const m = /^who([01])$/.exec(p.id || ''); if (name !== 'tap' || !m || st.picked) return false;
+      const m = /^who([012])$/.exec(p.id || ''); if (name !== 'tap' || !m || st.picked) return false;
       st.picked = true; Session.submit(st, Number(m[1])); return 'ok';
     },
     showRest(st) { st.P.forEach((P, i) => { if (!P.eq || P.done) return; P.done = true; P.eq.appendChild(opNode('=', 44)); const r = numNode(st.q.r[i], 58, false); P.eq.appendChild(r); K.pop(st, r); }); },
     async reveal(st) {
       const q = st.q, my = st, P = st.P[q.win];
       K.ring(st, [box(P.el)], 6, '#FFC93C'); Sfx.reveal();
-      if (q.mode === 'see') { const left = P.bl.slice(0, P.n - P.gone); for (let i = 0; i < left.length; i++) { if (!Session.alive(my)) return; K.hop(st, left[i], 14); await Count.beat(st.scope, 360, i + 1); } }
+      if (q.mode === 'tag') { Sfx.whoosh(0.3); await Promise.all(st.P.map(X => this.flyOff(st, X))); if (!Session.alive(my)) return; }      /* the tag comes true */
+      if (q.mode === 'see' || q.mode === 'tag') { const left = P.bl.slice(0, P.n - P.gone); for (let i = 0; i < left.length; i++) { if (!Session.alive(my)) return; K.hop(st, left[i], 14); await Count.beat(st.scope, 360, i + 1); } }
       else { this.showRest(st); await st.scope.wait(500); }
       st.summary = q.mode === 'diff' ? '多' + CNQ(q.answer) + '个！' : this.name[P.id] + '剩' + CNQ(q.r[q.win]) + '个！';
       Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
@@ -1138,15 +1172,16 @@ const W4R = {};
     async feedback(st, ans) {
       const q = st.q;
       if (q.mode === 'diff') { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是多' + CNQ(ans) + '个'); }
+      else if (ans === 2) { if (st.same) K.wiggle(st, st.same); W3X.say('剩的不一样多'); }
       else { const P = st.P[ans]; if (P) K.wiggle(st, P.el); W3X.say(this.name[this.who[ans]] + '剩' + CNQ(q.r[ans]) + '个'); }
       await st.scope.wait(600);
     },
     next(st, strat) {
       if (st.picked) return null;
       if (st.q.mode === 'diff') return st.cards ? K.cardNext(st, strat) : null;
-      const i = strat === 'wrong' ? 1 - st.q.win : st.q.win; return { g: 'tap', p: { id: 'who' + i } };
+      const i = strat === 'wrong' ? (st.same && st.q.k[1] % 2 ? 2 : 1 - st.q.win) : st.q.win; return { g: 'tap', p: { id: 'who' + i } };
     },
-    workEls(st) { return st.q.mode === 'diff' ? (st.cards || []) : (st.P || []).map(P => P.el); },
+    workEls(st) { return st.q.mode === 'diff' ? (st.cards || []) : (st.P || []).map(P => P.el).concat(st.same ? [st.same] : []); },
     snap(st) { return { r: st.q.r, mode: st.q.mode }; },
   };
 
@@ -1289,7 +1324,7 @@ const W4R = {};
 })();
 /* ================================================================ 汪汪队·火星 (world 4, island ④: 6-10 的分与合)
    N1 分 every way to split N: pick all the right cards, then "done" · N2 配 the two cards that make N · N3 接 the split table:
-   which row comes next · N4 想 a little sudoku of shapes (reasoning). Every rule: W4R.<id>, merged over W2Base by w4Game
+   which row comes next · N4 填 a little sudoku of shapes: fill every gap (reasoning). Every rule: W4R.<id>, merged over W2Base by w4Game
    (raw/js/w4/games.js). One file scope: nothing here is global but W4R.N1-N4. */
 (() => {
   const INK = '#2B2118', BLUE = '#4FB3FF', YEL = '#FFC93C';
@@ -1492,14 +1527,14 @@ const W4R = {};
   };
 
   /* ================================================================ N3 接 the split table of N, row by row (1 + 7, 2 + 6, 3 + 5):
-     which row comes next? The wrong rows never make N. L1 N 6-7, with dots · L2 N 7-8, with dots · L3 N 8-9, numbers only ·
-     L4 a row in the middle is missing · L5 the table goes the other way (7 + 1, 6 + 2), N up to 10. */
+     which row comes next? The wrong rows never make N. L1 N 6-7, with dot bars · L2 N 7-8, numbers only · L3 N 8-9, only two
+     rows to go by · L4 a row in the middle is missing · L5 the table goes the other way (7 + 1, 6 + 2), N up to 10. */
   W4R.N3 = {
     kind0: 'splitrows', verb: '接！', intro: '找分合规律！', praise: ['规律找对啦！'],
     gen(G, o) {
-      const d = Math.min(5, o.level), rng = o.rng, N = rng.pick([null, [6, 7], [7, 8], [8, 9], [8, 9, 10], [8, 9, 10]][d]), dots = d <= 2;
+      const d = Math.min(5, o.level), rng = o.rng, N = rng.pick([null, [6, 7], [7, 8], [8, 9], [8, 9, 10], [8, 9, 10]][d]), dots = d === 1;
       for (let t = 0; t < 200; t++) {
-        const s = rng.int(1, d === 1 ? 2 : 3), r = d === 1 ? rng.int(2, 3) : 3;
+        const s = rng.int(1, d === 1 ? 2 : 3), r = d === 1 ? rng.int(2, 3) : d === 3 ? 2 : 3;
         let rows, ask;
         if (d === 4) { if (s + 3 > N - 1) continue; rows = [0, 1, 2, 3].map(i => [s + i, N - s - i]); ask = rng.int(1, 2); }
         else if (d === 5) { if (s + r > N - 1) continue; rows = Array.from({ length: r + 1 }, (_, i) => [N - s - i, s + i]); ask = r; }
@@ -1562,81 +1597,135 @@ const W4R = {};
     snap(st) { return { N: st.q.N, ask: st.q.ask }; },
   };
 
-  /* ================================================================ N4 想 a little sudoku: three shapes, every row and every
-     column has each shape once - what is under the "?"? L1 3 x 3, one gap, its row tinted · L2 the same, no tint · L3 two gaps
-     in one column (the row of the "?" is full) · L4 two gaps in one row (look down the column) · L5 4 x 4 with four shapes,
-     two gaps. The "?" always follows from its row or its column alone: one right shape. */
+  /* ================================================================ N4 填 a little sudoku: every row and every column has each
+     shape once. Some places are empty and the child fills them ALL from the tray: tap a shape, then a place (or a place, then a
+     shape); a filled place tapped again gives its shape back. Nothing counts until the last place is filled - then it is right
+     only if every place is right. L1 3 x 3, two gaps, each alone in its row and its column · L2 three gaps · L3 four gaps · L4
+     4 x 4 with four shapes, three gaps · L5 4 x 4, four gaps. The gaps always have one filling, found one place at a time (a
+     place whose row or column is otherwise full). */
   const SH = [{ k: 'star', c: '#FFC93C', n: '星星' }, { k: 'circle', c: '#4FB3FF', n: '圆圈' }, { k: 'tri', c: '#FF6B5B', n: '三角' }, { k: 'sq', c: '#5CC46E', n: '方块' }];
   W4R.N4 = {
     kind0: 'sudoku', verb: '填！', intro: '小小数独！', praise: ['每格都想对啦！'],
     gen(G, o) {
-      const d = Math.min(5, o.level), rng = o.rng, n = d === 5 ? 4 : 3;
-      for (let t = 0; t < 200; t++) {
+      const d = Math.min(5, o.level), rng = o.rng, n = d >= 4 ? 4 : 3, k = [0, 2, 3, 4, 3, 4][d];
+      for (let t = 0; t < 500; t++) {
         const rp = rng.shuffle([...Array(n).keys()]), cp = rng.shuffle([...Array(n).keys()]), sp = rng.shuffle([...Array(n).keys()]);
         const g = rp.map(r => cp.map(c => sp[(r + c) % n]));
-        const ar = rng.int(0, n - 1), ac = rng.int(0, n - 1);
-        let other = null;
-        if (d === 3) other = [rng.pick([...Array(n).keys()].filter(r => r !== ar)), ac];
-        else if (d === 4) other = [ar, rng.pick([...Array(n).keys()].filter(c => c !== ac))];
-        else if (d === 5) { const cells = []; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (!(r === ar && c === ac)) cells.push([r, c]); other = rng.pick(cells); }
-        const blank = (r, c) => (r === ar && c === ac) || (other && other[0] === r && other[1] === c);
-        const seen = new Set(); for (let i = 0; i < n; i++) { if (!blank(ar, i)) seen.add(g[ar][i]); if (!blank(i, ac)) seen.add(g[i][ac]); }
-        if (seen.size !== n - 1 || seen.has(g[ar][ac])) continue;            /* the "?" follows from what is seen */
-        const opts = [...Array(n).keys()];
-        return { k: [d, g.map(r => r.join('')).join('/'), ar, ac, other ? other.join('') : ''], n, g, ar, ac, other, tint: d === 1, answer: g[ar][ac], opts };
+        const cells = []; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) cells.push([r, c]);
+        const gaps = rng.shuffle(cells).slice(0, k).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        if (d === 1 && (gaps[0][0] === gaps[1][0] || gaps[0][1] === gaps[1][1])) continue;
+        if (!this.oneByOne(gaps)) continue;
+        return { k: [d, g.map(r => r.join('')).join('/'), gaps.map(x => x.join('')).join('.')], n, g, gaps, answer: gaps.map(([r, c]) => g[r][c]).join(',') };
       }
       return this.gen(G, Object.assign({}, o, { level: 1 }));
     },
+    /* solvable one place at a time: some gap is the only gap of its row or of its column, its shape follows; then the next.
+       (Every step is forced, so the filling is the only one.) */
+    oneByOne(gaps) {
+      const open = gaps.map(x => x.slice());
+      while (open.length) {
+        const i = open.findIndex(([r, c]) => open.filter(x => x[0] === r).length === 1 || open.filter(x => x[1] === c).length === 1);
+        if (i < 0) return false;
+        open.splice(i, 1);
+      }
+      return true;
+    },
     geo(st) {
       const L = K.L(), n = st.q.n;
-      return L ? { cs: n === 4 ? 84 : 108, cx: 512, y: 102, os: n === 4 ? 116 : 124, og: n === 4 ? 24 : 30, oy: n === 4 ? 512 : 516 } : { cs: n === 4 ? 100 : 128, cx: 352, y: 216, os: n === 4 ? 130 : 140, og: n === 4 ? 22 : 30, oy: n === 4 ? 732 : 740 };
+      return L ? (n === 4 ? { cs: 110, cx: 512, y: 94, ps: 96, pg: 24, py: 560 } : { cs: 120, cx: 512, y: 96, ps: 104, pg: 30, py: 486 })
+        : (n === 4 ? { cs: 118, cx: 352, y: 206, ps: 116, pg: 24, py: 718 } : { cs: 140, cx: 352, y: 212, ps: 130, pg: 30, py: 676 });
     },
-    cardSpot(st) { const g = this.geo(st); return { cx: g.cx, cy: g.oy }; },
     decor(G) { W3X.decor2(G, this.chars); },
     shapeSvg(i, size) { const s = svg('svg', { viewBox: '0 0 100 100', width: size, height: size }); s.style.pointerEvents = 'none'; W2X.shape(s, SH[i].k, 50, 52, 30, SH[i].c, 0, 5); return s; },
-    sheet(q, fillAns) {
+    /* the board: the shapes that are given; a gap is a pale place (its own tap target lies on it) */
+    sheet(q) {
       const n = q.n, s = svg('svg', { viewBox: '0 0 ' + (n * 100 + 12) + ' ' + (n * 100 + 12), width: '100%', height: '100%' }); s.style.pointerEvents = 'none';
       svg('rect', { x: 3, y: 3, width: n * 100 + 6, height: n * 100 + 6, rx: 16, fill: '#fff', stroke: INK, 'stroke-width': 6 }, s);
-      if (q.tint) svg('rect', { x: 8, y: 6 + q.ar * 100 + 2, width: n * 100 - 4, height: 96, rx: 10, fill: '#FFF1B8' }, s);
       for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-        const x = 6 + c * 100, y = 6 + r * 100, ask = r === q.ar && c === q.ac, oth = q.other && q.other[0] === r && q.other[1] === c;
-        if (ask) { svg('rect', { x: x + 8, y: y + 8, width: 84, height: 84, rx: 12, fill: fillAns ? '#E6F8E9' : '#FFE58A', stroke: INK, 'stroke-width': 4, 'stroke-dasharray': fillAns ? 'none' : '8 6' }, s); if (fillAns) W2X.shape(s, SH[q.g[r][c]].k, x + 50, y + 52, 30, SH[q.g[r][c]].c, 0, 5); else { const t = svg('text', { x: x + 50, y: y + 70, 'text-anchor': 'middle', 'font-size': 56, 'font-weight': 900, fill: INK, 'font-family': 'system-ui, sans-serif' }, s); t.textContent = '?'; } }
-        else if (oth) svg('rect', { x: x + 10, y: y + 10, width: 80, height: 80, rx: 12, fill: '#EEF1F6', stroke: '#B8C0CC', 'stroke-width': 3 }, s);
+        const x = 6 + c * 100, y = 6 + r * 100;
+        if (q.gaps.some(([a, b]) => a === r && b === c)) svg('rect', { x: x + 6, y: y + 6, width: 88, height: 88, rx: 12, fill: '#FFF7D6' }, s);
         else W2X.shape(s, SH[q.g[r][c]].k, x + 50, y + 52, 30, SH[q.g[r][c]].c, 0, 5);
       }
       for (let i = 1; i < n; i++) { svg('path', { d: 'M' + (6 + i * 100) + ' 8V' + (n * 100 + 4), stroke: INK, 'stroke-width': 3, opacity: 0.55 }, s); svg('path', { d: 'M8 ' + (6 + i * 100) + 'H' + (n * 100 + 4), stroke: INK, 'stroke-width': 3, opacity: 0.55 }, s); }
       return s;
     },
     place(st) {
-      const g = this.geo(st), q = st.q, W = q.n * g.cs + 12;
-      if (st.bd) place(st.bd, g.cx - W / 2, g.y, W, W);
-      if (st.cards) K.cardsPlace(st, { cx: g.cx, cy: g.oy, gap: g.og });
+      const g = this.geo(st), q = st.q, W = q.n * g.cs + 12, x0 = g.cx - W / 2, sc = W / (q.n * 100 + 12);
+      if (st.bd) place(st.bd, x0, g.y, W, W);
+      (st.gapEls || []).forEach((e, i) => { const [r, c] = q.gaps[i]; place(e, x0 + (6 + c * 100) * sc + 10, g.y + (6 + r * 100) * sc + 10, 100 * sc - 20, 100 * sc - 20); });      /* 20 px between two places */
+      (st.pieces || []).forEach((e, i) => place(e, Math.round(g.cx - (q.n * g.ps + (q.n - 1) * g.pg) / 2 + i * (g.ps + g.pg)), g.py, g.ps, g.ps));
+    },
+    /* how every gap and every tray piece looks now (picked / filled / empty) */
+    paint(st) {
+      st.gapEls.forEach((e, i) => {
+        const v = st.fill[i], sel = st.cell === i;
+        e.innerHTML = '';
+        Object.assign(e.style, { background: v != null ? '#FFFFFF' : sel ? '#FFE58A' : '#FFF7D6', border: '4px ' + (v != null || sel ? 'solid ' : 'dashed ') + (v != null ? '#8892A0' : INK) });
+        if (v != null) e.appendChild(this.shapeSvg(v, '92%'));
+      });
+      st.pieces.forEach((e, i) => { const on = st.pick === i; e.classList.toggle('hi', on); e.style.background = on ? '#FFE58A' : ''; });
     },
     present(st) {
-      const q = st.q, g = this.geo(st);
-      st.bd = W2X.thing(st, 10, 10, 4, ''); st.bd.style.pointerEvents = 'none'; st.bd.appendChild(this.sheet(q, false));
-      W2X.cards(st, q.opts.map(i => this.shapeSvg(i, '100%')), q.opts, { size: g.os, gap: g.og, cx: g.cx, cy: g.oy });
-      this.place(st); K.pop(st, st.bd);
-      K.task(st, [[W3X.ic('<rect x="10" y="10" width="80" height="80" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><path d="M37 10V90M63 10V90M10 37H90M10 63H90" stroke="#2B2118" stroke-width="3"/><circle cx="23" cy="23" r="7" fill="#4FB3FF"/><polygon points="50,43 57,56 43,56" fill="#FF6B5B"/><text x="77" y="84" font-size="22" font-weight="900" text-anchor="middle" fill="#2B2118">?</text>')], ['q']]);
-      W3X.say2(st, '每行每列不一样。', '问号里是什么？');
+      const q = st.q;
+      st.fill = q.gaps.map(() => null); st.pick = null; st.cell = null;
+      st.bd = W2X.thing(st, 10, 10, 4, ''); st.bd.style.pointerEvents = 'none'; st.bd.appendChild(this.sheet(q));
+      st.gapEls = q.gaps.map((_, i) => { const e = W2X.thing(st, 10, 10, 6, ''); Object.assign(e.style, { borderRadius: '14px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }); K.reg(st, 'g' + i, e, {}); return e; });
+      st.pieces = [...Array(q.n).keys()].map(i => { const c = W3X.card(st, 'p' + i, 6, 'card'); c.appendChild(this.shapeSvg(i, '82%')); return c; });
+      this.paint(st); this.place(st);
+      K.pop(st, st.bd); st.gapEls.forEach((e, i) => K.pop(st, e, 120 + 60 * i)); st.pieces.forEach((e, i) => K.pop(st, e, 300 + 70 * i));
+      K.task(st, [[W3X.ic('<rect x="10" y="10" width="80" height="80" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><path d="M37 10V90M63 10V90M10 37H90M10 63H90" stroke="#2B2118" stroke-width="3"/><circle cx="23" cy="23" r="7" fill="#4FB3FF"/><polygon points="50,43 57,56 43,56" fill="#FF6B5B"/><rect x="66" y="66" width="21" height="21" rx="4" fill="#FFF7D6" stroke="#2B2118" stroke-width="2.5" stroke-dasharray="4 3"/>')], ['check']]);
+      if (!st.G.toldN4) { st.G.toldN4 = true; W3X.tip('点图形，再点空格！'); }
+      W3X.say2(st, '每行每列不一样。', '把空格都填满！');
     },
-    onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
+    put(st, i, v) {
+      st.fill[i] = v; st.pick = null; st.cell = null; Sfx.place(); this.paint(st); K.pop(st, st.gapEls[i]);
+      if (st.fill.every(x => x != null)) { st.picked = true; Session.submit(st, st.fill.join(',')); }       /* judged only when complete */
+    },
+    onGesture(st, name, p) {
+      const id = p.id || ''; if (name !== 'tap' || st.picked) return false;
+      let m = /^p(\d)$/.exec(id);
+      if (m) { const v = +m[1]; if (st.cell != null) { this.put(st, st.cell, v); return 'ok'; } st.pick = st.pick === v ? null : v; Sfx.pop(); this.paint(st); return 'ok'; }
+      m = /^g(\d)$/.exec(id);
+      if (m) {
+        const i = +m[1];
+        if (st.fill[i] != null) { st.fill[i] = null; st.cell = null; Sfx.back(); this.paint(st); return 'ok'; }      /* the piece goes back to the tray */
+        if (st.pick != null) { this.put(st, i, st.pick); return 'ok'; }
+        st.cell = st.cell === i ? null : i; Sfx.pop(); this.paint(st); return 'ok';
+      }
+      return false;
+    },
     async reveal(st) {
-      const q = st.q, c = st.cards[st.opts.indexOf(q.answer)];
-      st.bd.innerHTML = ''; st.bd.appendChild(this.sheet(q, true)); K.pop(st, st.bd);
-      if (c) { K.ring(st, [box(c)], 6, '#FFC93C'); K.hop(st, c, 14); }
-      Sfx.reveal(); this.cheerAll(st);
+      const q = st.q, my = st;
+      K.ring(st, [box(st.bd)], 8, '#FFC93C'); Sfx.reveal();
+      for (let i = 0; i < st.gapEls.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.gapEls[i], 14); await st.scope.wait(200); }
+      this.cheerAll(st);
       st.summary = '每行每列都不一样！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      void q;
     },
+    /* a shape twice in a row (or a column) - said of the first place where that happens */
     async feedback(st, ans) {
-      const q = st.q, i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]);
-      const blank = (r, c) => (r === q.ar && c === q.ac) || (q.other && q.other[0] === r && q.other[1] === c);
-      const inRow = q.g[q.ar].some((v, c) => v === ans && !blank(q.ar, c));
-      W3X.say((inRow ? '这一行有' : '这一列有') + SH[ans].n + '了'); await st.scope.wait(600);
+      const q = st.q, n = q.n, f = String(ans).split(',').map(Number), at = (r, c) => { const i = q.gaps.findIndex(([a, b]) => a === r && b === c); return i >= 0 ? f[i] : q.g[r][c]; };
+      let line = '每行每列不一样。', el0 = null;
+      for (let i = 0; i < q.gaps.length && !el0; i++) {
+        const [r, c] = q.gaps[i], v = f[i];
+        if (v === q.g[r][c]) continue;
+        if ([...Array(n).keys()].some(x => x !== c && at(r, x) === v)) { line = '这一行有两个' + SH[v].n; el0 = st.gapEls[i]; }
+        else if ([...Array(n).keys()].some(x => x !== r && at(x, c) === v)) { line = '这一列有两个' + SH[v].n; el0 = st.gapEls[i]; }
+      }
+      if (el0) K.wiggle(st, el0);
+      W3X.say(line); await st.scope.wait(700);
     },
-    next(st, strat) { if (st.picked || !st.cards) return null; const a = st.opts.indexOf(st.q.answer), i = strat === 'wrong' ? (a + 1) % st.opts.length : a; return { g: 'tap', p: { id: 'card' + i } }; },
-    workEls(st) { return st.cards || []; },
-    snap(st) { return { n: st.q.n, other: st.q.other }; },
+    /* right: the right shape into each place, one by one (a wrong one is taken back first); wrong: the first place gets another shape */
+    next(st, strat) {
+      if (st.picked || !st.gapEls) return null;
+      const n = st.q.n, want = st.q.answer.split(',').map(Number), goal = strat === 'wrong' ? want.map((v, i) => i ? v : (v + 1) % n) : want;
+      const back = st.fill.findIndex((v, i) => v != null && v !== goal[i]); if (back >= 0) return { g: 'tap', p: { id: 'g' + back } };
+      if (st.cell != null && st.fill[st.cell] == null) return { g: 'tap', p: { id: 'p' + goal[st.cell] } };
+      const i = st.fill.findIndex(v => v == null); if (i < 0) return null;
+      return st.pick === goal[i] ? { g: 'tap', p: { id: 'g' + i } } : { g: 'tap', p: { id: 'p' + goal[i] } };
+    },
+    workEls(st) { return (st.gapEls || []).concat(st.pieces || []); },
+    snap(st) { return { n: st.q.n, fill: (st.fill || []).slice() }; },
   };
 })();
 /* ================================================================ ⑤ 葫芦娃·星球 (10 以内加, from level 2): O1 三个葫芦倒进碗 ·
@@ -1815,108 +1904,155 @@ const W4R = {};
     snap(st) { return { poured: (st.gd || []).filter(o => o.poured).length }; },
   };
 
-  /* ---------------------------------------------------------------- O2 走！ which path's number stones add up to N? (tap the
-     path; exactly one does). L1 two paths of two stones, N <= 6, stones with dots · L2 N <= 8 · L3 three stones a path ·
-     L4 N <= 10, numerals only · L5 three paths. The wrong paths add up to N +- 1 or 2. */
+  /* ---------------------------------------------------------------- O2 走！ stepping stones to the planet. A small grid of number
+     stones; the gourd boy starts below the bottom-left stone, the goal planet (with N on it) is right of the top-right stone.
+     The child steps one stone at a time - only onto the next stone up or to the right - and the question is judged at the
+     planet: right only if the stones stepped on add up to N. Exactly one way does; every way adds up to 10 at most.
+     L1 2 x 2 (two ways of three stones), stones 1-3, N <= 6, dots on the stones and a running total (dots on a bar) ·
+     L2 stones to 4, N <= 9 · L3 3 x 2 or 2 x 3 (three ways of four stones), no running total: the sum is kept in the head
+     (the support fades with the level, as the dots do) · L4 numerals only, a stone can be 0 · L5 3 x 3, six ways of five. */
   W4R.O2 = {
-    kind0: 'paths', verb: '走！', intro: '找对的路！', praise: ['路找对啦！'], props: ['magicgourd'],
+    kind0: 'steps', verb: '走！', intro: '找对的路！', praise: ['路找对啦！'], props: [],
+    ways(C, R) { const out = [], rec = (r, c, acc) => { acc = acc.concat([[r, c]]); if (r === 0 && c === C - 1) { out.push(acc); return; } if (r > 0) rec(r - 1, c, acc); if (c < C - 1) rec(r, c + 1, acc); }; rec(R - 1, 0, []); return out; },
     gen(G, o) {
-      const d = Math.min(5, Math.max(1, o.level || 1)), rng = o.rng, P = d === 5 ? 3 : 2, S = d <= 2 ? 2 : 3, hi = [0, 6, 8, 8, 10, 10][d];
-      const comp = total => { const p = []; let left = total; for (let i = 0; i < S - 1; i++) { const v = rng.int(1, left - (S - 1 - i)); p.push(v); left -= v; } p.push(left); return rng.shuffle(p); };
-      for (let t = 0; t < 400; t++) {
-        const N = rng.int(S + 1, hi), sums = [N];
-        rng.shuffle([-2, -1, 1, 2]).concat([-3, 3]).forEach(x => { const w = N + x; if (sums.length < P && w >= S && w <= hi && !sums.includes(w)) sums.push(w); });
-        if (sums.length < P) continue;
-        const right = comp(N), wrong = sums.slice(1).map(comp);
-        const ans = bagPick(G, 'o2p' + P, P === 2 ? [0, 1] : [0, 1, 2]);
-        const paths = [], ss = [];
-        for (let i = 0, w = 0; i < P; i++) { if (i === ans) { paths.push(right); ss.push(N); } else { paths.push(wrong[w]); ss.push(sums[1 + w]); w++; } }
-        return { k: [d, N, paths.map(x => x.join('')).join('-')], d, N, paths, sums: ss, answer: ans, opts: P === 2 ? [0, 1] : [0, 1, 2], dotsOn: d <= 3 };
+      const d = Math.min(5, Math.max(1, o.level || 1)), rng = o.rng;
+      const [C, R] = d <= 2 ? [2, 2] : d <= 4 ? bagPick(G, 'o2g' + d, [[3, 2], [2, 3]]) : [3, 3];
+      const P = this.ways(C, R), v0 = d >= 4 ? 0 : 1, mx = [0, 3, 4, 3, 3, 3][d], lo = [0, 3, 4, 5, 5, 6][d], hi = [0, 6, 9, 10, 10, 10][d];
+      const dir = bagPick(G, 'o2d' + d, ['U', 'R']), first = p => (p[1][0] < p[0][0] ? 'U' : 'R');     /* the right way's first turn: up or right, in turn */
+      for (let t = 0; t < 2000; t++) {
+        const v = Array.from({ length: R }, () => Array.from({ length: C }, () => rng.int(v0, mx)));
+        const sums = P.map(p => p.reduce((s, [r, c]) => s + v[r][c], 0));
+        if (Math.max(...sums) > 10) continue;
+        const cand = P.map((_, i) => i).filter(i => sums.filter(x => x === sums[i]).length === 1 && sums[i] >= lo && sums[i] <= hi && (t > 1500 || first(P[i]) === dir));
+        if (!cand.length) continue;
+        const ri = rng.pick(cand), N = sums[ri];
+        const wi = P.map((_, i) => i).filter(i => i !== ri).sort((x, y) => Math.abs(sums[x] - N) - Math.abs(sums[y] - N))[0];
+        return { k: [d, C, R, v.map(r => r.join('')).join('')], d, C, R, v, N, right: P[ri], wrong: P[wi], answer: N, dotsOn: d <= 3, bar: d <= 2 };
       }
-      return { k: [d, 'x'], d, N: 3, paths: [[1, 2], [2, 2]], sums: [3, 4], answer: 0, opts: [0, 1], dotsOn: true };
+      return { k: [d, 'x'], d, C: 2, R: 2, v: [[1, 2], [1, 1]], N: 4, right: [[1, 0], [0, 0], [0, 1]], wrong: [[1, 0], [1, 1], [0, 1]], answer: 4, dotsOn: true, bar: true };
     },
     geo(st) {
-      const L = K.L(), P = st.q.paths.length, S = st.q.paths[0].length;
-      const xs = P === 2 ? (L ? [372, 652] : [212, 492]) : (L ? [290, 512, 734] : [128, 352, 576]);
-      const g = L ? { xs, lw: 150, ly: 168, lh: 420, goal: { x: 432, y: 20, w: 160, h: 118 }, gimg: { x: 604, y: 26, w: 76, h: 108 }, start: { x: 512, y: 652 } }
-        : { xs, lw: 150, ly: 300, lh: 480, goal: { x: 267, y: 132, w: 170, h: 124 }, gimg: { x: 446, y: 138, w: 80, h: 112 }, start: { x: 352, y: 852 } };
-      g.sw = 122; g.sh = S === 2 ? 132 : 112; g.sgap = S === 2 ? 40 : 20;
-      return g;
+      const L = K.L(), q = st.q, n = q.C * q.R;
+      const s = (L ? { 4: 130, 6: 120, 9: 110 } : { 4: 140, 6: 128, 9: 116 })[n], g = L ? 44 : 40, ps = L ? 120 : 112;
+      const W = q.C * s + (q.C - 1) * g, H = q.R * s + (q.R - 1) * g;
+      const cx = L ? 480 : Math.min(352, 704 - 14 - ps - 26 - W / 2), cy = L ? 340 : 530, x0 = Math.round(cx - W / 2), y0 = Math.round(cy - H / 2);
+      const boy = { x: x0 + s / 2 - 36, y: y0 + H + 30 };
+      return { s, g, W, H, x0, y0, ps, boy, planet: { x: x0 + W + 26, y: Math.round(y0 + s / 2 - ps / 2) }, bar: { x: boy.x + 96, y: boy.y + 6, w: 250, h: 60 } };
     },
     decor(G) { W3X.decor2(G, this.chars); },
-    stoneXY(st, g, i, j) {             /* stage centre of stone j (top to bottom) on path i */
-      const S = st.q.paths[i].length, tot = S * g.sh + (S - 1) * g.sgap, y0 = g.ly + g.lh / 2 - tot / 2;
-      return { x: g.xs[i], y: y0 + j * (g.sh + g.sgap) + g.sh / 2 };
-    },
+    cellXY(g, r, c) { return { x: g.x0 + c * (g.s + g.g), y: g.y0 + r * (g.s + g.g) }; },
+    legal(st) { const q = st.q; if (!st.at) return [[q.R - 1, 0]]; const [r, c] = st.at, out = []; if (r > 0) out.push([r - 1, c]); if (c < q.C - 1) out.push([r, c + 1]); return out; },
     place(st) {
-      if (!st.q || !st.lanes) return;
-      const g = this.geo(st), L = K.L();
-      place(st.goal, g.goal.x, g.goal.y, g.goal.w, g.goal.h);
-      place(st.gimg, g.gimg.x, g.gimg.y, g.gimg.w, g.gimg.h);
-      st.lanes.forEach((ln, i) => {
-        place(ln.e, g.xs[i] - g.lw / 2, g.ly, g.lw, g.lh);
-        ln.stones.forEach((s, j) => { const c = this.stoneXY(st, g, i, j); place(s, Math.round(c.x - g.xs[i] + g.lw / 2 - g.sw / 2), Math.round(c.y - g.ly - g.sh / 2), g.sw, g.sh); });
-      });
-      if (!st.walked) place(st.walker, g.start.x - 40, g.start.y - 40, 80, 80);
-      /* the roads: from the start up every path to the goal */
-      const W = Stage.W, H = Stage.H, gx = g.goal.x + g.goal.w / 2, gy = g.goal.y + g.goal.h;
+      if (!st.q || !st.stones) return;
+      const g = this.geo(st);
+      st.stones.forEach(row => row.forEach(o => { const p = this.cellXY(g, o.r, o.c); place(o.e, p.x, p.y, g.s, g.s); }));
+      place(st.planet, g.planet.x, g.planet.y, g.ps, g.ps);
+      if (st.bar) place(st.bar, g.bar.x, g.bar.y, g.bar.w, g.bar.h);
+      this.placeBoy(st, g);
+      this.drawLinks(st, g);
+    },
+    placeBoy(st, g) {
+      if (st.done) { place(st.boy, g.planet.x + g.ps / 2 - 36, g.planet.y - 46, 72, 72); return; }
+      if (!st.at) place(st.boy, g.boy.x, g.boy.y, 72, 72);
+      else { const p = this.cellXY(g, st.at[0], st.at[1]); place(st.boy, p.x - 34, p.y - 34, 64, 64); }      /* on the stone's corner: its number stays in sight */
+    },
+    /* the ways between the stones: an arrow up and an arrow to the right from every stone; the ones walked turn gold */
+    drawLinks(st, g) {
+      const q = st.q, W = Stage.W, H = Stage.H, walked = new Set();
+      let prev = 'start'; st.stepped.forEach(p => { walked.add(prev + '>' + p.join()); prev = p.join(); });
+      const arrow = (x1, y1, x2, y2, on) => {
+        const dx = x2 - x1, dy = y2 - y1, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, c = on ? '#FFC93C' : '#FFF8EC', w = on ? 9 : 6;
+        return '<path d="M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2 + '" stroke="#2B2118" stroke-width="' + (w + 5) + '" stroke-linecap="round"/><path d="M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2 + '" stroke="' + c + '" stroke-width="' + w + '" stroke-linecap="round"/>' +
+          '<path d="M' + (x2 - ux * 12 - uy * 10) + ' ' + (y2 - uy * 12 + ux * 10) + 'L' + x2 + ' ' + y2 + 'L' + (x2 - ux * 12 + uy * 10) + ' ' + (y2 - uy * 12 - ux * 10) + '" fill="none" stroke="#2B2118" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>';
+      };
       let d = '';
-      g.xs.forEach(x => { d += 'M' + g.start.x + ' ' + g.start.y + 'Q' + x + ' ' + (g.start.y - 6) + ' ' + x + ' ' + (g.ly + g.lh - 10) + 'L' + x + ' ' + (g.ly + 10) + 'Q' + x + ' ' + (gy + 6) + ' ' + gx + ' ' + gy; });
-      st.road.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '"><path d="' + d + '" fill="none" stroke="#2B2118" stroke-width="' + (L ? 54 : 58) + '" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/><path d="' + d + '" fill="none" stroke="#E9C98F" stroke-width="' + (L ? 44 : 48) + '" stroke-linecap="round" stroke-linejoin="round"/><path d="' + d + '" fill="none" stroke="#F6E2B8" stroke-width="6" stroke-dasharray="2 18" stroke-linecap="round"/></svg>';
-      place(st.road, 0, 0, W, H);
+      for (let r = 0; r < q.R; r++) for (let c = 0; c < q.C; c++) {
+        const p = this.cellXY(g, r, c);
+        if (c < q.C - 1) d += arrow(p.x + g.s + 7, p.y + g.s / 2, p.x + g.s + g.g - 7, p.y + g.s / 2, walked.has(r + ',' + c + '>' + r + ',' + (c + 1)));
+        if (r > 0) d += arrow(p.x + g.s / 2, p.y - 7, p.x + g.s / 2, p.y - g.g + 7, walked.has(r + ',' + c + '>' + (r - 1) + ',' + c));
+      }
+      const bl = this.cellXY(g, q.R - 1, 0), tr = this.cellXY(g, 0, q.C - 1);
+      d += arrow(bl.x + g.s / 2, g.boy.y - 4, bl.x + g.s / 2, bl.y + g.s + 6, walked.has('start>' + (q.R - 1) + ',0'));
+      d += arrow(tr.x + g.s + 7, tr.y + g.s / 2, g.planet.x + 2, tr.y + g.s / 2, !!st.done);
+      st.links.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">' + d + '</svg>';
+      place(st.links, 0, 0, W, H);
+    },
+    /* stepped stones gold; the stones the child may step on next have a yellow ring */
+    mark(st) {
+      const lg = st.picked ? [] : this.legal(st);
+      st.stones.forEach(row => row.forEach(o => {
+        const on = st.stepped.some(p => p[0] === o.r && p[1] === o.c), nx = lg.some(p => p[0] === o.r && p[1] === o.c);
+        o.e.style.background = on ? '#FFE9A8' : '';
+        o.e.style.boxShadow = nx ? '0 0 0 4px #2B2118, 0 0 0 11px #FFC93C' : '';
+      }));
+    },
+    paintBar(st) {
+      if (!st.bar) return;
+      let h = '<svg viewBox="0 0 250 60" width="100%" height="100%">';
+      for (let i = 0; i < 10; i++) h += '<circle cx="' + (22 + i * 23) + '" cy="30" r="9" fill="' + (i < st.sum ? '#FF9F43' : 'rgba(43,33,24,.1)') + '" stroke="' + (i < st.sum ? '#2B2118' : 'none') + '" stroke-width="2.4"/>';
+      st.bar.innerHTML = h + '</svg>';
     },
     async present(st) {
       const q = st.q;
-      st.road = W2X.thing(st, 10, 10, 2, '');
-      st.goal = panel(st, 6); st.goal.appendChild(numDots(q.N, q.dotsOn ? 56 : 76, q.dotsOn, { g: 17, r: 6.6, fill: '#FFC93C' }));
-      st.goal.style.boxShadow = '0 0 0 4px #2B2118, 0 0 0 10px #FFC93C';
-      st.gimg = K.item(Stage.el, 'assets/props/magicgourd.png', 76, 108); st.gimg.style.zIndex = 6; st.els.push(st.gimg);
-      st.lanes = q.paths.map((p, i) => {
-        const e = W2X.thing(st, 10, 10, 5, ''); Object.assign(e.style, { borderRadius: '34px', background: 'rgba(255,255,255,.22)', border: '4px dashed rgba(43,33,24,.4)', boxSizing: 'border-box' });
-        const stones = p.map(v => { const s = el('div', '', e); Object.assign(s.style, { position: 'absolute', background: '#fff', borderRadius: '24px', boxShadow: '0 0 0 4px #2B2118, 0 6px 0 4px #9AA3AE', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }); s.appendChild(numDots(v, q.dotsOn ? 46 : 64, q.dotsOn, { g: 16, r: 6.2 })); return s; });
-        K.reg(st, 'p' + i, e, {});
-        return { e, stones };
-      });
-      st.walker = W2X.thing(st, 80, 80, 9, ''); Object.assign(st.walker.style, { borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 4px #2B2118', overflow: 'hidden' });
-      const wi = img('assets/thumbs/' + this.chars[0] + '.png', '', st.walker); Object.assign(wi.style, { width: '100%', height: '100%', objectFit: 'cover' });
-      this.place(st);
-      popIn(st, st.goal); st.lanes.forEach((ln, i) => popIn(st, ln.e, 120 + 120 * i)); popIn(st, st.walker, 200);
-      K.say(st, '哪条路加起来是' + CN[q.N] + '？');
+      st.at = null; st.stepped = []; st.sum = 0;
+      st.links = W2X.thing(st, 10, 10, 3, '');
+      st.stones = q.v.map((row, r) => row.map((v, c) => { const e = W3X.card(st, 's' + r + c, 6); e.style.borderRadius = '26px'; e.appendChild(numDots(v, q.dotsOn ? 52 : 66, q.dotsOn, { g: 16, r: 6.2 })); return { e, r, c, v }; }));
+      st.planet = W2X.thing(st, 10, 10, 5, '');
+      st.planet.innerHTML = '<svg viewBox="0 0 120 120" width="100%" height="100%" style="position:absolute;left:0;top:0;overflow:visible"><ellipse cx="60" cy="64" rx="64" ry="17" fill="none" stroke="#2B2118" stroke-width="9"/><circle cx="60" cy="60" r="54" fill="#B57BFF" stroke="#2B2118" stroke-width="6"/><ellipse cx="60" cy="64" rx="64" ry="17" fill="none" stroke="#FFC93C" stroke-width="5" stroke-dasharray="104 60" stroke-dashoffset="-8"/></svg>';
+      const disc = el('div', '', st.planet); Object.assign(disc.style, { position: 'absolute', left: '15%', top: '15%', width: '70%', height: '70%', borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 4px ' + INK, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' });
+      disc.appendChild(numDots(q.N, q.bar ? 40 : 56, q.bar, { g: 12, r: 4.6, fill: '#FFC93C' }));
+      st.boy = W2X.thing(st, 72, 72, 9, ''); Object.assign(st.boy.style, { borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 4px #2B2118', overflow: 'hidden' });
+      const bi = img('assets/thumbs/' + this.chars[0] + '.png', '', st.boy); Object.assign(bi.style, { width: '100%', height: '100%', objectFit: 'cover' });
+      if (q.bar) { st.bar = W2X.thing(st, 10, 10, 6, ''); Object.assign(st.bar.style, { background: '#fff', borderRadius: '30px', boxShadow: '0 0 0 4px ' + INK }); this.paintBar(st); }
+      this.place(st); this.mark(st);
+      st.stones.forEach((row, r) => row.forEach((o, c) => popIn(st, o.e, 60 * (r + c))));
+      popIn(st, st.planet, 200); popIn(st, st.boy, 260);
+      W3X.say2(st, '走到星球去！', '加起来要是' + CN[q.N] + '！');
     },
     onGesture(st, name, p) {
-      const m = /^p(\d)$/.exec(p.id || '');
+      const m = /^s(\d)(\d)$/.exec(p.id || '');
       if (name !== 'tap' || !m || st.picked) return false;
-      st.picked = true; Session.submit(st, +m[1]); return 'ok';
+      const r = +m[1], c = +m[2], o = st.stones[r] && st.stones[r][c];
+      if (!o) return false;
+      if (!this.legal(st).some(x => x[0] === r && x[1] === c)) { K.wiggle(st, o.e); return 'free'; }     /* only up or to the right */
+      st.at = [r, c]; st.stepped.push([r, c]); st.sum += o.v;
+      Sfx.hop(); this.paintBar(st); this.place(st); K.hop(st, st.boy, 16);
+      if (r === 0 && c === st.q.C - 1) { st.picked = true; st.phase = 'walking'; this.finish(st); }      /* the planet is next: judged there */
+      this.mark(st);
+      return 'ok';
+    },
+    async finish(st) {
+      await st.scope.wait(350); if (!Session.alive(st)) return;
+      const g = this.geo(st); st.done = true; this.drawLinks(st, g);
+      await K.flyTo(st, st.boy, g.planet.x + g.ps / 2 - 36, g.planet.y - 46, 450, 50);
+      if (!Session.alive(st)) return;
+      Session.submit(st, st.sum);
     },
     async reveal(st) {
-      const q = st.q, my = st, i = q.answer, ln = st.lanes[i], g = this.geo(st);
-      K.ring(st, [box(ln.e)], 6, '#FFC93C');
-      st.walked = true;
-      const order = ln.stones.map((_, j) => j).reverse();          /* from the start: bottom stone first */
-      for (const j of order) {
-        if (!Session.alive(my)) return;
-        const c = this.stoneXY(st, g, i, j);
-        await K.flyTo(st, st.walker, c.x + g.sw / 2 - 20, c.y - 40, 380, 40);
-        K.hop(st, ln.stones[j], 14); Sfx.hop();
-        await st.scope.wait(220);
-      }
-      if (!Session.alive(my)) return;
-      await K.flyTo(st, st.walker, g.goal.x + g.goal.w / 2 - 40, g.goal.y + g.goal.h - 30, 420, 40);
-      K.hop(st, st.goal, 16); Sfx.reveal(); this.cheerAll(st);
-      st.summary = plusLine(order.map(j => q.paths[i][j]), q.N);
+      const q = st.q, my = st; let s = 0;
+      for (const [r, c] of st.stepped) { if (!Session.alive(my)) return; s += q.v[r][c]; K.hop(st, st.stones[r][c].e, 14); if (s > 0) await Count.beat(st.scope, 320, s); else await st.scope.wait(320); }
+      K.ring(st, [box(st.planet)], 6, '#FFC93C'); K.hop(st, st.planet, 16); Sfx.reveal(); this.cheerAll(st);
+      st.summary = '加起来正好是' + CN[q.N] + '！';
       Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
     },
-    async feedback(st, ans) { const ln = st.lanes[ans]; if (ln) K.wiggle(st, ln.e); W3X.say('这条加起来是' + CN[st.q.sums[ans]]); await st.scope.wait(600); },
-    next(st, strat) { if (st.picked || !st.lanes) return null; const i = strat === 'wrong' ? st.q.opts.find(x => x !== st.q.answer) : st.q.answer; return { g: 'tap', p: { id: 'p' + i } }; },
-    workEls(st) { return (st.lanes || []).map(ln => ln.e); },
-    gestureHint(st) { if (st.goal) K.flash(st, [st.goal]); },
-    snap(st) { return { P: st.q.paths.length }; },
+    async feedback(st, ans) { K.wiggle(st, st.planet); W3X.say('这条加起来是' + CN[ans]); await st.scope.wait(600); },
+    next(st, strat) {
+      if (st.picked || !st.stones) return null;
+      const lg = this.legal(st); if (!lg.length) return null;
+      const want = strat === 'wrong' ? st.q.wrong : st.q.right, on = st.stepped.every((p, i) => want[i] && want[i][0] === p[0] && want[i][1] === p[1]);
+      const nx = on && want[st.stepped.length] ? want[st.stepped.length] : lg[0];
+      return { g: 'tap', p: { id: 's' + nx[0] + nx[1] } };
+    },
+    workEls(st) { return st.picked || !st.stones ? [] : this.legal(st).map(([r, c]) => st.stones[r][c].e); },
+    gestureHint(st) { const e = this.workEls(st); if (e.length) K.flash(st, e); },       /* every stone that can come next - never which one */
+    snap(st) { return { at: st.at || null, sum: st.sum || 0 }; },
   };
 
   /* ---------------------------------------------------------------- O3 垒！ the number pyramid: the two blocks below add up to
-     the block above. L1 two blocks -> the top (<= 5, dots) · L2 the same to 10 · L3 three layers, only the top is asked
-     (the middle is empty: two sums, then their sum) · L4 the top and one block known, the other block (numerals only) ·
-     L5 three layers, a middle block: its partner is empty too, so it is the top minus (the two blocks under the partner). */
+     the block above. L1 two blocks -> the top (<= 5, dots) · L2 the same to 10 · L3 the top and one block known, the
+     other block (dots on the known blocks) · L4 three layers, only the top is asked (the middle is empty: two sums, then
+     their sum; numerals only) · L5 three layers, a middle block: its partner is empty too, so it is the top minus (the two
+     blocks under the partner). */
   const ROWC = ['#FFC93C', '#4FB3FF', '#5CC46E'];
   W4R.O3 = {
     kind0: 'pyramid', verb: '垒！', intro: '垒数字金字塔！', praise: ['金字塔垒好啦！'], props: [],
@@ -1926,14 +2062,14 @@ const W4R = {};
         const T = d === 1 ? rng.int(2, 5) : rng.int(5, 10), a = rng.int(1, T - 1), b = T - a;
         return { k: [d, a, b], d, rows: [[T], [a, b]], show: [['?'], [a, b]], ask: [0, 0], answer: T, opts: numOptions(G, T, 1, 10), dotsOn: true, dotsC: true, fact: factOf('+', a, b) };
       }
-      if (d === 4) {
-        const side = bagPick(G, 'o3s4', ['L', 'R']), x = rng.int(1, 8), T = rng.int(Math.max(4, x + 1), 10), a = side === 'L' ? x : T - x, b = T - a;
-        return { k: [4, a, b, side], d, rows: [[T], [a, b]], show: [[T], side === 'L' ? ['?', b] : [a, '?']], ask: [1, side === 'L' ? 0 : 1], answer: x, opts: numOptions(G, x, 1, 10), dotsOn: false, dotsC: false, fact: factOf('-', T, side === 'L' ? b : a) };
+      if (d === 3) {
+        const side = bagPick(G, 'o3s3', ['L', 'R']), x = rng.int(1, 8), T = rng.int(Math.max(4, x + 1), 10), a = side === 'L' ? x : T - x, b = T - a;
+        return { k: [3, a, b, side], d, rows: [[T], [a, b]], show: [[T], side === 'L' ? ['?', b] : [a, '?']], ask: [1, side === 'L' ? 0 : 1], answer: x, opts: numOptions(G, x, 1, 10), dotsOn: true, dotsC: false, fact: factOf('-', T, side === 'L' ? b : a) };
       }
       let a = 1, b = 1, c = 2, T = 5;
-      for (let t = 0; t < 400; t++) { const x = rng.int(1, 4), y = rng.int(1, 3), z = rng.int(1, 4), s = x + 2 * y + z; if (s >= (d === 3 ? 5 : 6) && s <= 10) { a = x; b = y; c = z; T = s; break; } }
+      for (let t = 0; t < 400; t++) { const x = rng.int(1, 4), y = rng.int(1, 3), z = rng.int(1, 4), s = x + 2 * y + z; if (s >= (d === 4 ? 5 : 6) && s <= 10) { a = x; b = y; c = z; T = s; break; } }
       const m1 = a + b, m2 = b + c, rows = [[T], [m1, m2], [a, b, c]];
-      if (d === 3) return { k: [3, a, b, c], d, rows, show: [['?'], [null, null], [a, b, c]], ask: [0, 0], answer: T, opts: numOptions(G, T, 1, 10), dotsOn: true, dotsC: false };
+      if (d === 4) return { k: [4, a, b, c], d, rows, show: [['?'], [null, null], [a, b, c]], ask: [0, 0], answer: T, opts: numOptions(G, T, 1, 10), dotsOn: false, dotsC: false };
       const side = bagPick(G, 'o3s5', ['L', 'R']), x = side === 'R' ? m2 : m1;
       return { k: [5, a, b, c, side], d, rows, show: side === 'R' ? [[T], [null, '?'], [a, b, null]] : [[T], ['?', null], [null, b, c]], ask: [1, side === 'R' ? 1 : 0], answer: x, opts: numOptions(G, x, 1, 10), dotsOn: false, dotsC: false };
     },
@@ -2003,27 +2139,21 @@ const W4R = {};
   };
 
   /* ---------------------------------------------------------------- O4 续！ number rows that grow or shrink by a fixed step
-     (reasoning; no repeating patterns - world 2 has those): what is the "?" (three choices). Every number within 0-20.
-     L1 +1 from 1-6, with dots · L2 -1, or +1 starting anywhere (dots while the row stays within 10) · L3 +2 or -2 ·
-     L4 +2 or -2, numerals only, the "?" anywhere in the row (also first or in the middle) · L5 steps of 3 (+3 / -3, "?"
-     anywhere) or a row whose step itself grows by one each time (1, 2, 4, 7, ? - "?" last). Five places a row; with four
-     numbers known and a fixed rule there is exactly one right answer. */
+     (reasoning; no repeating patterns - world 2 has those): what is the "?" (three choices). Every number and every card
+     within 0-10. Steps of 1 in rows of five, steps of 2 in rows of four.
+     L1 +1 from 0-5, with dots · L2 -1 or +1 starting anywhere, with dots · L3 +2 or -2, with dots · L4 +2 or -2, numerals
+     only, the "?" anywhere (also first or in the middle) · L5 +1, -1, +2 or -2 mixed (which step is it?), the "?" at the
+     start or in the middle, numerals only. With the other numbers known and a fixed step there is exactly one answer. */
   W4R.O4 = {
     kind0: 'numseq', verb: '续！', intro: '找数字规律！', praise: ['规律找到啦！'], props: [],
     gen(G, o) {
       const d = Math.min(5, Math.max(1, o.level || 1)), rng = o.rng;
-      const kind = d === 1 ? 'up1' : d === 2 ? bagPick(G, 'o4k2', ['dn1', 'up1x']) : d <= 4 ? bagPick(G, 'o4k' + d, ['up2', 'dn2']) : bagPick(G, 'o4k5', ['up3', 'dn3', 'grow', 'grow']);
-      const step = { up1: 1, up1x: 1, dn1: -1, up2: 2, dn2: -2, up3: 3, dn3: -3 }[kind];
-      let seq;
-      if (kind === 'grow') { const d0 = rng.pick([1, 1, 2]), s = rng.int(0, d0 === 1 ? 10 : 6); seq = [s]; for (let i = 0; i < 4; i++) seq.push(seq[i] + d0 + i); }
-      else {
-        const lo = step > 0 ? (kind === 'up1' ? 1 : 0) : -4 * step, hi = step > 0 ? (kind === 'up1' ? 6 : 20 - 4 * step) : 20;
-        const s = rng.int(lo, hi); seq = [0, 1, 2, 3, 4].map(i => s + i * step);
-      }
-      const miss = d === 4 || kind === 'up3' || kind === 'dn3' ? rng.int(0, 4) : 4, ans = seq[miss];
-      const opts = numOptions(G, ans, 0, d <= 3 && Math.max(...seq) <= 10 ? 10 : 20);       /* a row within 10 keeps its cards within 10 (dots on both) */
-      const dotsOn = d <= 3 && Math.max(...seq, ...opts) <= 10;
-      return { k: [d, kind, seq.join(','), miss], d, kind, seq, miss, answer: ans, opts, dotsOn };
+      const kind = d === 1 ? 'up1' : d === 2 ? bagPick(G, 'o4k2', ['up1', 'dn1']) : d <= 4 ? bagPick(G, 'o4k' + d, ['up2', 'dn2']) : bagPick(G, 'o4k5', ['up1', 'dn1', 'up2', 'dn2']);
+      const step = { up1: 1, dn1: -1, up2: 2, dn2: -2 }[kind], n = Math.abs(step) === 1 ? 5 : 4, span = Math.abs(step) * (n - 1);
+      const s = d === 1 ? rng.int(0, 5) : step > 0 ? rng.int(0, 10 - span) : rng.int(span, 10);
+      const seq = Array.from({ length: n }, (_, i) => s + i * step);
+      const miss = d <= 3 ? n - 1 : d === 4 ? rng.int(0, n - 1) : rng.int(0, n - 2), ans = seq[miss];
+      return { k: [d, kind, seq.join(','), miss], d, kind, seq, miss, answer: ans, opts: numOptions(G, ans, 0, 10), dotsOn: d <= 3 };
     },
     geo(st) {
       const L = K.L(), n = st.q.seq.length, dt = st.q.dotsOn;
@@ -2061,7 +2191,7 @@ const W4R = {};
       await st.scope.wait(350);
       for (let i = 0; i < st.cells.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.cells[i], 14); Sfx.count(i + 1); await st.scope.wait(230); }
       K.ring(st, [box(st.cells[q.miss])], 6, '#FFC93C'); Sfx.reveal(); this.cheerAll(st);
-      st.summary = { up1: '每次多一个！', up1x: '每次多一个！', dn1: '每次少一个！', up2: '每次多两个！', dn2: '每次少两个！', up3: '每次多三个！', dn3: '每次少三个！', grow: '多得越来越多！' }[q.kind];
+      st.summary = { up1: '每次多一个！', dn1: '每次少一个！', up2: '每次多两个！', dn2: '每次少两个！' }[q.kind];
       Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('问号不是' + CN[ans]); await st.scope.wait(600); },
@@ -2178,13 +2308,13 @@ const W4R = {};
     },
     async eat(st, who, from, n) {
       const a = st.G.actors[this.chars[who]]; if (a && a.x > 0 && a.x < Stage.W) a.hop();
-      if (!st.peaches) { this.renderEq(st, who + 2); Sfx.pop(); await st.scope.wait(500); return; }
+      if (!st.peaches) { this.renderEq(st, who + 2); Sfx.pop(); await st.scope.wait(350); return; }
       for (let i = 0; i < n; i++) {
         const p = st.peaches[from + i]; p.by = who;
         p.e.querySelector('img').style.opacity = '.42'; p.e.insertAdjacentHTML('beforeend', crossSvg(EATC[who]));
         if (i === n - 1) { const f = face(this.chars[who], 42); Object.assign(f.style, { position: 'absolute', right: '-12px', top: '-14px' }); p.e.appendChild(f); }
         st.scope.anim(p.e, [{ transform: 'scale(1)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: 260, fill: 'none' }); Sfx.pop();
-        await st.scope.wait(280);
+        await st.scope.wait(190);
       }
     },
     async present(st) {
@@ -2196,16 +2326,16 @@ const W4R = {};
       this.place(st);
       if (st.plate) { popIn(st, st.plate); st.peaches.forEach((p, i) => popIn(st, p.e, 120 + 50 * i)); } else popIn(st, st.eqBox);
       K.task(st, [['assets/props/peach.png'], [{ node: (() => { const d = peachEl(50, EATC[0]); return d; })() }], ['q']]);
-      await st.scope.wait(700); if (!Session.alive(my)) return;
+      await st.scope.wait(500); if (!Session.alive(my)) return;
       K.say(st, '有' + CNQ(q.a) + '个桃！');
-      await st.scope.wait(1500); if (!Session.alive(my)) return;
+      await st.scope.wait(1100); if (!Session.alive(my)) return;
       const lead = ['八戒吃了' + CNQ(q.b) + '个！'];
       K.say(st, lead[0]); await this.eat(st, 0, q.a - q.b, q.b); if (!Session.alive(my)) return;
-      await st.scope.wait(1100); if (!Session.alive(my)) return;
+      await st.scope.wait(750); if (!Session.alive(my)) return;
       if (q.two) {
         lead.push('悟空吃了' + CNQ(q.c) + '个！');
         K.say(st, lead[1]); await this.eat(st, 1, q.a - q.b - q.c, q.c); if (!Session.alive(my)) return;
-        await st.scope.wait(1100); if (!Session.alive(my)) return;
+        await st.scope.wait(750); if (!Session.alive(my)) return;
       }
       if (st.eqBox) { this.renderEq(st, 4); }
       if (q.d === 4) { st.cards = q.eqs.map((x, i) => { const c = W3X.card(st, 'card' + i, 6); c.appendChild(eqEl(x.s, 52)); return c; }); st.opts = [0, 1, 2]; }
@@ -2416,8 +2546,9 @@ const W4R = {};
   /* ---------------------------------------------------------------- F8 闯！ the maze (reasoning): a square maze, two or three
      openings on its left / top edge marked by coloured flags, the treasure chest at an opening on the right / bottom edge.
      Only one flag's way gets there (a perfect maze - randomised depth-first - with the other entrances' ways cut by a wall;
-     checked by a search). The child taps the flag card. L1 4 x 4, two flags, the blocked ways end soon · L2 three flags ·
-     L3 5 x 5 · L4 the blocked ways run long (cut next to where they would join) · L5 6 x 6, the way winds (>= 10 cells). */
+     checked by a search). The child taps the flag card. Three flags at every level. L1 4 x 4, the blocked ways end soon ·
+     L2 the way is longer, the blocked ways may run on · L3 5 x 5 · L4 the blocked ways run long (cut next to where they
+     would join) · L5 6 x 6, the way winds (>= 10 cells). */
   const FLAGC = ['#E8414B', '#2E6FD8', '#F5B324'];
   const flagSvg = (c, w, h) => '<svg viewBox="0 0 60 64" width="' + w + '" height="' + h + '"><path d="M14 6V60" stroke="#2B2118" stroke-width="6" stroke-linecap="round"/><path d="M16 8L56 21L16 35Z" fill="' + c + '" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/></svg>';
   W4R.F8 = {
@@ -2444,7 +2575,7 @@ const W4R = {};
     reach(m, n, a) { const seen = new Set([a.join()]), q = [a]; while (q.length) { const p = q.shift(); this.nbrs(m, n, p[0], p[1]).forEach(x => { if (!seen.has(x.join())) { seen.add(x.join()); q.push(x); } }); } return seen; },
     cellOf(e, n) { return e.side === 'L' ? [e.i, 0] : e.side === 'T' ? [0, e.i] : e.side === 'R' ? [e.i, n - 1] : [n - 1, e.i]; },
     gen(G, o) {
-      const d = Math.min(5, Math.max(1, o.level || 1)), rng = o.rng, n = d <= 2 ? 4 : d <= 4 ? 5 : 6, k = d === 1 ? 2 : 3, minLen = [0, 3, 4, 5, 7, 10][d];
+      const d = Math.min(5, Math.max(1, o.level || 1)), rng = o.rng, n = d <= 2 ? 4 : d <= 4 ? 5 : 6, k = 3, minLen = [0, 3, 5, 5, 7, 10][d];
       let keep = null;
       for (let t = 0; t < 600; t++) {
         const m = this.carve(rng, n), half = Math.floor(n / 2);
@@ -2463,7 +2594,7 @@ const W4R = {};
           const Pw = this.route(m, n, this.cellOf(ent[w], n), ex); if (!Pw) continue;
           const j = Pw.findIndex(p => onR.has(p.join()));
           if (j <= 0 || (d >= 4 && j < 3)) { ok = false; break; }
-          const i = d <= 2 ? rng.int(0, Math.min(1, j - 1)) : d === 3 ? rng.int(0, j - 1) : rng.int(Math.max(0, j - 2), j - 1);
+          const i = d === 1 ? rng.int(0, Math.min(1, j - 1)) : d <= 3 ? rng.int(0, j - 1) : rng.int(Math.max(0, j - 2), j - 1);
           const A = Pw[i], B = Pw[i + 1];
           if (A[0] === B[0]) m.E[A[0]][Math.min(A[1], B[1])] = 0; else m.S[Math.min(A[0], B[0])][A[1]] = 0;
         }
@@ -2723,79 +2854,79 @@ const W4R = {};
       (st.crowd || []).forEach((e, i) => { const p = this.spot(g, i); place(e, p.x, p.y, g.crowd.w, g.crowd.h); });
       if (st.cards) K.cardsPlace(st, this.cardSpot());
     },
-    /* n astronauts walk from the right edge into the door (or out of it and away); every one is counted as they pass */
-    async walk(st, n, inward, say) {
-      const g = this.geo(), D = this.door(g), w = g.aw, h = g.ah, top = g.bus.y + g.bus.h + 6 - h, far = Stage.W + 40, near = D.x + 30, jobs = [];
+    /* the passengers of one stop as a group: getting on, they walk in side by side and step into the door one after
+       another; getting off, they step out one after another and walk away together. A tick as each one passes the door. */
+    async walk(st, n, inward) {
+      const g = this.geo(), D = this.door(g), w = g.aw, h = g.ah, top = g.bus.y + g.bus.h + 6 - h, far = Stage.W + 40, near = D.x + 30, sp = Math.round(w * 0.8), v = (far - near) / 820, jobs = [];
+      const door = 'translate(' + (D.x - w / 2 - near) + 'px,' + (D.y - h / 2 - top) + 'px) scale(.3)';
       for (let i = 0; i < n; i++) {
-        const e = K.item(Stage.el, 'assets/props/astronaut.png', w, h); e.style.zIndex = 7; st.els.push(e);
-        const N = 8, kf = [], door = 'translate(' + (D.x - w / 2 - near) + 'px,' + (D.y - h / 2 - top) + 'px) scale(.3)';
-        const hit = () => { if (say) Count.say(i + 1); else Sfx.count(i + 1); };
+        const e = K.item(Stage.el, 'assets/props/astronaut.png', w, h); e.style.zIndex = 7 + i; st.els.push(e); place(e, near, top);
+        const kf = [];
         if (inward) {
-          place(e, near, top);
-          for (let k = 0; k <= N; k++) kf.push({ transform: 'translate(' + Math.round((far - near) * (1 - k / N)) + 'px,' + (k % 2 ? -10 : 0) + 'px)', opacity: 1, offset: 0.72 * k / N });
+          const x0 = far - near + i * sp, tw = x0 / v, dur = tw + 240, N = Math.max(4, Math.round(tw / 120));
+          for (let k = 0; k <= N; k++) kf.push({ transform: 'translate(' + Math.round(x0 * (1 - k / N)) + 'px,' + (k % 2 ? -9 : 0) + 'px)', opacity: 1, offset: (tw / dur) * k / N });
           kf.push({ transform: door, opacity: 0, offset: 1 });
-          jobs.push(st.scope.anim(e, kf, { duration: 1300, delay: 400 * i, easing: 'linear' }).then(() => { e.remove(); hit(); }));
+          jobs.push(st.scope.anim(e, kf, { duration: Math.round(dur), easing: 'linear' }).then(() => { e.remove(); Sfx.count(i + 1); }));
         } else {
-          place(e, near, top);
+          const x1 = far - near, tw = x1 / v, dur = tw + 240, N = Math.max(4, Math.round(tw / 120));
           kf.push({ transform: door, opacity: 0, offset: 0 });
-          for (let k = 0; k <= N; k++) kf.push({ transform: 'translate(' + Math.round((far - near) * k / N) + 'px,' + (k % 2 ? -10 : 0) + 'px)', opacity: 1, offset: 0.28 + 0.72 * k / N });
-          st.scope.timeout(hit, 400 * i + 360);
-          jobs.push(st.scope.anim(e, kf, { duration: 1300, delay: 400 * i, easing: 'linear' }).then(() => e.remove()));
+          for (let k = 0; k <= N; k++) kf.push({ transform: 'translate(' + Math.round(x1 * k / N) + 'px,' + (k % 2 ? -9 : 0) + 'px)', opacity: 1, offset: (240 + tw * k / N) / dur });
+          st.scope.timeout(() => Sfx.count(i + 1), 170 * i + 200);
+          jobs.push(st.scope.anim(e, kf, { duration: Math.round(dur), delay: 170 * i, easing: 'linear' }).then(() => e.remove()));
         }
       }
       await st.scope.guard(Promise.all(jobs));
     },
-    /* to the next stop: out at the left, in again from the right */
-    async drive(st) {
+    /* to the next stop: out at the left, in again from the right (the later stops quicker) */
+    async drive(st, ms) {
       const b = box(st.bus), out = -(b.x + b.w + 80), inn = Stage.W - b.x + 80;
-      Sfx.whoosh(0.6);
-      await st.scope.anim(st.bus, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + out + 'px)', offset: 0.42 }, { transform: 'translateX(' + inn + 'px)', offset: 0.43 }, { transform: 'translateX(0)' }], { duration: 1500, easing: 'ease-in-out', fill: 'none' });
+      Sfx.whoosh(ms / 2500);
+      await st.scope.anim(st.bus, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + out + 'px)', offset: 0.42 }, { transform: 'translateX(' + inn + 'px)', offset: 0.43 }, { transform: 'translateX(0)' }], { duration: ms, easing: 'ease-in-out', fill: 'none' });
       Sfx.mar(1046.5, 0, 0.35, 0.4); Sfx.mar(1318.5, 0.14, 0.35, 0.5);
     },
     tok(st, node) { if (st.eqEl.style.visibility === 'hidden') { st.eqEl.style.visibility = ''; K.pop(st, st.eqEl); } st.row.appendChild(node); st.scope.anim(node, [{ transform: 'scale(0)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: 320, easing: EASE.pop }); return node; },
+    /* the story: every stop's sentence is said while its passengers get on / off (L5 ≈ 9 s, L3 ≈ 6.5 s) */
     async present(st) {
-      const q = st.q, my = st, h = q.sup ? 66 : 56, alive = () => Session.alive(my);
+      const q = st.q, my = st, h = q.sup ? 66 : 56, alive = () => Session.alive(my), again = !!st.retest;
       st.eqEl = V7.panel(st, 6, false);
       st.row = el('div', '', st.eqEl); Object.assign(st.row.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', pointerEvents: 'none' });
       st.bus = K.item(Stage.el, 'assets/props/spacebus.png', 400, 286); st.bus.style.zIndex = 5; st.els.push(st.bus);
       this.place(st);
       K.pop(st, st.bus); st.eqEl.style.visibility = 'hidden';          /* the sentence card comes with its first number */
       K.task(st, [['assets/props/spacebus.png', 'assets/props/astronaut.png'], ['q']]);
-      await st.scope.wait(T(600)); if (!alive()) return;
+      await st.scope.wait(T(again ? 0 : 250)); if (!alive()) return;
       /* the first passengers: seen this once, getting on */
-      await this.walk(st, q.a, true, st.level <= 2); if (!alive()) return;
       this.tok(st, V7.numCol(q.a, q.sup, h));
-      await V7.talk(st, '车上有' + CNQ(q.a) + '个人！', 2400); if (!alive()) return;
-      for (const [k, m] of q.steps) {
-        await this.drive(st); if (!alive()) return;
-        await this.walk(st, m, k === 'on', st.level <= 2); if (!alive()) return;
+      await Promise.all([this.walk(st, q.a, true), V7.talk(st, '车上有' + CNQ(q.a) + '个人！', 1800)]); if (!alive()) return;
+      for (let i = 0; i < q.steps.length; i++) {
+        const [k, m] = q.steps[i];
+        await this.drive(st, i === 0 && !again ? 950 : 570); if (!alive()) return;
         this.tok(st, V7.op(k === 'on' ? '+' : '-', 54, k === 'on' ? '#2E9E4F' : '#E0701E')); this.tok(st, V7.numCol(m, q.sup, h));
-        await V7.talk(st, (k === 'on' ? '上来' : '下去') + CNQ(m) + '个人！', 2400); if (!alive()) return;
+        await Promise.all([this.walk(st, m, k === 'on'), V7.talk(st, (k === 'on' ? '上来' : '下去') + CNQ(m) + '个人！', 1800)]); if (!alive()) return;
       }
       this.tok(st, V7.op('=', 54)); st.slot = this.tok(st, V7.slot(h));
       K.cards(st, q.opts, Object.assign({ size: 136, numOnly: !!q.sup }, this.cardSpot()));
       K.say(st, '车上现在几个人？');
     },
     onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
-    /* everybody on the bus gets off and is counted */
+    /* everybody on the bus gets off together and lines up: a tick for each */
     async reveal(st) {
-      const q = st.q, my = st, g = this.geo(), D = this.door(g);
+      const q = st.q, my = st, g = this.geo(), D = this.door(g), cw = g.crowd.w, ch = g.crowd.h;
       if (st.slot) V7.fill(st.slot, q.answer, q.sup, q.sup ? 66 : 56);
       const c = st.cards[st.opts.indexOf(q.answer)]; if (c) { K.ring(st, [box(c)], 6, '#FFC93C'); K.hop(st, c, 18); }
       Sfx.reveal();
       st.crowd = [];
       for (let i = 0; i < q.answer; i++) {
-        if (!Session.alive(my)) return;
-        const p = this.spot(g, i), e = K.item(Stage.el, 'assets/props/astronaut.png', g.crowd.w, g.crowd.h); e.style.zIndex = 7; st.els.push(e); st.crowd.push(e);
-        place(e, D.x - g.crowd.w / 2, D.y - g.crowd.h / 2);
-        K.flyTo(st, e, p.x, p.y, 380, 50);
-        await Count.beat(st.scope, 330, i + 1);
+        const p = this.spot(g, i), e = K.item(Stage.el, 'assets/props/astronaut.png', cw, ch); e.style.zIndex = 7; st.els.push(e); st.crowd.push(e);
+        place(e, p.x, p.y, cw, ch);
+        st.scope.anim(e, [{ transform: 'translate(' + (D.x - cw / 2 - p.x) + 'px,' + (D.y - ch / 2 - p.y) + 'px) scale(.3)', opacity: 0 }, { transform: 'translate(0,0) scale(1)', opacity: 1 }], { duration: 380, delay: 80 * i, easing: EASE.glide, fill: 'backwards' });
+        st.scope.timeout(() => Sfx.count(i + 1), 80 * i + 380);
       }
-      if (!Session.alive(my)) return;
+      await st.scope.wait(T(80 * q.answer + 420)); if (!Session.alive(my)) return;
       this.cheerAll(st);
       st.summary = q.answer ? '车上有' + CNQ(q.answer) + '个人！' : '车上没有人了！';
       Voice.say(st.summary, { tag: 'summary' });
-      await st.scope.wait(T(1300));
+      await st.scope.wait(T(1200));
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(ans === 0 ? '车上还有人' : '不是' + CNQ(ans) + '个人'); await st.scope.wait(T(700)); },
     next(st, strat) { return V7.nextCard(st, strat); },
@@ -2860,7 +2991,15 @@ const W4R = {};
       d.appendChild(this.bars(q)); d.appendChild(V7.numCol(q.dd, q.sup, 62));
       return d;
     },
-    optNode(o) { const [w, n] = o.split(':'), d = el('div', ''); Object.assign(d.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', pointerEvents: 'none' }); d.appendChild(V7.face(w, 64)); d.appendChild(UI.num(+n, 50)); return d; },
+    /* an L5 choice reads by itself: who, and a green "more" sign - an up arrow and + n */
+    optNode(o) {
+      const [w, n] = o.split(':'), d = el('div', ''); Object.assign(d.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '9px', pointerEvents: 'none' });
+      d.appendChild(V7.face(w, 58));
+      const b = el('div', '', d); Object.assign(b.style, { display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 10px 2px 6px', borderRadius: '14px', background: '#E6F7E9', boxShadow: '0 0 0 3px ' + INK });
+      const ar = svg('svg', { viewBox: '0 0 30 40', width: 28, height: 37 }, b); svg('path', { d: 'M15 4L27 18H20V36H10V18H3Z', fill: '#3FB55A', stroke: INK, 'stroke-width': 3, 'stroke-linejoin': 'round' }, ar);
+      b.appendChild(V7.op('+', 34, '#2E9E4F')); b.appendChild(UI.num(+n, 40));
+      return d;
+    },
     /* the story in two steps: her row comes with its sentence, then the question and the cards */
     async present(st) {
       const q = st.q, my = st, N = WHO7, G = this.geo();
@@ -2914,8 +3053,9 @@ const W4R = {};
     snap(st) { return { opts: st.opts || null }; },
   };
 
-  /* ================================================================ I8 猜数 (reasoning): clues one by one - "比三大" "比六小" "不是
-     四" - each as a picture that stays (? > 3, ? < 6, a crossed-out 4, pairs of dots for "是双数"); tap the number. Only one
+  /* ================================================================ I8 猜数 (reasoning): a number line 0-10 on top; clues one by
+     one - "比三大" "比六小" "不是四" - each as a picture that stays (? > 3, ? < 6, a crossed-out 4, pairs of dots for "是双数");
+     tap the number on the line. At L1-L3 each clue greys out the numbers it rules out; at L4-L5 nothing is greyed. Only one
      number fits, and every clue is needed. L1 two clues (> and <), cards 0-6, dots · L2 cards 0-10, > and <, or one of
      them and "不是" · L3 three clues · L4 three clues in any order (two "不是" too), numbers only · L5 one clue is "是双数". */
   const CLUE = {
@@ -2941,22 +3081,41 @@ const W4R = {};
       }
       return { k: [d, 'x'], clues: [['gt', 2], ['lt', 4]], top, answer: 3, opts: all.slice(), sup: d <= 3 ? 0 : 1 };
     },
+    /* the number line on top (one row in landscape, rows of six / four in portrait); the clues under it */
     geo(st) {
-      const L = K.L(), n = st.q.opts.length, nc = st.q.clues.length, one = n <= 7;
-      const c = L ? { w: 176, h: 124, gap: 22, aw: 104, ah: 108 } : { w: 196, h: 126, gap: 14, aw: 110, ah: 114 };
-      const total = (L ? c.aw + 18 : 0) + nc * c.w + (nc - 1) * c.gap, x0 = (L ? 512 : 352) - total / 2;
-      Object.assign(c, L ? { ax: x0, ay: (one ? 146 : 108) + (c.h - c.ah) / 2, x: x0 + c.aw + 18, y: one ? 146 : 108 } : { ax: 352 - c.aw / 2, ay: 884, x: x0, y: 226 });
-      return L ? Object.assign({ per: one ? n : 6, size: one ? 108 : 104, gap: one ? 14 : 16, cx: 512, cy0: one ? 432 : 386 }, { clue: c })
-        : Object.assign({ per: 4, size: one ? 124 : 116, gap: 16, cx: 352, cy0: one ? 470 : 466 }, { clue: c });
+      const L = K.L(), n = st.q.opts.length, one = n <= 7, nc = st.q.clues.length;
+      const ln = L ? (one ? { per: 7, w: 118, h: 112, gap: 6 } : { per: 11, w: 89, h: 108, gap: 3 }) : (one ? { per: 4, w: 130, h: 118, gap: 8 } : { per: 6, w: 108, h: 108, gap: 4 });
+      Object.assign(ln, { y: L ? 120 : 228, rows: Math.ceil(n / ln.per), dy: ln.h + 22 });
+      const bottom = ln.y + (ln.rows - 1) * ln.dy + ln.h;
+      const c = L ? { w: 196, h: 136, gap: 24, aw: 110, ah: 114 } : { w: 200, h: 136, gap: 14, aw: 110, ah: 114 };
+      const total = (L ? c.aw + 22 : 0) + nc * c.w + (nc - 1) * c.gap, x0 = (L ? 512 : 352) - total / 2;
+      c.y = L ? 318 : bottom + 74;
+      Object.assign(c, L ? { ax: x0, ay: c.y + (c.h - c.ah) / 2, x: x0 + c.aw + 22 } : { ax: 352 - c.aw / 2, ay: 884, x: x0 });
+      return { ln, clue: c, cx: L ? 512 : 352 };
     },
-    cardSpot(st) { const g = this.geo(st); return { cx: g.cx, cy: g.cy0, gap: g.gap }; },
+    cardSpot(st) { const g = this.geo(st); return { cx: g.cx, cy: g.ln.y + g.ln.h / 2, gap: g.ln.gap }; },
     decor(G) { W3X.decor2(G, this.chars); },
     place(st) {
-      const g = this.geo(st), c = g.clue;
-      if (st.cards) st.cards.forEach((e, i) => { const r = Math.floor(i / g.per), inRow = Math.min(g.per, st.cards.length - r * g.per), k = i % g.per; place(e, Math.round(g.cx - (inRow * g.size + (inRow - 1) * g.gap) / 2 + k * (g.size + g.gap)), Math.round(g.cy0 + r * (g.size + g.gap) - g.size / 2), g.size, g.size); });
+      const g = this.geo(st), ln = g.ln, c = g.clue, n = st.q.opts.length;
+      for (let r = 0; r < ln.rows; r++) {
+        const inRow = Math.min(ln.per, n - r * ln.per), wr = inRow * ln.w + (inRow - 1) * ln.gap, x0 = Math.round(g.cx - wr / 2), y = ln.y + r * ln.dy;
+        if (st.tracks && st.tracks[r]) place(st.tracks[r], x0 - 6, y - 6, wr + 12, ln.h + 12);
+        for (let k = 0; k < inRow; k++) { const e = st.cells && st.cells[r * ln.per + k]; if (e) place(e, x0 + k * (ln.w + ln.gap), y, ln.w, ln.h); }
+      }
       if (st.alien) place(st.alien, c.ax, c.ay, c.aw, c.ah);
       (st.clueEls || []).forEach((e, i) => place(e, c.x + i * (c.w + c.gap), c.y, c.w, c.h));
     },
+    /* a number the clue rules out: greyed (and crossed out for "不是") - it stays a target */
+    off(e, cross) {
+      if (!e._off) { e._off = true; e.style.transition = 'background .35s ease'; e.style.background = '#C9D0DC'; Array.from(e.children).forEach(ch => { ch.style.transition = 'opacity .35s ease'; ch.style.opacity = '.28'; }); }
+      if (cross && !e._x) {
+        const s = svg('svg', { viewBox: '0 0 100 100', preserveAspectRatio: 'none' }); Object.assign(s.style, { position: 'absolute', left: '10%', top: '10%', width: '80%', height: '80%', pointerEvents: 'none' });
+        svg('path', { d: 'M12 88L88 12', stroke: '#FFFFFF', 'stroke-width': 13, 'stroke-linecap': 'round', 'vector-effect': 'non-scaling-stroke' }, s);
+        svg('path', { d: 'M12 88L88 12', stroke: '#5A4636', 'stroke-width': 7, 'stroke-linecap': 'round', 'vector-effect': 'non-scaling-stroke' }, s);
+        e.appendChild(s); e._x = s;
+      }
+    },
+    shade(st, c, wait) { let k = 0; st.q.opts.forEach((v, i) => { if (!CLUE.holds(c, v)) { const e = st.cells[i]; st.scope.timeout(() => this.off(e, c[0] === 'not'), wait + 45 * k++); } }); },
     clueCard(st, c, sup) {
       const e = V7.panel(st, 5, false); e.style.gap = '6px';
       if (c[0] === 'gt' || c[0] === 'lt') { e._slot = V7.slot(44); e.appendChild(e._slot); e.appendChild(V7.op(c[0] === 'gt' ? '>' : '<', 58, '#2E6FD8')); e.appendChild(V7.numCol(c[1], sup, 54, true)); }
@@ -2974,31 +3133,41 @@ const W4R = {};
       }
       return e;
     },
+    /* the clues one by one; at L1-L3 each one greys out on the line what it rules out (at L4-L5 the child does it in his
+       head - the line is shaded only after a right answer, as the explanation) */
     async present(st) {
-      const q = st.q, my = st;
+      const q = st.q, my = st, g = this.geo(st);
+      st.tracks = Array.from({ length: g.ln.rows }, () => { const t = W2X.thing(st, 10, 10, 4, ''); Object.assign(t.style, { borderRadius: '24px', background: 'rgba(46,58,107,.78)', boxShadow: '0 0 0 4px ' + INK }); return t; });
+      /* eleven numbers: their own ids (n0 .. n10 - the shared card ids stop at card9) */
+      st.cells = q.opts.map((v, i) => {
+        const c = el('div', 'card', Stage.el); Object.assign(c.style, { position: 'absolute', gap: '4px' });
+        c.appendChild(UI.num(v, q.sup ? 58 : 44)); if (!q.sup && v > 0) c.appendChild(V7.dots(v, { g: 13, r: 5 }));
+        K.reg(st, 'n' + v, c, {}); st.els.push(c);
+        st.scope.anim(c, [{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: 300, delay: 30 * i, easing: EASE.pop, fill: 'backwards' });
+        return c;
+      });
+      st.cards = st.cells; st.opts = q.opts.slice();
       st.alien = K.item(Stage.el, 'assets/props/alien.png', 100, 104); st.alien.style.zIndex = 4; st.els.push(st.alien);
       st.clueEls = [];
       this.place(st); K.pop(st, st.alien);
+      st.tracks.forEach(t => K.pop(st, t));
       K.task(st, [['assets/props/alien.png'], ['q']]);
-      await st.scope.wait(T(500)); if (!Session.alive(my)) return;
+      await st.scope.wait(T(450)); if (!Session.alive(my)) return;
       const lines = q.clues.map(c => CLUE.line(c));
       for (let i = 0; i < q.clues.length; i++) {
         const e = this.clueCard(st, q.clues[i], q.sup); st.clueEls.push(e); this.place(st); K.pop(st, e); Sfx.pop();
+        if (!q.sup) this.shade(st, q.clues[i], 350);
         if (i === q.clues.length - 1) break;
         await V7.talk(st, lines[i], 2200); if (!Session.alive(my)) return;
-        await st.scope.wait(T(250)); if (!Session.alive(my)) return;
+        await st.scope.wait(T(300)); if (!Session.alive(my)) return;
       }
-      /* eleven cards: their own ids (n0 .. n10 - the shared card ids stop at card9) */
-      const size = this.geo(st).size;
-      st.cards = q.opts.map((v, i) => { const c = UI.card(v, size, { numOnly: !!q.sup }); Stage.el.appendChild(c); c.style.position = 'absolute'; K.reg(st, 'n' + v, c, {}); st.els.push(c); st.scope.anim(c, [{ transform: 'scale(0) rotate(-8deg)' }, { transform: 'scale(1)' }], { duration: 320, delay: 40 * i, easing: EASE.pop, fill: 'backwards' }); return c; });
-      st.opts = q.opts.slice();
-      this.place(st);
       st.lead = lines.slice(0, -1);
       K.say(st, lines[lines.length - 1] + '，是几？');
     },
     onGesture(st, name, p) { const m = /^n(\d+)$/.exec(p.id || ''); if (name !== 'tap' || !m || !st.cards || st.picked) return false; st.picked = true; Session.submit(st, Number(m[1])); return 'ok'; },
     async reveal(st) {
-      const q = st.q, c = st.cards[st.opts.indexOf(q.answer)];
+      const q = st.q, c = st.cells[st.opts.indexOf(q.answer)];
+      q.clues.forEach(cl => this.shade(st, cl, 0));
       if (c) { K.ring(st, [box(c)], 6, '#FFC93C'); K.hop(st, c, 18); }
       st.clueEls.forEach((e, i) => { if (e._slot) V7.fill(e._slot, q.answer, 1, 54); st.scope.anim(e, [{ transform: 'scale(1)' }, { transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 380, delay: 160 * i, easing: EASE.pop }); });
       if (st.alien) K.hop(st, st.alien, 24);
