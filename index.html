@@ -3372,7 +3372,7 @@ const Story = {
     const list = Object.values(G.actors).filter(a => !a.math && a.x > 0 && a.x < Stage.W).sort((a, b) => a.x - b.x);
     if (!list.length) return;
     /* they walk into ONE welcome line in front of the child (then back to their places) */
-    const home = list.map(a => ({ x: a.x, y: a.y })), gap = Math.min(150, (Stage.W - 160) / Math.max(1, list.length - 1));
+    const home = list.map(a => ({ x: a.x, y: a.y })), gap = Math.min(150, (Stage.W - 160) / Math.max(1, list.length - 1)), L0 = K.L();
     const y = Stage.H * (K.L() ? 0.86 : 0.8), x0 = Stage.W / 2 - gap * (list.length - 1) / 2;
     await Promise.all(list.map((a, i) => sc.wait(i * 120).then(() => a.moveTo(x0 + i * gap, y, 620, 50))));
     for (let i = 0; i < list.length; i++) {
@@ -3384,7 +3384,9 @@ const Story = {
     list.forEach(a => a.cheer());
     Fx.confetti(24);
     await sc.wait(700);
+    if (K.L() !== L0) { if (G.game.decor) G.game.decor(G); return; }        /* turned meanwhile: the game places them for this screen */
     await Promise.all(list.map((a, i) => a.moveTo(home[i].x, home[i].y, 520, 30)));
+    if (K.L() !== L0 && G.game.decor) G.game.decor(G);
   },
   async hat(G, host) {
     if (!host) return;
