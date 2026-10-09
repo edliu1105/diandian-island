@@ -126,10 +126,12 @@ with sync_playwright() as p, serve() as base:
     page.evaluate("window.__go('bluey2', 'C2', 3, { seed: 3, noDemo: true })")
     lv, gen = [], None
     for k in range(6):
+        if k and page.evaluate("!Session.G"): break          # a session is a fixed number of questions (each counts, 2026-10-08)
         cur = wait_phase(page, gen=gen, timeout=30000); gen = cur['gen']
         lv.append((cur['level'], cur['retest'], bool(cur.get('rv'))))
-        answer_question(page, 'wrong' if k < 2 else 'right')
-    page.evaluate("gesture('home')"); page.wait_for_timeout(200)
+        answer_question(page, 'wrong' if k < 2 else 'right'); page.wait_for_timeout(300)
+    if page.evaluate("!!Session.G"): page.evaluate("gesture('home')")
+    page.wait_for_timeout(200)
     fresh = [l for l, rt, rv in lv[1:] if not rt and not rv]          # the game's own new questions (a review card keeps its own form)
     log.check(r and lv[0][0] == 3 and fresh and fresh[0] == 2, 'M7 two wrong answers -> the next new question a level lower %s' % lv)
     # L1 / L6 / L7
