@@ -4,10 +4,18 @@
   - right: difficulty 1-5 answered right (judged right, no error), landscape; 2 and 4 portrait
   - targets: every tap target of the question (st.map) on screen, on top, >= 88 CSS px - landscape and portrait, 1024x768
   - mouse: a real mouse click on the right answer (L1 and L5) submits it
-  - wrong: answered wrong at 1 / 3 / 5: named, a NEW question of the same kind follows (each question counts by itself)
+  - wrong: answered wrong at every level: named, then the explain step (st.phase 'explain', st.explaining; the game's own
+    explain(st, ans), no page error, the one he chose marked, the RIGHT one ringed gold, no praise, never "错"), then a
+    NEW question of the same kind (each question counts by itself)
+  - five options (the client, 2026-10-10, docs/OPTIONS-EXPLAIN-SPEC.md): every pick-one question has 5 options (or asks
+    two at once - 一题两问 - from 3 cards), exactly one right (rightCount), the right one's place balanced over the five
+    places (each place 10-30 % of 300 questions; 一题两问: each card that can be right 15-60 % in either place); the not-pick-one games
+    (F3 build, N1 pick all, N2 pick two of >= 5, N4 fill, O2 walk >= 6 ways, a random walk on the right way <= 1/5) checked for their size
+  - targets also clear of the friends, the top bar and the task card (__layoutReport)
 and the progress: the stars open when the sky is all flagged and its rainbow castle has played; the sky's gate turns gold
 ("惊喜来啦！") and leads up ("飞到星空啦！"); one island and one game at a time; the star castle and the space party at the end.
-usage: python tests/test_w4.py [chromium|webkit] [jobs=3]      W4_ONLY=F1,F2 to run some games only (no progress part)"""
+usage: python tests/test_w4.py [chromium|webkit] [jobs=3]      W4_ONLY=F1,F2 to run some games only (no progress part)
+       W4_TIMING=1: also the explain step's real length (no fast mode; every game at L3: 1-6 s)"""
 import os, sys
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +32,83 @@ GEO = """() => { const st = Session.st, out = [], vw = innerWidth, vh = innerHei
     if (Math.min(r.width, r.height) < 88) out.push(id + ' ' + Math.round(Math.min(r.width, r.height)) + 'px');
     const pe = e.style.pointerEvents; e.style.pointerEvents = 'auto'; const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); e.style.pointerEvents = pe;
     if (!(h === e || (h && e.contains(h)))) out.push(id + ' covered by ' + (h ? (h.className && h.className.baseVal === undefined ? h.className : h.tagName) : 'nothing')); }
+  /* clear of the friends (their body: the middle of their box), the top bar and the task card */
+  const R = window.__layoutReport(), cut = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  const keep = R.actors.filter(a => !a.math).map(a => ({ id: 'actor ' + a.id, x: a.x + a.w * 0.2, y: a.y + a.h * 0.12, w: a.w * 0.6, h: a.h * 0.8 })).concat(R.hud.map(h => ({ id: 'hud ' + h.id, x: h.x, y: h.y, w: h.w, h: h.h })), R.math.filter(m => m.cls === 'task').map(m => ({ id: 'task card', x: m.x, y: m.y, w: m.w, h: m.h })));
+  R.targets.forEach(t => keep.forEach(k => { if (cut(t, k) > 64) out.push(t.id + ' overlaps ' + k.id); }));
   return out; }"""
+# the explain step: every world-4 rule's explain is wrapped once; what it did is kept in window.__xr
+XWRAP = """() => {
+  if (!window.__said) { window.__said = []; const vs = Voice.say.bind(Voice); Voice.say = (t, x) => { window.__said.push(t); return vs(t, x); }; }
+  ORDER4.forEach(w => WORLDS[w].games.forEach(id => {
+    const g = GAMES[id]; if (!g || g.__xw) return; g.__xw = true; const orig = g.explain;
+    g.explain = async function (st, ans) {
+      const rec = { id, level: st.level, gen: st.gen, phase: st.phase, explaining: !!st.explaining, own: !!orig, t0: performance.now(), s0: window.__said.length };
+      window.__xr = rec;
+      try { if (orig) await orig.call(this, st, ans); else await this.reveal(st); } catch (e) { rec.err = String((e && e.message) || e); throw e; }
+      rec.ms = Math.round(performance.now() - rec.t0); rec.alive = Session.alive(st);
+      rec.said = window.__said.slice(rec.s0);
+      const rings = Array.from(document.querySelectorAll('#stage > .ringo')).filter(r => getComputedStyle(r).visibility !== 'hidden');
+      const inside = (r, e) => { const a = r.getBoundingClientRect(), b = e.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2; return x >= a.left - 3 && x <= a.right + 3 && y >= a.top - 3 && y <= a.bottom + 3; };
+      const gold = rings.filter(r => getComputedStyle(r).borderTopColor === 'rgb(255, 201, 60)');
+      const right = (this.rightEls ? this.rightEls(st, ans) : []) || [];
+      rec.right = right.length; rec.rightOk = right.length > 0 && right.every(e => e && e.isConnected && gold.some(r => inside(r, e)));
+      rec.chosen = (st.xb || []).length;
+      rec.bad = rec.said.filter(t => (this.praise || []).includes(t) || PRAISE.includes(t) || /错/.test(t));
+      if (window.__xhold) await new Promise(r => { window.__xrel = r; });
+    };
+  }));
+}"""
+GEN = """(g) => { const R = GAMES[g], bad = [], NON = { F3: 'build', N1: 'pick all', N2: 'pick two', N4: 'fill', O2: 'walk' }, LINE = { I8: 1 }; let keys = 0; const kinds = {};
+  for (let lv = 1; lv <= 5; lv++) { const G = { world: R.world, W: WORLDS[R.world], rng: RNG(lv * 13 + 3), bags: {}, ws: Store.w(R.world), level: lv }, seen = new Set(), pos = [0, 0, 0, 0, 0], pos2 = [[0, 0, 0], [0, 0, 0]]; let n5 = 0, n2 = 0;
+    for (let i = 0; i < 300; i++) { let qq; try { qq = R.gen(G, { level: lv, rng: G.rng }); } catch (e) { bad.push('L' + lv + ' throws ' + e.message); break; }
+      if (!qq || qq.answer === undefined || qq.answer === null) { bad.push('L' + lv + ' no answer'); break; }
+      const o = qq.opts, J = x => JSON.stringify(x);
+      if (NON[g]) { kinds[NON[g]] = 1;
+        if (g === 'N1' && qq.cards.length < 5) bad.push('L' + lv + ' N1 only ' + qq.cards.length + ' cards');
+        if (g === 'N2' && qq.vals.length < 5) bad.push('L' + lv + ' N2 only ' + qq.vals.length + ' cards');
+        if (g === 'O2' && R.ways(qq.C, qq.R).length < 6) bad.push('L' + lv + ' O2 only ' + R.ways(qq.C, qq.R).length + ' ways');
+        if (g === 'O2') { let pr = 1; qq.right.forEach((x, i) => { if (!i) return; const [r, c] = qq.right[i - 1]; pr /= (r > 0 ? 1 : 0) + (c < qq.C - 1 ? 1 : 0); }); if (pr > 0.2) bad.push('L' + lv + ' O2: a random walk finds the right way ' + pr); }
+      } else if (qq.asks === 2) { kinds['two asks'] = 1; n2++;
+        const parts = String(qq.answer).split(',');
+        const os = (o || []).map(String);
+        if (!Array.isArray(o) || o.length < 3 || parts.length !== 2 || parts.some(x => !os.includes(x))) bad.push('L' + lv + ' two asks: answer ' + qq.answer + ' / cards ' + J(o));
+        else parts.forEach((x, k) => pos2[k][os.indexOf(x)]++);
+      } else { kinds[(o || []).length + ' options'] = 1;
+        if (!Array.isArray(o) || o.length < 5) { bad.push('L' + lv + ' only ' + (o || []).length + ' options ' + J(qq.k)); }
+        else { const ks = o.map(J); let p = ks.indexOf(J(qq.answer)); if (p < 0 && typeof qq.answer === 'number' && qq.answer >= 0 && qq.answer < o.length && o.every(x => typeof x === 'number') && o.join() === o.map((_, i) => i).join()) p = qq.answer;
+          if (p < 0) bad.push('L' + lv + ' answer not among the options ' + J(qq.k));
+          if (new Set(ks).size !== ks.length) bad.push('L' + lv + ' two same options ' + J(qq.k));
+          if (p >= 0 && o.length === 5 && !LINE[g]) { pos[p]++; n5++; } }
+      }
+      if (R.rightCount) { const rc = R.rightCount(qq); if (rc !== 1) bad.push('L' + lv + ' ' + rc + ' right options ' + J(qq.k)); }
+      seen.add(JSON.stringify(R.key ? R.key(qq) : qq.k)); }
+    keys += seen.size; if (seen.size < 4) bad.push('L' + lv + ' only ' + seen.size + ' different questions');
+    if (n5 >= 100 && pos.some(c => c < 0.1 * n5 || c > 0.3 * n5)) bad.push('L' + lv + ' right place not balanced ' + JSON.stringify(pos));
+    if (n2 >= 100 && pos2.some(r => r.filter(c => c > 0).length < 2 || r.some(c => c > 0 && (c < 0.15 * n2 || c > 0.6 * n2)))) bad.push('L' + lv + ' two asks: cards not balanced ' + JSON.stringify(pos2));          /* a card that is never right (F2's "=") is a decoy */
+  }
+  return { bad: bad.slice(0, 4), keys, kinds: Object.keys(kinds) }; }"""
+
+
+def load_games(page):
+    """the games come in their own files after the entry tap; on a machine short of sockets a file can fail - load again"""
+    from harness import enter
+    for _ in range(5):
+        page.evaluate("() => W3.load()")
+        if page.evaluate("() => ORDER4.every(w => WORLDS[w].games.every(g => !!GAMES[g] && !!GAMES[g].gen))"): return True
+        page.reload(); page.wait_for_function('window.__ready === true', timeout=30000); enter(page)
+    return False
+
+
+def answer_fully(page, strat, timeout=60000):
+    """answer_question runs out of steps on a long question in real time (O1 pours three gourds first): go on until it is in"""
+    from harness import answer_question, q
+    gen, snap = answer_question(page, strat, timeout=timeout)
+    for _ in range(30):
+        cur = q(page)
+        if not cur or cur['gen'] != gen or cur.get('submitted'): break
+        answer_question(page, strat, timeout=timeout)
+    return gen
 
 
 def per_game(args):
@@ -35,18 +119,12 @@ def per_game(args):
     with sync_playwright() as p, serve() as base:
         br = getattr(p, ENG).launch()
         page = new_page(br, base, vw, vh, fast=True); enter(page)
-        page.evaluate("() => W3.load()")
+        out.append((load_games(page), '%dx%d the games loaded' % (vw, vh)))
+        page.evaluate(XWRAP)
         for w, g in ids:
             if vw > vh and vw == 1180:
-                r = page.evaluate("""(g) => { const R = GAMES[g], bad = []; let keys = 0;
-                  for (let lv = 1; lv <= 5; lv++) { const G = { world: R.world, W: WORLDS[R.world], rng: RNG(lv * 13 + 3), bags: {}, ws: Store.w(R.world), level: lv }, seen = new Set();
-                    for (let i = 0; i < 300; i++) { let qq; try { qq = R.gen(G, { level: lv, rng: G.rng }); } catch (e) { bad.push('L' + lv + ' throws ' + e.message); break; }
-                      if (!qq || qq.answer === undefined || qq.answer === null) { bad.push('L' + lv + ' no answer'); break; }
-                      const o = qq.opts; if (Array.isArray(o)) { const ks = o.map(x => JSON.stringify(x)); if (!ks.includes(JSON.stringify(qq.answer)) && !(typeof qq.answer === 'number' && qq.answer >= 0 && qq.answer < o.length && o.every(x => typeof x === 'object'))) bad.push('L' + lv + ' answer not among the options ' + JSON.stringify(qq.k)); if (new Set(ks).size !== ks.length) bad.push('L' + lv + ' two same options ' + JSON.stringify(qq.k)); }
-                      seen.add(JSON.stringify(R.key ? R.key(qq) : qq.k)); }
-                    keys += seen.size; if (seen.size < 4) bad.push('L' + lv + ' only ' + seen.size + ' different questions'); }
-                  return { bad: bad.slice(0, 4), keys }; }""", g)
-                out.append((not r['bad'], '%s gen L1-5 x 300: answers valid, options different, enough variety (%d keys) %s' % (g, r['keys'], r['bad'])))
+                r = page.evaluate(GEN, g)
+                out.append((not r['bad'], '%s gen L1-5 x 300: %s; one right, its place balanced, options different, enough variety (%d keys) %s' % (g, '/'.join(r['kinds']), r['keys'], r['bad'])))
             for lv in ((1, 2, 3, 4, 5) if vw > vh and vw == 1180 else (2, 4) if vw < vh else (3,)):
                 for seed in ((5 + lv, 31 + lv) if vw == 1180 else (7 + lv,)):
                     before = len(page.errors)
@@ -58,7 +136,10 @@ def per_game(args):
                         gen, snap = answer_question(page, 'right', timeout=25000)
                         wait_next_question(page, gen, timeout=30000)
                         nq = q(page)
-                        ok = snap and snap.get('submitted') and not (nq and (nq.get('retest') or nq.get('err')))
+                        # a question judged a moment after its last tap (一题两问, F3) can be judged, praised and gone before the
+                        # harness looks again: then the snapshot is already the next question's (its gen differs)
+                        sub = snap and (snap.get('submitted') or snap.get('gen') != gen)
+                        ok = sub and not (nq and (nq.get('retest') or nq.get('err')))
                         out.append((ok and not page.errors[before:], '%dx%d %s L%d s%d right: judged right, no error %s' % (vw, vh, g, lv, seed, page.errors[before:][:1])))
                     except Exception as e:
                         out.append((False, '%dx%d %s L%d s%d right: %s %s' % (vw, vh, g, lv, seed, str(e)[:160], page.errors[before:][:1])))
@@ -83,19 +164,51 @@ def per_game(args):
                     except Exception as e:
                         out.append((False, '%s L%d mouse: %s' % (g, lv, str(e)[:160])))
                     page.evaluate("gesture('home')"); page.wait_for_timeout(60)
-                for lv in (1, 3, 5):
+            for lv in ((1, 2, 3, 4, 5) if vw == 1180 else (3,)):
+                for seed in ((19, 41) if vw == 1180 else (29,)):
                     before = len(page.errors)
-                    page.evaluate("([w,g,l]) => window.__go(w, g, l, {noDemo: true, seed: 19})", [w, g, lv])
+                    page.evaluate("window.__xr = null")
+                    page.evaluate("([w,g,l,s]) => window.__go(w, g, l, {noDemo: true, seed: s})", [w, g, lv, seed])
                     try:
                         wait_phase(page, timeout=25000); k0 = page.evaluate(KEY)
                         gen, snap = answer_question(page, 'wrong', timeout=25000)
                         wait_next_question(page, gen, timeout=30000)
                         nq = wait_phase(page, timeout=25000); k1 = page.evaluate(KEY)
-                        out.append((nq and nq.get('retest') and k1 != k0 and not page.errors[before:], '%s L%d wrong: named, a new question follows (%s), no error %s' % (g, lv, k1 != k0, page.errors[before:][:1])))
+                        x = page.evaluate("window.__xr") or {}
+                        okx = x.get('gen') == gen and x.get('phase') == 'explain' and x.get('explaining') and x.get('own') and not x.get('err') and x.get('rightOk') and x.get('chosen', 0) > 0 and not x.get('bad')
+                        out.append((nq and nq.get('retest') and k1 != k0 and okx and not page.errors[before:], '%dx%d %s L%d s%d wrong: named; explain (own %s, right one ringed gold %s/%s, chosen marked %s, said %s); a new question follows (%s), no error %s' % (vw, vh, g, lv, seed, x.get('own'), x.get('rightOk'), x.get('right'), x.get('chosen'), (x.get('said') or [])[:3] + (x.get('bad') or []), k1 != k0, page.errors[before:][:1] or x.get('err') or '')))
                     except Exception as e:
-                        out.append((False, '%s L%d wrong: %s %s' % (g, lv, str(e)[:160], page.errors[before:][:1])))
+                        out.append((False, '%dx%d %s L%d wrong: %s %s' % (vw, vh, g, lv, str(e)[:160], page.errors[before:][:1])))
                     page.evaluate("gesture('home')"); page.wait_for_timeout(60)
         out.append((not page.errors, '%dx%d %s zero page errors %s' % (vw, vh, [x[1] for x in ids][:1], page.errors[:3])))
+        br.close()
+    return out
+
+
+def timing(args):
+    """the explain step in real time (no fast mode): L3, one wrong answer per game"""
+    ids, = args
+    from playwright.sync_api import sync_playwright
+    from harness import serve, new_page, enter, answer_question, wait_next_question, wait_phase
+    out = []
+    with sync_playwright() as p, serve() as base:
+        br = getattr(p, ENG).launch()
+        page = new_page(br, base, 1180, 820, fast=False, sw='block'); enter(page)
+        load_games(page); page.evaluate(XWRAP)
+        for w, g in ids:
+            before = len(page.errors)
+            page.evaluate("window.__xr = null")
+            page.evaluate("([w,g]) => window.__go(w, g, 3, {noDemo: true, seed: 19})", [w, g])
+            try:
+                wait_phase(page, timeout=60000)
+                gen = answer_fully(page, 'wrong')
+                wait_next_question(page, gen, timeout=60000)
+                x = page.evaluate("window.__xr") or {}
+                ms = x.get('ms') or 0
+                out.append((1000 <= ms <= 6000 and x.get('rightOk') and not page.errors[before:], '%s L3 explain in real time: %.1f s (1-6 s), right one ringed gold %s %s' % (g, ms / 1000.0, x.get('rightOk'), page.errors[before:][:1])))
+            except Exception as e:
+                out.append((False, '%s L3 explain timing: %s' % (g, str(e)[:160])))
+            page.evaluate("gesture('home')"); page.wait_for_timeout(100)
         br.close()
     return out
 
@@ -165,6 +278,9 @@ def main():
     with Pool(JOBS) as pool:
         for part in pool.map(per_game, jobs):
             for ok, msg in part: log.check(ok, msg)
+        if os.environ.get('W4_TIMING'):
+            for part in pool.map(timing, [(ids[i::JOBS],) for i in range(JOBS)]):
+                for ok, msg in part: log.check(ok, msg)
     if not only: progress(log)
     return log.close()
 

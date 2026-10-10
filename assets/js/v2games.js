@@ -21,6 +21,12 @@ const V2G = {
     return s;
   },
   num(n, h) { return digits() ? UI.num(n, h || 70) : this.dots(n, { k: 1.2 }); },
+  /* five option cards (client 2026-10-10): the card size that fits both orientations, then rows in this orientation's
+     frame. Review questions: under the picture (landscape), at the bottom (portrait) */
+  fr5(L) { return (L == null ? K.L() : L) ? { x: 40, y: 500, w: 944, h: 190 } : { x: 16, y: 790, w: 672, h: 220 }; },
+  size5(n, frs, max) { return W3X.size2(n, frs, max || 150, 16); },
+  /* a number card's numeral as big as the card allows (with its dots under it at support 0) */
+  numH(size) { return Math.round(Math.min(70, size * 0.44)); },
   /* a number with (support 0) its dots under it */
   numCard(n, sup, h) { const d = el('div', ''); Object.assign(d.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', pointerEvents: 'none' }); d.appendChild(UI.num(n, h || 70)); if (!sup && n <= 10) d.appendChild(this.dots(n, { g: 15, r: 5.8 })); return d; },
   op(t, size) { const o = el('span', ''); o.textContent = t === '-' ? '−' : t; Object.assign(o.style, { font: '900 ' + (size || 46) + 'px/1 system-ui, sans-serif', color: this.ink }); return o; },
@@ -46,6 +52,13 @@ const V2G = {
 /* ---------------------------------------------------------------- the review question types (one place, one look; also the
    key round, the boss and the monthly test - so the numbers can be compared, A.6) */
 const RQ = {
+  /* tests: how many options, where the right one is, and that only one is right */
+  audit(q) {
+    if (q.t === 'give') return { none: 'the child gives' };
+    if (q.t === 'cmp') { const want = q.pairs.map(p => (q.ask === 'big' ? Math.max(...p) : Math.min(...p))); return { two: true, n: 2, pos: q.pairs.map((p, i) => p.indexOf(want[i])), err: want.join(',') === q.answer && q.pairs.every(p => p[0] !== p[1]) ? null : 'pairs' }; }
+    if (q.t === 'eq') { const tru = q.eqs.filter(e => (e[1] === '+' ? e[0] + e[2] : e[0] - e[2]) === e[4]); return { n: q.eqs.length, pos: q.answer, err: tru.length === 1 && q.eqs.indexOf(tru[0]) === q.answer && new Set(q.eqs.map(String)).size === q.eqs.length ? null : 'true ones ' + tru.length }; }
+    return W3X.auditNum(q);
+  },
   sub: {
     gen(G, c, o) { const n = G.rng.int(1, 5); return { k: ['sub', n], n, answer: n, opts: numOptions(G, n, 1, 6), say: '刚才有几个点？' }; },
     present(st) {
@@ -61,6 +74,8 @@ const RQ = {
     saySelf: true,
     gestureHint(st) { if (st.reflashed || !st.flashOnce) { Voice.say(st.q.say, { tag: 'prompt' }); return; } st.reflashed = true; st.flashOnce(1200); },
     reveal(st) { st.revealed = true; if (st.flash) { st.flash.innerHTML = ''; st.flash.appendChild(V2G.dots(st.q.n, { per: 3, g: 46, r: 17 })); } },
+    /* after a wrong answer: the dots come back and are counted one by one */
+    async show(st) { RQ.sub.reveal(st); const pts = st.flash ? Array.from(st.flash.querySelectorAll('circle')) : []; for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, i + 1, 34); await Count.beat(st.scope, 320, i + 1); } },
   },
   give: {
     gen(G, c, o) { const n = G.rng.int(2, o.level >= 3 ? 10 : 7); return { k: ['give', n], n, answer: n, say: '给我' + CNQ(n) + '个！' }; },
@@ -86,10 +101,57 @@ const RQ = {
     next(st, strat) { const inB = st.items.filter(o => o.inB).length, want = strat === 'wrong' ? st.q.n + 1 : st.q.n; if (inB < want) return { g: 'tap', p: { id: 'it' + st.items.findIndex(o => !o.inB) } }; return { g: 'tap', p: { id: 'done' } }; },
     reveal(st) { K.hop(st, st.basket, 20); },
     feedback(st, ans) { W3X.say(W2Say.notN(ans)); },
+    /* not a choice (the child gives); after a wrong answer: the cubes in the basket are counted, then cubes go in (or out)
+       until there are as many as he was asked for (gold) */
+    async explain(st, ans) {
+      const my = st, n = st.q.n, inB = () => st.items.filter(o => o.inB);
+      W3X.ringAt(st, box(st.basket), W3X.BLUE, 4);
+      const have = inB(); for (let i = 0; i < have.length; i++) { if (!Session.alive(my)) return; const b = box(have[i].e); W3X.badgeAt(st, b.x + b.w / 2, b.y + 14, i + 1, 34); await Count.beat(st.scope, 280, i + 1); }
+      await st.scope.wait(T(700)); if (!Session.alive(my)) return;
+      st.els.filter(e => e.classList && (e.classList.contains('ringo') || e.classList.contains('badge'))).forEach(e => e.remove());
+      while (inB().length !== n) { if (!Session.alive(my)) return; const add = inB().length < n, o = add ? st.items.find(x => !x.inB) : inB().slice(-1)[0]; if (!o) break; o.inB = add; RQ.give.place(st); K.pop(st, o.e); Sfx.place(); await st.scope.wait(T(260)); }
+      inB().forEach((o, i) => { const b = box(o.e); W3X.badgeAt(st, b.x + b.w / 2, b.y + 14, i + 1, 34); });
+      W3X.gold(st, st.basket, 4, 0); Sfx.reveal(); W3X.tell('要' + CNQ(n) + '个。');
+      await W3X.beat(st, 1500);
+    },
   },
+  /* bigger / smaller has only two answers: two pairs in one question (一题两问, client 2026-10-10) - both must be right */
   cmp: {
-    gen(G, c, o) { const hi = (SKILLS[c] || {}).hi || 10; let a, b; do { a = G.rng.int(1, hi); b = G.rng.int(1, hi); } while (a === b || Math.abs(a - b) > (hi > 10 ? 9 : 6)); const ask = G.rng.chance(0.5) ? 'big' : 'small', ans = ask === 'big' ? Math.max(a, b) : Math.min(a, b); return { k: ['cmp', a, b, ask], a, b, ask, answer: ans, opts: [a, b], say: ask === 'big' ? '哪个大？' : '哪个小？' }; },
-    present(st) { const q = st.q, L = K.L(); W2X.cards(st, q.opts.map(n => n <= 10 ? V2G.numCard(n, st.sup, 80) : (() => { const d = el('div', ''); Object.assign(d.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }); d.appendChild(UI.num(n, 80)); if (!st.sup) { d.appendChild(V2G.frame(10, 0.8)); d.appendChild(V2G.frame(n - 10, 0.8)); } return d; })()), q.opts, { size: 230, gap: 60, cx: L ? 512 : 352, cy: L ? 360 : 520 }); },
+    gen(G, c, o) {
+      const hi = (SKILLS[c] || {}).hi || 10, ask = G.rng.chance(0.5) ? 'big' : 'small', at = bagPick(G, 'cmpat', ['0,0', '0,1', '1,0', '1,1']).split(',').map(Number), pairs = [];
+      for (let k = 0; k < 2; k++) { let a, b; do { a = G.rng.int(1, hi); b = G.rng.int(1, hi); } while (a === b || Math.abs(a - b) > (hi > 10 ? 9 : 6) || pairs.some(p => p.includes(a) && p.includes(b))); const w = ask === 'big' ? Math.max(a, b) : Math.min(a, b), x = a + b - w; pairs.push(at[k] === 0 ? [w, x] : [x, w]); }
+      const want = pairs.map(p => (ask === 'big' ? Math.max(...p) : Math.min(...p)));
+      return { k: ['cmp', pairs.join('|'), ask], pairs, ask, answer: want.join(','), opts: pairs[0].concat(pairs[1]), say: ask === 'big' ? '哪个大？' : '哪个小？' };
+    },
+    card(n, sup) { if (n <= 10) return V2G.numCard(n, sup, 70); const d = el('div', ''); Object.assign(d.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', pointerEvents: 'none' }); d.appendChild(UI.num(n, 62)); if (!sup) { d.appendChild(V2G.frame(10, 0.7)); d.appendChild(V2G.frame(n - 10, 0.7)); } return d; },
+    present(st) {
+      const q = st.q; st.pick = [null, null];
+      W2X.cards(st, q.opts.map(n => RQ.cmp.card(n, st.sup)), q.opts, { size: 190, gap: 30, cx: 512, cy: 360 }); st.cards.forEach(c => { c.style.zIndex = 8; });
+      st.pairBox = [0, 1].map(() => { const b = W2X.thing(st, 10, 10, 2, ''); b.style.pointerEvents = 'none'; Object.assign(b.style, { borderRadius: '30px', background: 'rgba(255,255,255,.55)', boxShadow: '0 0 0 4px rgba(43,33,24,.35)' }); return b; });
+      RQ.cmp.place(st);
+    },
+    /* the two pairs: side by side (landscape), one above the other (portrait) */
+    place(st) {
+      const L = K.L(), s = 190, g = 30;
+      [0, 1].forEach(k => { const x0 = L ? (k ? 552 : 72) : 162, y0 = L ? 230 : (k ? 600 : 250); if (st.pairBox) place(st.pairBox[k], x0 - 20, y0 - 20, 2 * s + g + 40, s + 40); (st.cards || []).slice(2 * k, 2 * k + 2).forEach((c, j) => place(c, x0 + j * (s + g), y0, s, s)); });
+    },
+    onGesture(st, name, p) {
+      const i = K.cardIndex(p.id); if (name !== 'tap' || i < 0 || st.picked) return false;
+      const k = i < 2 ? 0 : 1; st.pick[k] = i; st.cards.slice(2 * k, 2 * k + 2).forEach((c, j) => c.classList.toggle('hi', 2 * k + j === i)); Sfx.place();
+      if (st.pick.every(x => x != null)) { st.picked = true; Session.submit(st, st.pick.map(j => st.opts[j]).join(',')); }
+      return 'ok';
+    },
+    next(st, strat) { if (st.picked) return null; const want = st.q.answer.split(',').map(Number), k = st.pick[0] == null ? 0 : 1, a = st.opts.indexOf(want[k], 2 * k); return { g: 'tap', p: { id: 'card' + (strat === 'wrong' && k === 0 ? 2 * k + (1 - (a - 2 * k)) : a) } }; },
+    feedback(st, ans) { const got = String(ans).split(',').map(Number), want = st.q.answer.split(',').map(Number), k = got[0] !== want[0] ? 0 : 1, i = st.opts.indexOf(got[k], 2 * k); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CN[got[k]]); },
+    /* after a wrong answer: in each pair, his card (blue) and the bigger (smaller) one (gold); their dots line up */
+    async explain(st, ans) {
+      const q = st.q, my = st, got = String(ans).split(',').map(Number), want = q.answer.split(',').map(Number);
+      [0, 1].forEach(k => { if (got[k] !== want[k]) W3X.mine(st, st.cards[st.opts.indexOf(got[k], 2 * k)], 6); });
+      await st.scope.wait(T(1100)); if (!Session.alive(my)) return;
+      [0, 1].forEach(k => W3X.gold(st, st.cards[st.opts.indexOf(want[k], 2 * k)], 6));
+      Sfx.reveal(); W3X.tell(q.ask === 'big' ? '大的是这个！' : '小的是这个！');
+      await W3X.beat(st, 1500);
+    },
   },
   next: {
     gen(G, c, o) { const hi = (SKILLS[c] || {}).hi || 10, dir = G.rng.chance(0.5) ? 'after' : 'before', n = dir === 'after' ? G.rng.int(1, hi - 1) : G.rng.int(2, hi), ans = dir === 'after' ? n + 1 : n - 1; return { k: ['next', n, dir], n, dir, answer: ans, opts: numOptions(G, ans, 0, hi), say: CN[n] + (dir === 'after' ? '后面是几？' : '前面是几？') }; },
@@ -97,39 +159,55 @@ const RQ = {
       const q = st.q, L = K.L(), row = W2X.thing(st, 10, 10, 5, ''); row.style.width = row.style.height = 'auto';
       Object.assign(row.style, { display: 'flex', gap: '12px', alignItems: 'center', padding: '14px 20px', background: 'rgba(255,255,255,.92)', borderRadius: '24px', boxShadow: '0 0 0 4px #2B2118' });
       const cells = q.dir === 'after' ? [q.n - 1, q.n, '?'] : ['?', q.n, q.n + 1];
-      cells.forEach(t => { const c = el('div', '', row); Object.assign(c.style, { width: '108px', height: '108px', borderRadius: '18px', background: t === q.n ? '#FFE08A' : '#FFF8EC', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); if (t === '?') c.appendChild(V2G.op('?', 60)); else if (t >= 0) c.appendChild(UI.num(t, 70)); });
+      cells.forEach(t => { const c = el('div', '', row); Object.assign(c.style, { width: '108px', height: '108px', borderRadius: '18px', background: t === q.n ? '#FFE08A' : '#FFF8EC', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); if (t === '?') { c.appendChild(V2G.op('?', 60)); st.hole = c; } else if (t >= 0) c.appendChild(UI.num(t, 70)); });
       place(row, L ? 330 : 140, L ? 170 : 300); K.pop(st, row);
       RQ.numCards(st, q.opts, 0);
     },
+    /* after a wrong answer: the number comes into its place in the row */
+    async show(st) { RQ.fill(st, st.hole, st.q.answer, 70); await st.scope.wait(T(500)); },
   },
   on: {
     gen(G, c, o) { const hi = (SKILLS[c] || {}).hi || 10, a = G.rng.int(hi > 10 ? 8 : 3, hi > 10 ? 15 : 7), b = G.rng.int(1, Math.min(4, hi - a)), ans = a + b; return { k: ['on', a, b], a, b, answer: ans, opts: numOptions(G, ans, 1, hi), say: '一共有几个？' }; },
     present(st) {
       const q = st.q, L = K.L(), boxE = W2X.thing(st, 220, 200, 5, ''); boxE.innerHTML = '<svg viewBox="0 0 220 200" width="100%" height="100%"><rect x="14" y="40" width="192" height="146" rx="14" fill="#C98B4A" stroke="#2B2118" stroke-width="7"/><path d="M8 40H212" stroke="#2B2118" stroke-width="12" stroke-linecap="round"/></svg>';
       const lab = el('div', '', boxE); Object.assign(lab.style, { position: 'absolute', left: '50%', top: '58%', transform: 'translate(-50%,-50%)' }); lab.appendChild(UI.num(q.a, 76));
-      const loose = W2X.thing(st, 10, 10, 5, ''); loose.style.width = loose.style.height = 'auto'; loose.appendChild(V2G.dots(q.b, { g: 40, r: 15, per: 4 }));
+      const loose = st.loose = W2X.thing(st, 10, 10, 5, ''); loose.style.width = loose.style.height = 'auto'; loose.appendChild(V2G.dots(q.b, { g: 40, r: 15, per: 4 }));
       place(boxE, L ? 260 : 120, L ? 150 : 270, 220, 200); place(loose, L ? 560 : 400, L ? 220 : 330);
       K.pop(st, boxE); K.pop(st, loose, 100);
       RQ.numCards(st, q.opts, 1);
     },
+    /* after a wrong answer: counting on from the box - the loose ones get a + 1, a + 2 ... */
+    async show(st) { const pts = st.loose ? Array.from(st.loose.querySelectorAll('circle')) : []; for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, st.q.a + i + 1, 40); await Count.beat(st.scope, 340, st.q.a + i + 1); } },
   },
   part: {
     gen(G, c, o) { const hi = (SKILLS[c] || {}).hi || 10, w = G.rng.int(3, hi), a = G.rng.int(1, w - 1), ans = w - a; return { k: ['part', w, a], w, a, answer: ans, opts: numOptions(G, ans, 0, hi), say: CN[w] + '分成' + CN[a] + '和几？' }; },
-    present(st) { const q = st.q, L = K.L(), d = W2X.thing(st, 10, 10, 5, ''); d.style.width = d.style.height = 'auto'; d.appendChild(V2G.partWhole(q.w, q.a, null, st.sup)); place(d, L ? 380 : 210, L ? 110 : 200); K.pop(st, d); RQ.numCards(st, q.opts, 1); },
+    present(st) { const q = st.q, L = K.L(), d = st.pw = W2X.thing(st, 10, 10, 5, ''); d.style.width = d.style.height = 'auto'; d.appendChild(V2G.partWhole(q.w, q.a, null, st.sup)); place(d, L ? 380 : 210, L ? 110 : 200); K.pop(st, d); RQ.numCards(st, q.opts, 1); },
+    /* after a wrong answer: the missing part comes into its place */
+    async show(st) { RQ.fill(st, st.pw && st.pw.querySelector('[data-slot]'), st.q.answer, 54); await st.scope.wait(T(500)); },
   },
   ten: {
     gen(G, c, o) { const n = G.rng.int(11, 19); return { k: ['ten', n], n, answer: n, opts: numOptions(G, n, 10, 20), say: '这是几？' }; },
-    present(st) { const q = st.q, L = K.L(), d = W2X.thing(st, 10, 10, 5, ''); d.style.width = d.style.height = 'auto'; Object.assign(d.style, { display: 'flex', gap: '18px', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,.9)', borderRadius: '22px', boxShadow: '0 0 0 4px #2B2118' }); d.appendChild(V2G.frame(10, 1.4)); d.appendChild(V2G.frame(q.n - 10, 1.4)); place(d, L ? 250 : 80, L ? 170 : 300); K.pop(st, d); RQ.numCards(st, q.opts, 1); },
+    present(st) { const q = st.q, L = K.L(), d = st.tens = W2X.thing(st, 10, 10, 5, ''); d.style.width = d.style.height = 'auto'; Object.assign(d.style, { display: 'flex', gap: '18px', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,.9)', borderRadius: '22px', boxShadow: '0 0 0 4px #2B2118' }); d.appendChild(V2G.frame(10, 1.4)); d.appendChild(V2G.frame(q.n - 10, 1.4)); place(d, L ? 250 : 80, L ? 170 : 300); K.pop(st, d); RQ.numCards(st, q.opts, 1); },
+    /* after a wrong answer: a full ten, then counting on: eleven, twelve ... */
+    async show(st) {
+      const fr = st.tens ? st.tens.children : [];
+      if (fr[0]) { const r = W3X.srect(fr[0]); W3X.badgeAt(st, r.x + r.w / 2, r.y - 4, 10, 48); await Count.beat(st.scope, 420, 10); }
+      const pts = fr[1] ? Array.from(fr[1].querySelectorAll('circle')) : [];
+      for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, 11 + i, 38); await Count.beat(st.scope, 340, 11 + i); }
+    },
   },
   /* a picture story -> its number sentence (skill cards add10 / sub10) */
   eq: {
     gen(G, c, o) {
       const op = (SKILLS[c] || {}).op || '+';
       let a, b; if (op === '+') { a = G.rng.int(1, 6); b = G.rng.int(1, Math.min(4, 10 - a)); } else { a = G.rng.int(3, 9); b = G.rng.int(1, a - 1); }
-      /* the wrong ones are always false sentences (R2-S1): the other operation with the same result (b >= 1), the result off by one */
+      /* the wrong ones are always false sentences (R2-S1): the other operation with the same result (b >= 1), the result off
+         by one, then another false one (off by two, a number changed) - five in all, only the right one true */
       const r = op === '+' ? a + b : a - b, ok = [a, op, b, '=', r], f1 = [a, op === '+' ? '-' : '+', b, '=', r], f2 = [a, op, b, '=', r + (r > 1 && (r >= 10 || G.rng.chance(0.5)) ? -1 : 1)];
-      const opts = G.rng.shuffle([ok, f1, f2]);
-      return { k: ['eq', a, op, b], a, b, op, answer: opts.indexOf(ok), opts: [0, 1, 2], eqs: opts, say: '哪个算式对？', fact: factOf(op, a, b) };
+      const more = G.rng.shuffle([[a, op, b, '=', r + 2], [a, op, b, '=', r - 2], [a, op, b, '=', r - 1], [a, op, b, '=', r + 1], [a + 1, op, b, '=', r], [a, op, b + 1, '=', r], [a - 1, op, b, '=', r]]);
+      const foils = W3X.uniq([f1, f2].concat(more).filter(s => RQ.falseOk(s) && s.every(x => typeof x !== 'number' || x <= 10)), String, 4, [ok]);      /* within ten, as the card (R3: no "= 11") */
+      const opts = W3X.deal(G, ok, foils, 'rqeq');
+      return { k: ['eq', a, op, b], a, b, op, answer: opts.indexOf(ok), opts: opts.map((_, i) => i), eqs: opts, say: '哪个算式对？', fact: factOf(op, a, b) };
     },
     present(st) {
       const q = st.q, L = K.L(), pic = W2X.thing(st, 10, 10, 5, ''); pic.style.width = pic.style.height = 'auto';
@@ -137,10 +215,12 @@ const RQ = {
       if (q.op === '+') { pic.appendChild(V2G.dots(q.a, { g: 30, r: 11, fill: '#4FB3FF' })); pic.appendChild(V2G.op('+', 40)); pic.appendChild(V2G.dots(q.b, { g: 30, r: 11, fill: '#FFC93C' })); }
       else pic.appendChild(V2G.dots(q.a, { g: 30, r: 11, crossFrom: q.a - q.b }));
       place(pic, L ? 120 : 140, L ? 260 : 230); K.pop(st, pic);
-      st.cards = q.eqs.map((s, i) => { const c = W3X.card(st, 'card' + i, 6, 'card'); c.appendChild(V2G.eq(s, 1, 50)); K.pop(st, c, 80 * i); return c; });
-      st.opts = [0, 1, 2]; RQ.eq.place(st);
+      st.cards = q.eqs.map((s, i) => { const c = W3X.card(st, 'card' + i, 6, 'card'); c.appendChild(V2G.eq(s, 1, 46)); K.pop(st, c, 80 * i); return c; });
+      st.opts = q.opts.slice(); RQ.eq.place(st);
     },
-    place(st) { const L = K.L(); (st.cards || []).forEach((c, i) => L ? place(c, 540, 150 + i * 150, 420, 128) : place(c, 92, 470 + i * 150, 520, 128)); },
+    /* five sentences, one per row: right of the picture (landscape), under it (portrait) */
+    place(st) { RQ.rows(st, K.L() ? { x: 520, y: 100, w: 470, h: 590 } : { x: 92, y: 420, w: 520, h: 590 }); },
+    async explain(st, ans) { await RQ.explainEq(st, ans, () => {}); },
   },
   /* a number fact: "三加四等于几？" with the support of its level: 0 dots, 1 a part-whole shell, 2 the sum only (A.7) */
   fact: {
@@ -150,12 +230,35 @@ const RQ = {
       Object.assign(d.style, { display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', padding: '16px 22px', background: 'rgba(255,255,255,.92)', borderRadius: '24px', boxShadow: '0 0 0 4px #2B2118' });
       if (q.sup === 0) { const row = el('div', '', d); Object.assign(row.style, { display: 'flex', gap: '14px', alignItems: 'center' }); if (f.op === '+') { row.appendChild(V2G.dots(f.a, { g: 28, r: 10 })); row.appendChild(V2G.op('+', 36)); row.appendChild(V2G.dots(f.b, { g: 28, r: 10, fill: '#FFC93C' })); } else row.appendChild(V2G.dots(f.a, { g: 28, r: 10, crossFrom: f.a - f.b })); }
       if (q.sup === 1) d.appendChild(f.op === '+' ? V2G.partWhole(null, f.a, f.b, 1) : V2G.partWhole(f.a, f.b, null, 1));
-      d.appendChild(V2G.eq([f.a, f.op, f.b, '=', '?'], 1, 64));
+      d.appendChild(V2G.eq([f.a, f.op, f.b, '=', '?'], 1, 64)); st.factEl = d;
       place(d, L ? 300 : 120, L ? 104 : 200); K.pop(st, d);
       RQ.numCards(st, q.opts, 1);
     },
+    /* after a wrong answer: the result comes into the sentence */
+    async show(st) { (st.factEl ? Array.from(st.factEl.querySelectorAll('[data-slot]')) : []).forEach(e => RQ.fill(st, e, st.q.answer, 56)); await st.scope.wait(T(500)); },
   },
-  numCards(st, vals, sup) { const L = K.L(); W2X.cards(st, vals.map(n => V2G.numCard(n, sup, 70)), vals, { size: 150, gap: 36, cx: L ? 560 : 352, cy: L ? 600 : 880 }); },
+  numCards(st, vals, sup) { const s = V2G.size5(vals.length, [V2G.fr5(true), V2G.fr5(false)]); W2X.cards(st, vals.map(n => V2G.numCard(n, sup, V2G.numH(s))), vals, { size: s, gap: 16, cx: 512, cy: 600 }); RQ.placeNum(st); },
+  placeNum(st) { if (st.cards && st.cards.length) W3X.lay(st.cards, V2G.fr5(), box(st.cards[0]).w, null, 16); },
+  /* a '?' place gets its number (gold) */
+  fill(st, e, n, h) { if (!e || e.dataset.filled) return; e.dataset.filled = '1'; e.innerHTML = ''; e.style.border = '0'; e.style.background = '#FFE08A'; e.appendChild(UI.num(n, h || 60)); K.pop(st, e); },
+  /* sentence cards, one per row, as tall as five fit */
+  rows(st, fr) { const cs = st.cards || [], n = cs.length, h = Math.min(128, Math.floor((fr.h - (n - 1) * 12) / n)), y0 = fr.y + (fr.h - n * h - (n - 1) * 12) / 2; cs.forEach((c, i) => place(c, fr.x, Math.round(y0 + i * (h + 12)), fr.w, h)); },
+  /* a sentence that may be offered as wrong: false, numbers 0-19 (the first and the one added / taken >= 1) */
+  falseOk(s) { const v = s[1] === '+' ? s[0] + s[2] : s[0] - s[2]; return v !== s[4] && s[0] >= 1 && s[2] >= 1 && s[4] >= 0 && s.every(x => typeof x !== 'number' || x <= 19); },
+  /* after a wrong sentence: it is worked out - its result is ringed (blue) and what it really makes shows above it; the
+     true sentence (gold); then `more` (the picture / the family) */
+  async explainEq(st, ans, more) {
+    const my = st, eqs = st.q.eqs, i = (st.opts || []).indexOf(ans), c = st.cards[i], s = eqs[i];
+    if (c && s) {
+      W3X.mine(st, c, 4);
+      const toks = c.firstChild ? c.firstChild.children : [], res = toks[toks.length - 1], v = s[1] === '+' ? s[0] + s[2] : s[0] - s[2];
+      if (res) { const r = W3X.srect(res); W3X.ringAt(st, r, W3X.BLUE, 6); if (v >= 0) W3X.badgeAt(st, r.x + r.w + 30, r.y + r.h / 2, v, 46); }
+    }
+    await st.scope.wait(T(1500)); if (!Session.alive(my)) return;
+    if (more) { await more(); if (!Session.alive(my)) return; }
+    W3X.gold(st, st.cards[st.q.answer], 4, 0); Sfx.reveal(); W3X.tell('这个算式对！');
+    await W3X.beat(st, 1600);
+  },
 };
 /* the review game: the host of THIS island asks; built like every game (GameBase) */
 const RevGame = {
@@ -172,9 +275,16 @@ const RevGame = {
   evaluate(st, ans) { return ans === st.q.answer; },
   onGesture(st, name, p) { const t = RQ[st.q.t]; if (t.onGesture) return t.onGesture(st, name, p); return W3X.tapCards(st, name, p); },
   async reveal(st) { const t = RQ[st.q.t]; if (t.reveal) t.reveal(st); const i = (st.opts || []).indexOf(st.q.answer); if (st.cards && st.cards[i]) K.hop(st, st.cards[i], 26); Sfx.reveal(); await st.scope.wait(T(700)); },
+  /* after a wrong answer (client 2026-10-10): the type's own explanation, or his card (blue), what shows the answer, the
+     right card (gold) */
+  async explain(st, ans) {
+    const t = RQ[st.q.t];
+    if (t.explain) { await t.explain(st, ans); return; }
+    await W3X.explainCards(st, ans, { show: async () => { if (t.show) await t.show(st); else if (t.reveal) t.reveal(st); await st.scope.wait(T(600)); } });
+  },
   async feedback(st, ans) { const t = RQ[st.q.t]; if (t.feedback) { t.feedback(st, ans); } else { const i = (st.opts || []).indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); if (typeof ans === 'number' && st.q.t !== 'eq') W3X.say('不是' + (CN[ans] || ans)); else W3X.say('再看一看'); } await st.scope.wait(T(800)); },
   next(st, strat) { const t = RQ[st.q.t]; if (t.next) return t.next(st, strat); if (st.picked) return null; const vals = st.opts, i = strat === 'wrong' ? vals.findIndex(v => v !== st.q.answer) : vals.indexOf(st.q.answer); return { g: 'tap', p: { id: 'card' + i } }; },
-  relayoutQ(st) { const t = RQ[st.q.t]; if (t.place) t.place(st); },
+  relayoutQ(st) { const t = RQ[st.q.t]; if (t.place) t.place(st); else RQ.placeNum(st); },
   gestureHint(st) { const t = RQ[st.q.t]; if (t.gestureHint) return t.gestureHint(st); if (st.hintDone) return; st.hintDone = true; Voice.say(st.q.say, { tag: 'prompt' }); },
   workEls(st) { return st.cards || []; },
   snap(st) { return { opts: st.opts || null, rv: st.q.c }; },
@@ -274,14 +384,21 @@ Object.assign(V2D, {
 const ZB = {
   decor(G) { if (K.L()) W3X.decor2(G, this.chars, this.one); else W2X.hideAll(G, this.chars); },
   onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
-  cardRow(st, vals, sup) { const L = K.L(); W2X.cards(st, vals.map(n => V2G.numCard(n, sup, 70)), vals, { size: 150, gap: 36, cx: L ? 600 : 352, cy: L ? 600 : 880 }); },
+  /* five number cards (client 2026-10-10): between the watchers (landscape), at the bottom (portrait) */
+  cardFr(L) { return (L == null ? K.L() : L) ? { x: 160, y: 520, w: 700, h: 170 } : { x: 16, y: 800, w: 672, h: 210 }; },
+  cardRow(st, vals, sup) { const s = V2G.size5(vals.length, [this.cardFr(true), this.cardFr(false)]); W2X.cards(st, vals.map(n => V2G.numCard(n, sup, V2G.numH(s))), vals, { size: s, gap: 16, cx: 512, cy: 600 }); this.placeCards(st); },
+  placeCards(st) { if (st.cards && st.cards.length) W3X.lay(st.cards, this.cardFr(), box(st.cards[0]).w, null, 16); },
   next(st, strat) { if (st.picked || !st.cards) return null; const i = strat === 'wrong' ? st.opts.findIndex(v => v !== st.q.answer) : st.opts.indexOf(st.q.answer); return { g: 'tap', p: { id: 'card' + i } }; },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(this.wrongLine ? this.wrongLine(st, ans) : W2Say.notN(ans)); await st.scope.wait(T(700)); },
-  fillSlot(st, n) { const s = st.eqEl && st.eqEl.querySelector('[data-slot]'); if (s) { s.style.border = '0'; s.style.background = 'transparent'; s.appendChild(UI.num(n, 60)); } },
+  fillSlot(st, n) { const s = st.eqEl && st.eqEl.querySelector('[data-slot]'); if (s && !s.dataset.filled) { s.dataset.filled = '1'; s.style.border = '0'; s.style.background = 'transparent'; s.appendChild(UI.num(n, 60)); } },
+  /* after a wrong answer: his card (blue), what makes the answer (the game's show), the right card (gold) */
+  async explain(st, ans) { await W3X.explainCards(st, ans, { show: async () => { await this.show(st); await st.scope.wait(T(500)); }, line: '对的是这个！' }); },
+  audit(q) { return W3X.auditNum(q); },
 };
 /* Z1 等号门: the vault door opens when both sides are the same. Every level uses "=" (R2-M3): L1 how many on the left (0
    too); L2 which card makes both sides the same (dots); L3 the same or not (dots, = or ≠); L4 the same or not (numbers);
-   L5 the balance a + b = ? + c */
+   L5 the balance a + b = ? + c. "The same or not" has two answers: two doors in one question (一题两问, client
+   2026-10-10), both must be right */
 const MDoor = Object.assign({}, ZB, {
   kind0: 'door', verb: '等！', intro: '能量门，两边一样多！', praise: [], one: true,          /* no own praise: after a right "≠" it would say the opposite (R3-M1) */
   gen(G, o) {
@@ -289,47 +406,115 @@ const MDoor = Object.assign({}, ZB, {
     if (d === 1) { const a = bagPick(G, 'z1a', [0, 1, 2, 3, 4, 5]); return { k: [1, a], mode: 'count', a, b: null, answer: a, opts: numOptions(G, a, 0, 6), say: '左边有几块？' }; }
     if (d === 2) { const n = rng.int(1, 5); return { k: [2, n], mode: 'match', a: n, b: null, answer: n, opts: numOptions(G, n, 1, 6), say: '哪张让两边一样多？' }; }
     if (d <= 4) {
-      const hi = d === 3 ? 7 : 10; let a, b; do { a = rng.int(1, hi - 1); b = rng.int(1, hi - a); } while (a + b < 3);
-      const same = bagPick(G, 'z1s' + d, [true, false]), s = a + b, c = same ? s : (s >= hi || rng.chance(0.5) ? s - 1 : s + 1);
-      return { k: [d, a, b, c], mode: 'judge', a, b, c, answer: same ? 'eq' : 'ne', opts: ['eq', 'ne'], say: '两边一样多吗？', fact: factOf('+', a, b), sup: d === 4 ? 1 : 0, sym: d === 4 };
+      const hi = d === 3 ? 7 : 10, at = bagPick(G, 'z1j' + d, ['eq,eq', 'eq,ne', 'ne,eq', 'ne,ne']).split(',');
+      const one = same => { let a, b; do { a = rng.int(1, hi - 1); b = rng.int(1, hi - a); } while (a + b < 3); const s = a + b, c = same ? s : (s >= hi || rng.chance(0.5) ? s - 1 : s + 1); return { a, b, c }; };
+      const ds = at.map(x => one(x === 'eq'));
+      return { k: [d, ds.map(x => x.a + '+' + x.b + ':' + x.c).join('|')], mode: 'judge', ds, a: ds[0].a, b: ds[0].b, c: ds[0].c, answer: at.join(','), opts: ['eq', 'ne', 'eq', 'ne'], say: '两边一样多吗？', fact: factOf('+', ds[0].a, ds[0].b), sup: d === 4 ? 1 : 0, sym: d === 4 };
     }
     let a, b, c; do { a = rng.int(1, 8); b = rng.int(1, 10 - a); c = rng.int(1, Math.max(1, a + b - 1)); } while (a + b < 4 || c >= a + b);
     const x = a + b - c;
     return { k: [5, a, b, c], mode: 'bal', a, b, c, answer: x, opts: numOptions(G, x, 0, 10), say: '方框里是几？', fact: factOf('+', x, c), sup: 1, sym: true };
   },
-  present(st) {
-    const q = st.q, L = K.L(), door = st.door = W2X.thing(st, 10, 10, 3, '');
+  audit(q) { if (q.mode !== 'judge') return W3X.auditNum(q); const r = q.ds.map(x => (x.a + x.b === x.c ? 'eq' : 'ne')); return { two: true, n: 2, pos: r.map(x => (x === 'eq' ? 0 : 1)), err: r.join(',') === q.answer ? null : 'signs ' + r }; },
+  /* a door: two panels and the sign between them; `small` for the two doors of "the same or not" */
+  makeDoor(st, q, small) {
+    const door = W2X.thing(st, 10, 10, 3, '');
     door.innerHTML = '<svg viewBox="0 0 600 320" width="100%" height="100%" preserveAspectRatio="none"><rect x="6" y="6" width="588" height="308" rx="40" fill="#C9D2DC" stroke="#2B2118" stroke-width="8"/><rect x="24" y="24" width="250" height="272" rx="26" fill="#FFF8EC" stroke="#2B2118" stroke-width="6"/><rect x="326" y="24" width="250" height="272" rx="26" fill="#FFF8EC" stroke="#2B2118" stroke-width="6"/></svg>';
-    const mid = st.eqSign = el('div', '', door); mid.textContent = q.mode === 'judge' ? '?' : '='; Object.assign(mid.style, { position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', font: '900 74px/1 system-ui,sans-serif', color: '#8892A0' });
-    const panel = x => { const p = el('div', '', door); Object.assign(p.style, { position: 'absolute', left: x, top: '7.5%', width: '42%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }); return p; };
-    const left = st.left = panel('4%'), right = st.slot = panel('54%');
+    const sign = el('div', '', door); sign.textContent = q.mode === 'judge' ? '?' : '='; Object.assign(sign.style, { position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', font: '900 ' + (small ? 60 : 74) + 'px/1 system-ui,sans-serif', color: '#8892A0' });
+    const panel = x => { const p = el('div', '', door); Object.assign(p.style, { position: 'absolute', left: x, top: '7.5%', width: '42%', height: '85%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: small ? '6px' : '10px', flexWrap: 'wrap' }); return p; };
+    const left = panel('4%'), right = panel('54%'), out = { door, sign, left, right };
     const ring = () => { const z = el('div', ''); Object.assign(z.style, { width: '44px', height: '44px', borderRadius: '50%', border: '4px dashed #2B2118' }); return z; };
-    const grp = (n, c) => n ? V2G.dots(n, { g: 32, r: 12, per: 5, fill: c }) : ring();
+    const g = small ? 26 : 32, grp = (n, c) => (n ? V2G.dots(n, { g, r: g * 0.375, per: 5, fill: c }) : ring());
     if (q.mode === 'count' || q.mode === 'match') { left.appendChild(q.a ? V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#4FB3FF' }) : ring()); right.appendChild(V2G.op('?', 90)); }
-    else if (q.mode === 'judge' && !q.sym) { left.appendChild(grp(q.a, '#4FB3FF')); left.appendChild(V2G.op('+', 40)); left.appendChild(grp(q.b, '#FFC93C')); right.appendChild(V2G.dots(q.c, { g: 32, r: 12, per: 5, fill: '#5CC46E' })); }
-    else if (q.mode === 'judge') { left.appendChild(V2G.eq([q.a, '+', q.b], 1, 56)); right.appendChild(UI.num(q.c, 96)); }
-    else { left.appendChild(V2G.eq([q.a, '+', q.b], 1, 50)); st.eqR = V2G.eq(['?', '+', q.c], 1, 50); right.appendChild(st.eqR); }
-    this.place(st); K.pop(st, door);
-    const spot = { size: 150, gap: q.mode === 'judge' ? 80 : 36, cx: L ? 600 : 352, cy: L ? 600 : 880 };
-    if (q.mode === 'match') W2X.cards(st, q.opts.map(n => V2G.dots(n, { g: 28, r: 11, per: 3, fill: '#4FB3FF' })), q.opts, spot);
-    else if (q.mode === 'judge') W2X.cards(st, ['=', '≠'].map(t => { const e = el('div', ''); e.textContent = t; Object.assign(e.style, { font: '900 100px/1 system-ui,sans-serif', color: t === '=' ? '#2E9E4F' : '#8A5A2E', pointerEvents: 'none' }); return e; }), q.opts, spot);
+    else if (q.mode === 'judge' && !q.sym) { left.appendChild(grp(q.a, '#4FB3FF')); left.appendChild(V2G.op('+', small ? 32 : 40)); left.appendChild(grp(q.b, '#FFC93C')); right.appendChild(V2G.dots(q.c, { g, r: g * 0.375, per: 5, fill: '#5CC46E' })); }
+    else if (q.mode === 'judge') { left.appendChild(V2G.eq([q.a, '+', q.b], 1, small ? 44 : 56)); right.appendChild(UI.num(q.c, small ? 80 : 96)); }
+    else { left.appendChild(V2G.eq([q.a, '+', q.b], 1, 50)); out.eqR = V2G.eq(['?', '+', q.c], 1, 50); right.appendChild(out.eqR); }
+    return out;
+  },
+  present(st) {
+    const q = st.q;
+    if (q.mode === 'judge') {
+      st.doorsJ = q.ds.map(x => this.makeDoor(st, Object.assign({ mode: 'judge', sym: q.sym }, x), true)); st.pick = [null, null];
+      W2X.cards(st, q.opts.map(t => { const e = el('div', ''); e.textContent = t === 'eq' ? '=' : '≠'; Object.assign(e.style, { font: '900 80px/1 system-ui,sans-serif', color: t === 'eq' ? '#2E9E4F' : '#8A5A2E', pointerEvents: 'none' }); return e; }), q.opts, { size: 116, gap: 20, cx: 512, cy: 600 });
+      this.place(st); st.doorsJ.forEach((d, i) => K.pop(st, d.door, 120 * i));
+      K.say(st, q.say); return;
+    }
+    const D = this.makeDoor(st, q, false); st.door = D.door; st.eqSign = D.sign; st.left = D.left; st.slot = D.right; st.eqR = D.eqR;
+    this.place(st); K.pop(st, st.door);
+    if (q.mode === 'match') { const s = V2G.size5(q.opts.length, [this.cardFr(true), this.cardFr(false)]); W2X.cards(st, q.opts.map(n => V2G.dots(n, { g: Math.min(28, s * 0.22), r: Math.min(11, s * 0.085), per: 3, fill: '#4FB3FF' })), q.opts, { size: s, gap: 16, cx: 512, cy: 600 }); this.placeCards(st); }
     else this.cardRow(st, q.opts, q.mode === 'count' ? 0 : q.sup);
     K.say(st, q.say);
   },
-  place(st) { const L = K.L(), gap = st.q && st.q.mode === 'judge' ? 80 : 36; if (st.door) place(st.door, L ? 210 : 52, L ? 70 : 220, 600, 320); (st.cards || []).forEach((c, i) => place(c, (L ? 600 : 352) - (st.cards.length * 150 + (st.cards.length - 1) * gap) / 2 + i * (150 + gap), (L ? 600 : 880) - 75, 150, 150)); },
-  async reveal(st) {
+  /* the two doors of "the same or not": side by side, each with its = and ≠ under it (landscape); one above the other, the
+     signs on their right (portrait) */
+  place(st) {
+    const L = K.L();
+    if (st.doorsJ) {
+      st.doorsJ.forEach((d, k) => {
+        const x = L ? (k ? 528 : 36) : 24, y = L ? 104 : (k ? 560 : 220), w = L ? 460 : 480, h = L ? 250 : 260; place(d.door, x, y, w, h);
+        (st.cards || []).slice(2 * k, 2 * k + 2).forEach((c, j) => (L ? place(c, x + w / 2 - 128 + j * 140, y + h + 26, 116, 116) : place(c, x + w + 34, y + 8 + j * 132, 116, 116)));
+      });
+      return;
+    }
+    if (st.door) place(st.door, L ? 210 : 52, L ? 70 : 220, 600, 320);
+    this.placeCards(st);
+  },
+  onGesture(st, name, p) {
+    if (!st.doorsJ) return W3X.tapCards(st, name, p);
+    const i = K.cardIndex(p.id); if (name !== 'tap' || i < 0 || st.picked) return false;
+    const k = i < 2 ? 0 : 1; st.pick[k] = st.opts[i]; st.cards.slice(2 * k, 2 * k + 2).forEach((c, j) => c.classList.toggle('hi', 2 * k + j === i)); Sfx.place();
+    if (st.pick.every(x => x != null)) { st.picked = true; Session.submit(st, st.pick.join(',')); }
+    return 'ok';
+  },
+  next(st, strat) {
+    if (!st.doorsJ) return ZB.next.call(this, st, strat);
+    if (st.picked) return null;
+    const want = st.q.answer.split(','), k = st.pick[0] == null ? 0 : 1, i = 2 * k + (want[k] === 'eq' ? 0 : 1);
+    return { g: 'tap', p: { id: 'card' + (strat === 'wrong' && k === 0 ? 2 * k + (1 - (i - 2 * k)) : i) } };
+  },
+  /* what makes the answer: the number in the right panel / the green dots / the box filled */
+  async show(st) {
     const q = st.q;
     if (q.mode === 'count') { st.slot.innerHTML = ''; st.slot.appendChild(UI.num(q.answer, 120)); }
     else if (q.mode === 'match') { st.slot.innerHTML = ''; st.slot.appendChild(V2G.dots(q.a, { g: 44, r: 17, per: 3, fill: '#5CC46E' })); }
-    else if (q.mode === 'bal') { const s = st.eqR && st.eqR.querySelector('[data-slot]'); if (s) { s.style.border = '0'; s.style.background = 'transparent'; s.appendChild(UI.num(q.answer, 50)); } }
-    else { st.eqSign.textContent = q.answer === 'eq' ? '=' : '≠'; const e = st.cards[q.opts.indexOf(q.answer)]; if (e) K.hop(st, e, 24); }
-    st.eqSign.style.color = q.answer === 'ne' ? '#8A5A2E' : '#5CC46E';
-    st.scope.anim(st.eqSign, [{ transform: 'translate(-50%,-50%) scale(1)' }, { transform: 'translate(-50%,-50%) scale(1.6)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: 600, easing: EASE.pop });
+    else if (q.mode === 'bal') { const s = st.eqR && st.eqR.querySelector('[data-slot]'); if (s && !s.dataset.filled) { s.dataset.filled = '1'; s.style.border = '0'; s.style.background = 'transparent'; s.appendChild(UI.num(q.answer, 50)); } }
+    if (st.eqSign) { st.eqSign.style.color = '#5CC46E'; st.scope.anim(st.eqSign, [{ transform: 'translate(-50%,-50%) scale(1)' }, { transform: 'translate(-50%,-50%) scale(1.6)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: 600, easing: EASE.pop }); }
+  },
+  /* a door's sign is put in (= green, ≠ brown) */
+  sign(st, d, t) { d.sign.textContent = t === 'eq' ? '=' : '≠'; d.sign.style.color = t === 'ne' ? '#8A5A2E' : '#5CC46E'; st.scope.anim(d.sign, [{ transform: 'translate(-50%,-50%) scale(1)' }, { transform: 'translate(-50%,-50%) scale(1.6)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: 600, easing: EASE.pop }); },
+  async reveal(st) {
+    const q = st.q;
+    if (st.doorsJ) {
+      const want = q.answer.split(',');
+      for (let k = 0; k < 2; k++) { if (!Session.alive(st)) return; this.sign(st, st.doorsJ[k], want[k]); K.hop(st, st.cards[2 * k + (want[k] === 'eq' ? 0 : 1)], 24); Voice.say(want[k] === 'ne' ? '不一样多！' : '一样多！', { tag: 'summary' }); await st.scope.wait(T(700)); }
+      Sfx.reveal(); this.cheerAll(st); await st.scope.wait(T(900)); return;
+    }
+    await this.show(st);
     Sfx.reveal();
-    Voice.say(q.mode === 'count' && q.answer === 0 ? '空的就是零！' : q.answer === 'ne' ? '不一样多！' : q.mode === 'judge' ? '一样多！' : '两边一样多！', { tag: 'summary' });
+    Voice.say(q.mode === 'count' && q.answer === 0 ? '空的就是零！' : '两边一样多！', { tag: 'summary' });
     this.cheerAll(st); await st.scope.wait(T(1300));
   },
-  wrongLine(st, ans) { const q = st.q; if (q.mode === 'judge') return ans === 'eq' ? '两边不一样多' : '两边一样多'; if (q.mode === 'match') return '两边不一样多'; return ans === 0 ? '这边不是空的' : W2Say.notN(ans); },
+  /* after a wrong answer, "the same or not": under every panel how many it has, then the door's sign; his sign (blue), the
+     right one (gold). The other levels: his card, the number shown, the right card */
+  async explain(st, ans) {
+    if (!st.doorsJ) { await ZB.explain.call(this, st, ans); return; }
+    const q = st.q, my = st, got = String(ans).split(','), want = q.answer.split(',');
+    [0, 1].forEach(k => { if (got[k] !== want[k]) W3X.mine(st, st.cards[2 * k + (got[k] === 'eq' ? 0 : 1)], 4); });
+    for (let k = 0; k < 2; k++) {
+      if (!Session.alive(my)) return;
+      const d = st.doorsJ[k], x = q.ds[k], b = box(d.door);
+      W3X.badgeAt(st, b.x + b.w * 0.25, b.y + b.h - 6, x.a + x.b, 50); W3X.badgeAt(st, b.x + b.w * 0.75, b.y + b.h - 6, x.c, 50);
+      await st.scope.wait(T(700)); if (!Session.alive(my)) return;
+      this.sign(st, d, want[k]); W3X.gold(st, st.cards[2 * k + (want[k] === 'eq' ? 0 : 1)], 4, 0);
+      Voice.say(want[k] === 'ne' ? '不一样多！' : '一样多！', { tag: 'summary' });
+      await W3X.beat(st, 1200);
+    }
+  },
+  wrongLine(st, ans) { const q = st.q; if (q.mode === 'judge') { const got = String(ans).split(','), want = q.answer.split(','), k = got[0] !== want[0] ? 0 : 1; return got[k] === 'eq' ? '两边不一样多' : '两边一样多'; } if (q.mode === 'match') return '两边不一样多'; return ans === 0 ? '这边不是空的' : W2Say.notN(ans); },
+  async feedback(st, ans) {
+    if (st.doorsJ) { const got = String(ans).split(','), want = st.q.answer.split(','), k = got[0] !== want[0] ? 0 : 1; K.wiggle(st, st.cards[2 * k + (got[k] === 'eq' ? 0 : 1)]); W3X.say(this.wrongLine(st, ans)); await st.scope.wait(T(700)); return; }
+    await ZB.feedback.call(this, st, ans);
+  },
 });
 /* Z2 机器人合体: Optimus carries a, Bumblebee carries b; together they become one sentence a + b = ?; later one load is in a
    closed chest: a + ? = c (the missing part) */
@@ -351,24 +536,29 @@ const MCombine = Object.assign({}, ZB, {
     this.place(st); K.pop(st, st.ga); K.pop(st, st.gb, 120); K.pop(st, st.eqEl, 240);
     this.cardRow(st, q.opts, q.sup);
     if (q.miss !== 'sum') { W3X.say2(st, '一共' + CNQ(q.c) + '块。', q.say); } else K.say(st, q.say);
+    void L;
   },
   place(st) {
-    const L = K.L(), a = st.G.actors;
+    const L = K.L();
     if (st.ga) place(st.ga, L ? 250 : 80, L ? 120 : 260); if (st.gb) place(st.gb, L ? 620 : 420, L ? 120 : 260);
     if (st.eqEl) place(st.eqEl, L ? 300 : 90, L ? 330 : 520);
-    if (st.cards) st.cards.forEach((c, i) => place(c, (L ? 600 : 352) - (st.cards.length * 150 + (st.cards.length - 1) * 36) / 2 + i * 186, (L ? 600 : 880) - 75, 150, 150));
-    void a;
+    this.placeCards(st);
   },
-  async reveal(st) {
+  /* the hidden load opens, the two loads fly together into one (合体) */
+  async show(st) {
     const q = st.q, L = K.L();
+    if (st.shown) return; st.shown = true;
     this.fillSlot(st, q.answer);
     if (q.miss !== 'sum') { const h = q.miss === 'a' ? st.ga : st.gb; h.innerHTML = ''; h.style.background = 'rgba(255,255,255,.92)'; h.appendChild(V2G.dots(q.answer, { g: 30, r: 11, per: 5, fill: q.miss === 'a' ? '#4FB3FF' : '#FFC93C' })); }
-    /* 合体: the two loads fly together into one */
     if (!q.sym) {
       await Promise.all([st.scope.anim(st.ga, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + (L ? 180 : 160) + 'px)' }], { duration: 450, fill: 'forwards', easing: EASE.glide }), st.scope.anim(st.gb, [{ transform: 'translateX(0)' }, { transform: 'translateX(' + (L ? -190 : -170) + 'px)' }], { duration: 450, fill: 'forwards', easing: EASE.glide })]);
       st.gb.style.display = 'none'; st.ga.innerHTML = ''; const row = el('div', '', st.ga); Object.assign(row.style, { display: 'flex', gap: '8px' }); row.appendChild(V2G.dots(q.a, { g: 30, r: 11, per: 5, fill: '#4FB3FF' })); row.appendChild(V2G.dots(q.b, { g: 30, r: 11, per: 5, fill: '#FFC93C' }));
       st.scope.anim(st.ga, [{ transform: 'translateX(' + (L ? 180 : 160) + 'px) scale(1)' }, { transform: 'translateX(' + (L ? 180 : 160) + 'px) scale(1.15)' }, { transform: 'translateX(' + (L ? 180 : 160) + 'px) scale(1)' }], { duration: 400, fill: 'forwards', easing: EASE.pop });
     }
+  },
+  async reveal(st) {
+    const L = K.L();
+    await this.show(st); if (!Session.alive(st)) return;
     Sfx.reveal(); Fx.burst && Fx.burst((L ? 480 : 300), (L ? 170 : 320), { n: 14 });
     Voice.say('合体成功！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1200));
   },
@@ -404,17 +594,18 @@ const MUnload = Object.assign({}, ZB, {
     }
     if (q.kind === 'took') { st.gdoor = W2X.thing(st, 190, 190, 5, ''); st.gdoor.innerHTML = '<svg viewBox="0 0 190 190" width="100%" height="100%"><rect x="6" y="6" width="178" height="178" rx="18" fill="#8A5A2E" stroke="#2B2118" stroke-width="8"/><path d="M20 50H170M20 90H170M20 130H170" stroke="#6B4A2E" stroke-width="6"/></svg>'; const qm = el('div', '', st.gdoor); Object.assign(qm.style, { position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }); qm.appendChild(V2G.op('?', 84)); this.place(st); K.pop(st, st.gdoor); W3X.say2(st, '还剩' + CNQ(q.r) + '箱。', '搬走了几箱？'); this.cardRow(st, q.opts, q.sup); return; }
     this.ask(st);
+    void L;
   },
   ask(st) { const q = st.q; st.phase = 'ready'; K.pop(st, st.eqEl); this.cardRow(st, q.opts, q.sup); K.say(st, '还剩几箱？'); },
   place(st) {
     const L = K.L(), B = L ? { x: 120, y: 200 } : { x: 92, y: 300 };
     if (st.bed) place(st.bed, B.x, B.y + 40, 520, 160);
     /* the unloaded crates: by the truck when the child unloads them (they count them), behind the garage door when the
-       question is how many went (the unknown part is not seen, M5) */
-    let k = 0; (st.crates || []).forEach(o => { if (o.off) { if (st.q.kind === 'took' && !st.revealed) place(o.e, -400, -400, 90, 90); else place(o.e, (L ? 700 : 520) + (k % 2) * 94, (L ? 150 : 520) + Math.floor(k++ / 2) * 94, 90, 90); } else { const i = st.crates.filter(x => !x.off).indexOf(o); place(o.e, B.x + 10 + (i % 5) * 100, B.y - 30 + (i >= 5 ? -94 : 0), 90, 90); } });
-    if (st.gdoor) place(st.gdoor, L ? 700 : 520, L ? 150 : 520, 190, 190);
-    if (st.eqEl) { if (st.q.sym) { const w = st.eqEl.getBoundingClientRect().width / (Stage.scale || 1); place(st.eqEl, Math.round((L ? 512 : 352) - w / 2), L ? 230 : 360); } else place(st.eqEl, L ? 250 : 120, L ? 420 : 560); }
-    if (st.cards) st.cards.forEach((c, i) => place(c, (L ? 600 : 352) - (st.cards.length * 150 + (st.cards.length - 1) * 36) / 2 + i * 186, (L ? 600 : 880) - 75, 150, 150));
+       question is how many went (the unknown part is not seen, M5); portrait: three a row, above the five cards */
+    let k = 0; (st.crates || []).forEach(o => { if (o.off) { if (st.q.kind === 'took' && !st.revealed) place(o.e, -400, -400, 90, 90); else if (L) place(o.e, 680 + (k % 3) * 94, 150 + Math.floor(k++ / 3) * 94, 90, 90); else place(o.e, 420 + (k % 3) * 92, 510 + Math.floor(k++ / 3) * 92, 90, 90); } else { const i = st.crates.filter(x => !x.off).indexOf(o); place(o.e, B.x + 10 + (i % 5) * 100, B.y - 30 + (i >= 5 ? -94 : 0), 90, 90); } });
+    if (st.gdoor) place(st.gdoor, L ? 700 : 480, L ? 150 : 520, 190, 190);
+    if (st.eqEl) { if (st.q.sym) { const w = st.eqEl.getBoundingClientRect().width / (Stage.scale || 1); place(st.eqEl, Math.round((L ? 512 : 352) - w / 2), L ? 230 : 360); } else place(st.eqEl, L ? 250 : 60, L ? 420 : 560); }
+    this.placeCards(st);
   },
   onGesture(st, name, p) {
     const m = /^cr(\d+)$/.exec(p.id || '');
@@ -422,7 +613,17 @@ const MUnload = Object.assign({}, ZB, {
     return W3X.tapCards(st, name, p);
   },
   next(st, strat) { if (st.q.act && st.need > 0) { const i = st.crates.findIndex(o => !o.off); return { g: 'tap', p: { id: 'cr' + i } }; } return ZB.next.call(this, st, strat); },
-  async reveal(st) { this.fillSlot(st, st.q.answer); st.revealed = true; if (st.gdoor) st.gdoor.style.display = 'none'; this.place(st); Sfx.reveal(); Voice.say('卸货真快！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1100)); },
+  /* the box filled; the door opens; the crates asked about (left on the truck / taken off) are counted */
+  async show(st) {
+    const q = st.q, my = st;
+    this.fillSlot(st, q.answer); st.revealed = true; if (st.gdoor) st.gdoor.style.display = 'none';
+    /* the crates that go (when the child did not carry them off himself): they come off the truck first */
+    const off = (st.crates || []).filter(o => o.off).length; if (st.explaining && q.kind === 'left' && st.crates && st.crates.length && off < q.b) { st.crates.filter(o => !o.off).slice(-(q.b - off)).forEach(o => { o.off = true; }); Sfx.whoosh(0.2); this.place(st); await st.scope.wait(T(600)); if (!Session.alive(my)) return; }
+    this.place(st);
+    const cs = (st.crates || []).filter(o => (q.kind === 'left' ? !o.off : o.off));
+    for (let i = 0; i < cs.length && st.explaining; i++) { if (!Session.alive(my)) return; K.hop(st, cs[i].e, 14); await Count.beat(st.scope, 260, i + 1); }
+  },
+  async reveal(st) { await this.show(st); if (!Session.alive(st)) return; Sfx.reveal(); Voice.say('卸货真快！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1100)); },
   wrongLine(st, ans) { return ans === 0 ? '不是零' : '不是' + (CNQ(ans) || ans) + '箱'; },
 });
 /* Z4 三个数是一家: the triangle of a whole and its two parts - which number sentence belongs to it? */
@@ -432,27 +633,34 @@ const MFamily = Object.assign({}, ZB, {
     const d = Math.min(5, o.level), rng = o.rng, hi = [0, 5, 7, 9, 10, 10][d], w = rng.int(3, hi), a = rng.int(1, w - 1), b = w - a;
     const ops = d <= 2 ? ['+'] : ['+', '-'], op = rng.pick(ops);
     const ok = op === '+' ? [a, '+', b, '=', w] : [w, '-', a, '=', b];
-    const bad = [];
-    /* the wrong ones are false sentences (never a true one from another family - a 4-year-old would rightly take it) */
-    const alt = [[a, '+', b, '=', w + 1], [w, '-', a, '=', b + 1], [a + 1, '+', b, '=', w], [w, '-', b, '=', a + 1], [w, '-', a, '=', Math.max(0, b - 1)]].filter(x => (x[1] === '+' ? x[0] + x[2] : x[0] - x[2]) !== x[4]).filter(s => s.every(x => typeof x !== 'number' || (x >= 0 && x <= 19)) && JSON.stringify(s) !== JSON.stringify(ok));
-    while (bad.length < 2) { const s = rng.pick(alt); if (!bad.some(x => JSON.stringify(x) === JSON.stringify(s))) bad.push(s); }
-    const opts = rng.shuffle([ok, bad[0], bad[1]]);
+    /* the wrong ones are false sentences (never a true one from another family - a 4-year-old would rightly take it): four
+       of them, the near ones first */
+    const alt = [[a, '+', b, '=', w + 1], [w, '-', a, '=', b + 1], [a + 1, '+', b, '=', w], [w, '-', b, '=', a + 1], [w, '-', a, '=', Math.max(0, b - 1)], [a, '+', b, '=', w - 1], [b, '+', a, '=', w + 1], [w, '-', b, '=', Math.max(0, a - 1)], [a, '+', b + 1, '=', w], [w + 1, '-', a, '=', b], [a, '+', b, '=', w + 2]]
+      .filter(x => (x[1] === '+' ? x[0] + x[2] : x[0] - x[2]) !== x[4]).filter(s => s.every(x => typeof x !== 'number' || (x >= 0 && x <= 19)) && JSON.stringify(s) !== JSON.stringify(ok));
+    const near = op === '+' ? alt.filter(s => s[1] === '+') : alt.filter(s => s[1] === '-'), bad = W3X.uniq(rng.shuffle(near).concat(rng.shuffle(alt)), s => JSON.stringify(s), 4);
+    const opts = W3X.deal(G, ok, bad, 'z4');
     const hide = d === 5 ? rng.pick(['w', 'a', 'b']) : null;          /* the top level: one number of the family is hidden (L8) */
-    return { k: [d, w, a, op, hide], w, a, b, op, hide, eqs: opts, answer: opts.indexOf(ok), opts: [0, 1, 2], fact: op === '+' ? factOf('+', a, b) : factOf('-', w, a), sup: d >= 3 ? 1 : 0 };
+    return { k: [d, w, a, op, hide], w, a, b, op, hide, eqs: opts, answer: opts.indexOf(ok), opts: opts.map((_, i) => i), fact: op === '+' ? factOf('+', a, b) : factOf('-', w, a), sup: d >= 3 ? 1 : 0 };
   },
+  audit(q) { const tru = q.eqs.filter(e => (e[1] === '+' ? e[0] + e[2] : e[0] - e[2]) === e[4]); return { n: q.eqs.length, pos: q.answer, err: tru.length === 1 && q.eqs.indexOf(tru[0]) === q.answer ? null : 'true ones ' + tru.length }; },
   present(st) {
-    const q = st.q, L = K.L(), tri = st.tri = W2X.thing(st, 10, 10, 5, '');
+    const q = st.q, tri = st.tri = W2X.thing(st, 10, 10, 5, '');
     tri.innerHTML = '<svg viewBox="0 0 300 260" width="100%" height="100%"><path d="M150 30L270 230H30Z" fill="#E8F4FF" stroke="#2B2118" stroke-width="7" stroke-linejoin="round"/></svg>';
-    const put = (n, x, y) => { const c = el('div', '', tri); Object.assign(c.style, { position: 'absolute', left: x + '%', top: y + '%', transform: 'translate(-50%,-50%)', background: '#fff', borderRadius: '50%', width: '96px', height: '96px', boxShadow: '0 0 0 4px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); c.appendChild(n === '?' ? V2G.op('?', 54) : q.sup ? UI.num(n, 54) : V2G.numCard(n, 0, 40)); };
+    st.triN = [];
+    const put = (n, x, y) => { const c = el('div', '', tri); Object.assign(c.style, { position: 'absolute', left: x + '%', top: y + '%', transform: 'translate(-50%,-50%)', background: '#fff', borderRadius: '50%', width: '96px', height: '96px', boxShadow: '0 0 0 4px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); c.appendChild(n === '?' ? V2G.op('?', 54) : q.sup ? UI.num(n, 54) : V2G.numCard(n, 0, 40)); st.triN.push(c); };
     put(q.hide === 'w' ? '?' : q.w, 50, 20); put(q.hide === 'a' ? '?' : q.a, 14, 86); put(q.hide === 'b' ? '?' : q.b, 86, 86);
     st.cards = q.eqs.map((s, i) => { const c = W3X.card(st, 'card' + i, 6, 'card'); c.appendChild(V2G.eq(s, 1, 46)); K.pop(st, c, 80 * i); return c; });
-    st.opts = [0, 1, 2];
+    st.opts = q.opts.slice();
     this.place(st); K.pop(st, tri);
     K.say(st, '哪个算式是一家？');
   },
-  place(st) { const L = K.L(); if (st.tri) place(st.tri, L ? 90 : 202, L ? 150 : 150, 300, 260); (st.cards || []).forEach((c, i) => L ? place(c, 470, 130 + i * 150, 440, 126) : place(c, 92, 470 + i * 150, 520, 126)); },
+  /* five sentences, one per row: right of the triangle (landscape), under it (portrait) */
+  place(st) { const L = K.L(); if (st.tri) place(st.tri, L ? 90 : 202, L ? 150 : 190, 300, 260); RQ.rows(st, L ? { x: 430, y: 100, w: 570, h: 590 } : { x: 60, y: 460, w: 584, h: 550 }); },
   async reveal(st) { const e = st.cards[st.q.answer]; K.hop(st, e, 24); K.ring(st, [box(e)], 2, '#5CC46E'); Sfx.reveal(); Voice.say('它们是一家！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1200)); },
   async feedback(st, ans) { const e = st.cards[ans]; if (e) K.wiggle(st, e); W3X.say('这个不是一家'); await st.scope.wait(T(700)); },
+  /* after a wrong answer: his sentence worked out (what it really makes, beside its result: blue), the family's numbers hop,
+     the true sentence (gold) */
+  async explain(st, ans) { await RQ.explainEq(st, ans, async () => { (st.triN || []).forEach((c, i) => st.scope.timeout(() => K.hop(st, c, 14), 160 * i)); await st.scope.wait(T(700)); }); },
 });
 const ICZ = (() => { const k = '#2B2118', I = s => W2X.icon(s); return {
   door: I('<rect x="8" y="16" width="84" height="68" rx="12" fill="#C9D2DC" stroke="' + k + '" stroke-width="5"/><path d="M38 44H62M38 56H62" stroke="#5CC46E" stroke-width="7" stroke-linecap="round"/>'),
@@ -524,8 +732,8 @@ Object.assign(MapV2, {
 /* new content: the child has reached the last installed sea, or less than 14 days of islands left at last week's pace (A.28) */
 const Supply = {
   low() {
-    if (ORDER3.some(id => Store.w(id).unlocked)) return true;
-    const d = DAY(), recent = (Store.s.flagDays || []).filter(x => x > d - 7).length, left = ORDER.concat(ORDER2, ORDER3).filter(id => !flagged(id)).length;
+    if (ORDER4.some(id => Store.w(id).unlocked)) return true;          /* the stars are the last installed world */
+    const d = DAY(), recent = (Store.s.flagDays || []).filter(x => x > d - 7).length, left = ORDER.concat(ORDER2, ORDER3, ORDER4).filter(id => !flagged(id)).length;
     return recent > 0 && left / (recent / 7) < 14;
   },
 };
@@ -549,7 +757,7 @@ const Report = {
   text() {
     const S = Store.s, d = DAY(), cs = Object.keys(S.mem), by = s => cs.filter(c => Mem.state(c) === s).map(cardName).join('、') || '-';
     const [r7, n7] = Mem.keep(7, 13), [r30, n30] = Mem.keep(30, 59);
-    const where = ORDER.concat(ORDER2, ORDER3).filter(id => Store.w(id).unlocked).slice(-1)[0];
+    const where = ORDER.concat(ORDER2, ORDER3, ORDER4).filter(id => Store.w(id).unlocked).slice(-1)[0];
     const days = Object.keys(S.days).map(Number).filter(x => x > d - 7).map(x => Math.round(S.days[x].ms / 60000) + '分').join(' ');
     return ['点点岛进度报告（' + new Date().toLocaleDateString() + '）', '位置：' + (where ? WORLDS[where].name : '-') + '；旗子 ' + (S.flags || []).length + ' 面；已装：三片海，运算岛在云上第 ' + (ORDER3.indexOf('trans3') + 1) + ' 个',
       '会了（隔 7 天还对）：' + by('known'), '学习中：' + by('learning'), '待复测：' + by('stale'),

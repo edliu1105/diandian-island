@@ -36,6 +36,8 @@ def answer_guessing(page, strat, max_steps=40, timeout=15000):
     st = wait_phase(page, timeout=timeout)
     gen = st['gen']
     snap = None
+    stuck = 0
+    choice, build = strat if isinstance(strat, tuple) else (strat, 'wrong')
     for _ in range(max_steps):
         cur = q(page)
         if not cur or cur['gen'] != gen:
@@ -46,11 +48,15 @@ def answer_guessing(page, strat, max_steps=40, timeout=15000):
         if cur['phase'] not in ('act', 'ready', 'input'):
             page.wait_for_timeout(15)
             continue
-        choice, build = strat if isinstance(strat, tuple) else (strat, 'wrong')
         s = 'right' if cur.get('guided') else (choice if cur.get('opts') else build)
-        if step(page, s) is None:
+        res = step(page, s)
+        if res is None:
             page.wait_for_timeout(15)
             continue
+        # a habit the scene cannot take (the step is refused again and again): the guesser just gives some wrong answer
+        stuck = stuck + 1 if res[1] in ('ignored', 'free') else 0
+        if stuck >= 6 and build != 'wrong':
+            build = 'wrong'; stuck = 0
         page.wait_for_timeout(5)
     if snap is None:
         snap = q(page)
@@ -159,7 +165,10 @@ def main():
                 rep = world_report(page, w)
                 log.check(not any(x['ok'] for x in rep['per'] if x['g'] in g4), '%s: %d rounds of %s -> no game gate passed %s' % (w, rounds, strat, [(x['g'], x['right7']) for x in rep['per'] if x['g'] in g4]))
                 log.check(not page.evaluate("() => __state().worlds.huluwa.unlocked"), '%s: %d rounds of %s -> the next world stays locked' % (w, rounds, strat))
-                log.check(st['stars'] - stars0 == rounds, '%s: participation stars still grow one per round (%d stars for %d rounds, %.0f s)' % (w, st['stars'] - stars0, rounds, time.time() - t0))
+                # client rule 2026-10-08: a star only for a first-try right answer (no participation stars any more) - a
+                # guesser earns only the lucky ones: with five options (or two asks) well under 40 % of the rounds
+                got = st['stars'] - stars0
+                log.check(0 <= got <= 0.4 * rounds, '%s: stars only for lucky first-try right answers (%d stars for %d rounds, %.0f s)' % (w, got, rounds, time.time() - t0))
 
         # ---------------------------------------------------------------- H3: a self-made split must vary
         if 'variety' in PARTS:

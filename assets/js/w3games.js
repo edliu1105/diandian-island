@@ -1,5 +1,80 @@
 /* 点点岛 · the sky (world 3): the 28 games. Loaded after the entry tap by W3.load() in index.html. */
 "use strict";
+/* ================================================================ five options and "why" after a wrong answer (the client,
+   2026-10-10, docs/OPTIONS-EXPLAIN-SPEC.md): every choice offers 5 (one right, its place dealt from a bag so it is in each
+   place as often); a choice with only 2-3 possible answers asks two of them in one question. After a wrong answer the
+   child SEES why: his choice gets a blue ring (never red, never a cross), the right one a gold ring, and the game shows
+   why it is right. Every new line <= 8 characters, all listed in raw/js/w4/w3explain.voice.txt (recorded). */
+Object.assign(W3X, {
+  BLUE: '#4F7BFF', GOLD: '#FFC93C',
+  /* the right one among the wrong ones; its place comes from a bag (each of the n places equally often) */
+  deal(G, right, wrongs, key) {
+    const n = wrongs.length + 1, pos = bagPick(G, 'deal.' + (key || '') + n, Array.from({ length: n }, (_, i) => i)), w = G.rng.shuffle(wrongs.slice());
+    return Array.from({ length: n }, (_, i) => (i === pos ? right : w[i < pos ? i : i - 1]));
+  },
+  /* the first `n` different ones of a list (by a key) */
+  uniq(list, keyOf, n, not) { const seen = new Set((not || []).map(keyOf)), out = []; list.forEach(x => { const k = keyOf(x); if (out.length < n && !seen.has(k)) { seen.add(k); out.push(x); } }); return out; },
+  /* n equal boxes (w x w*k) in a frame {x, y, w, h}: as big as fits (<= max), the fewest rows, the last row centred */
+  grid(n, fr, max, gap, k) {
+    gap = gap == null ? 18 : gap; k = k || 1; let best = null;
+    for (let cols = n; cols >= 1; cols--) { const rows = Math.ceil(n / cols), s = Math.min(max, (fr.w - (cols - 1) * gap) / cols, ((fr.h - (rows - 1) * gap) / rows) / k); if (!best || s > best.s + 0.5) best = { s, cols, rows }; }
+    best.cols = Math.ceil(n / best.rows);                      /* 5 in two rows: 3 + 2 */
+    const w = Math.floor(best.s), h = Math.floor(best.s * k), pos = [];
+    for (let i = 0; i < n; i++) { const r = Math.floor(i / best.cols), inRow = Math.min(best.cols, n - r * best.cols), c = i % best.cols; pos.push({ x: Math.round(fr.x + fr.w / 2 + (c - (inRow - 1) / 2) * (w + gap) - w / 2), y: Math.round(fr.y + fr.h / 2 + (r - (best.rows - 1) / 2) * (h + gap) - h / 2) }); }
+    return { w, h, pos, cols: best.cols, rows: best.rows };
+  },
+  /* the card size that fits both orientations (a card keeps its size when the iPad turns) */
+  size2(n, frs, max, gap, k) { return Math.min(...frs.map(f => this.grid(n, f, max, gap, k).w)); },
+  /* place elements of a fixed size in a frame, in rows */
+  lay(els, fr, w, h, gap) {
+    h = h || w; gap = gap == null ? 18 : gap;
+    let cols = Math.max(1, Math.min(els.length, Math.floor((fr.w + gap) / (w + gap)))); const rows = Math.ceil(els.length / cols);
+    cols = Math.ceil(els.length / rows);                       /* 5 in two rows: 3 + 2, not 4 + 1 */
+    els.forEach((e, i) => {
+      const r = Math.floor(i / cols), inRow = Math.min(cols, els.length - r * cols), c = i % cols;
+      place(e, Math.round(fr.x + fr.w / 2 + (c - (inRow - 1) / 2) * (w + gap) - w / 2), Math.round(fr.y + fr.h / 2 + (r - (rows - 1) / 2) * (h + gap) - h / 2), w, h);
+    });
+  },
+  /* an element's box in stage px (also for a drawing inside a card) */
+  srect(e) { const r = e.getBoundingClientRect(), a = Stage.toStage(r.left, r.top), b = Stage.toStage(r.right, r.bottom); return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y }; },
+  /* a review question's plate covers the stage (z 60): the explanation's rings and badges go above it */
+  up(st, e) { if (e && st && st.game && st.game.review) e.style.setProperty('z-index', '75', 'important'); return e; },
+  /* the child's choice: a blue ring and a little shake (no red, no cross) */
+  mine(st, e, pad) { if (!e) return null; if (e.classList) e.classList.remove('hi'); K.wiggle(st, e);          /* his pick's glow off: only the blue ring marks it */
+    return this.up(st, K.ring(st, [e.style && e.style.left ? box(e) : this.srect(e)], pad == null ? 8 : pad, this.BLUE)); },
+  /* the right one: a gold ring and a hop */
+  gold(st, e, pad, h) { if (!e) return null; if (h !== 0) K.hop(st, e, h || 16); return this.up(st, K.ring(st, [e.style && e.style.left ? box(e) : this.srect(e)], pad == null ? 8 : pad, this.GOLD)); },
+  ringAt(st, r, color, pad) { return this.up(st, K.ring(st, [r], pad == null ? 6 : pad, color || this.BLUE)); },
+  /* a number badge centred on a point (stage px) */
+  badgeAt(st, x, y, n, size) { size = size || 44; const b = UI.badge(n, size); Stage.el.appendChild(b); b.style.position = 'absolute'; place(b, Math.round(x - size / 2), Math.round(y - size / 2)); st.els.push(b); this.up(st, b); st.scope.anim(b, [{ transform: 'scale(0)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 260, easing: EASE.pop }); return b; },
+  /* a point of an svg drawing (its viewBox units) in stage px */
+  svgPt(s, x, y) { const r = this.srect(s), vb = (s.getAttribute('viewBox') || '0 0 100 100').split(/[\s,]+/).map(Number), k = Math.min(r.w / vb[2], r.h / vb[3]); return { x: r.x + (r.w - vb[2] * k) / 2 + (x - vb[0]) * k, y: r.y + (r.h - vb[3] * k) / 2 + (y - vb[1]) * k, k }; },
+  /* a line of the explanation (tag 'summary': a tap that skips also stops it) */
+  tell(text) { return Voice.say(text, { tag: 'summary' }); },
+  /* wait for what is being said (at most ms), or ms */
+  async beat(st, ms) { await st.scope.guard(Promise.race([Voice.afterSay(80), st.scope.wait(ms)])); },
+  /* a dashed ring / box / line drawn inside an svg (in its own units) */
+  sv(parent, tag, a) { return svg(tag, a, parent); },
+  ringIn(s, cx, cy, r, color, sw) { return svg('circle', { cx, cy, r, fill: 'none', stroke: color || this.BLUE, 'stroke-width': sw || 4, 'stroke-dasharray': (sw || 4) * 1.6 + ' ' + (sw || 4) * 1.2, 'stroke-linecap': 'round' }, s); },
+  boxIn(s, x, y, w, h, color, sw) { return svg('rect', { x, y, width: w, height: h, rx: Math.min(w, h) * 0.18, fill: 'none', stroke: color || this.BLUE, 'stroke-width': sw || 4, 'stroke-dasharray': (sw || 4) * 1.6 + ' ' + (sw || 4) * 1.2, 'stroke-linecap': 'round' }, s); },
+  lineIn(s, x1, y1, x2, y2, color, sw) { return svg('line', { x1, y1, x2, y2, stroke: color || this.BLUE, 'stroke-width': sw || 5, 'stroke-dasharray': (sw || 5) * 1.6 + ' ' + (sw || 5) * 1.3, 'stroke-linecap': 'round' }, s); },
+  /* tests: a question with number options - how many, where the right one is, exactly one right, no two alike */
+  auditNum(q) { const o = q.opts || []; return { n: o.length, pos: o.indexOf(q.answer), err: o.filter(v => v === q.answer).length === 1 && new Set(o.map(String)).size === o.length ? null : 'options ' + JSON.stringify(o) }; },
+  /* the usual explanation of a card question: his card (blue), what makes the right one right (show), the right one (gold) */
+  async explainCards(st, ans, opt) {
+    opt = opt || {}; const my = st;
+    const cs = st.cards || [], ia = opt.mine != null ? opt.mine : (st.opts || []).indexOf(ans), ir = opt.right != null ? opt.right : (st.opts || []).indexOf(st.q.answer);
+    if (cs[ia]) this.mine(st, cs[ia]);
+    if (opt.why) { await opt.why(); if (!Session.alive(my)) return; }
+    await st.scope.wait(T(500)); if (!Session.alive(my)) return;
+    if (opt.show) { await opt.show(); if (!Session.alive(my)) return; }
+    if (cs[ir]) this.gold(st, cs[ir]);
+    Sfx.reveal();
+    this.tell(opt.line || '对的是这个！');
+    await this.beat(st, 1600);
+  },
+});
+
 /* ================================================================ 佩奇 E1 · 切 equal parts: which cake is cut into equal pieces / which is half */
 const MHalves = {
   kind0: 'halves', verb: '切！', intro: '帮猪爸爸切蛋糕！', praise: ['切得真公平！'],
@@ -13,46 +88,96 @@ const MHalves = {
   /* one option: shape, regions, shaded indices and what is wrong with it (for the feedback) */
   opt(rng, kind, sh) {
     const C = [100, 100], th = sh === 'circle' ? rng.pick([0, 45, 90, 135]) * Math.PI / 180 : sh === 'square' ? rng.pick([0, 90, 45, 135]) * Math.PI / 180 : rng.pick([0, 90]) * Math.PI / 180;
-    const vert = rng() < 0.5, off = (rng() < 0.5 ? -1 : 1) * (sh === 'rect' ? 30 : 36);
-    let regs, why = 'ok';
+    const vert = sh === 'rect' ? true : rng() < 0.5, off = (rng() < 0.5 ? -1 : 1) * (sh === 'rect' ? 30 : 36);
+    let regs, why = 'ok', qth = 0, a = 0;
     if (kind === 'mid') regs = [this.half(C, th, 1), this.half(C, th, -1)];
     else if (kind === 'off') { const P = [C[0] - Math.sin(th) * off, C[1] + Math.cos(th) * off]; regs = [this.half(P, th, 1), this.half(P, th, -1)]; why = 'uneq'; }
-    else if (kind === 'cross') regs = this.quads(C, sh === 'circle' ? rng.pick([0, 45]) * Math.PI / 180 : 0);
+    else if (kind === 'cross') { qth = sh === 'circle' ? rng.pick([0, 45]) * Math.PI / 180 : 0; regs = this.quads(C, qth); }
     else if (kind === 'offcross') { regs = this.quads([C[0] + (rng() < 0.5 ? -26 : 26), C[1] + (rng() < 0.5 ? -24 : 24)], 0); why = 'uneq'; }
-    else if (kind === 'strips4') regs = this.strips(sh, [0.25, 0.25, 0.25, 0.25], sh === 'rect' ? true : vert);
-    else if (kind === 'ustrips4') { regs = this.strips(sh, rng.shuffle([0.12, 0.18, 0.3, 0.4]), sh === 'rect' ? true : vert); why = 'uneq'; }
-    else if (kind === 'sect3') { const a = rng.int(0, 5) * 20; regs = this.sectors([a - 90, a + 30, a + 150]); }
-    else if (kind === 'usect3') { const a = rng.int(0, 5) * 20; regs = this.sectors([a - 90, a - 10, a + 110]); why = 'uneq'; }
-    else if (kind === 'strips3') regs = this.strips(sh, [1 / 3, 1 / 3, 1 / 3], sh === 'rect' ? true : vert);
-    else { regs = this.strips(sh, rng.shuffle([0.18, 0.32, 0.5]), sh === 'rect' ? true : vert); why = 'uneq'; }
-    return { sh, regs: regs.map(r => r.map(p => [Math.round(p[0]), Math.round(p[1])])), shade: [], why, n: regs.length };
+    else if (kind === 'strips4') regs = this.strips(sh, [0.25, 0.25, 0.25, 0.25], vert);
+    else if (kind === 'ustrips4') { regs = this.strips(sh, rng.shuffle([0.12, 0.18, 0.3, 0.4]), vert); why = 'uneq'; }
+    else if (kind === 'sect3') { a = rng.int(0, 5) * 20; regs = this.sectors([a - 90, a + 30, a + 150]); }
+    else if (kind === 'usect3') { a = rng.int(0, 5) * 20; regs = this.sectors([a - 90, a - 10, a + 110]); why = 'uneq'; }
+    else if (kind === 'strips3') regs = this.strips(sh, [1 / 3, 1 / 3, 1 / 3], vert);
+    else { regs = this.strips(sh, rng.shuffle([0.18, 0.32, 0.5]), vert); why = 'uneq'; }
+    return { sh, kind, th, qth, a, vert, regs: regs.map(r => r.map(p => [Math.round(p[0]), Math.round(p[1])])), shade: [], why, n: regs.length };
   },
+  /* equal parts of this shape: four (a cross or strips) / three (sectors of a circle, strips otherwise); the unequal ones */
+  eq4(rng, sh) { return sh === 'circle' ? 'cross' : rng.pick(['cross', 'strips4']); },
+  eq3(sh) { return sh === 'circle' ? 'sect3' : 'strips3'; },
+  un4(rng, sh) { return sh === 'circle' ? 'offcross' : rng.pick(['offcross', 'ustrips4']); },
+  un3(sh) { return sh === 'circle' ? 'usect3' : 'ustrips3'; },
+  sig(x) { return x.sh + JSON.stringify(x.regs) + '/' + x.shade.join(''); },
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const ask = d <= 2 ? 'two' : d === 3 ? 'four' : d === 4 ? 'half' : bagPick(G, 'hv5', ['three', 'half2']);
-    const shapes = d === 1 ? ['circle', 'circle', 'circle'] : rng.shuffle(['circle', 'square', 'rect']);
-    let list;
-    if (ask === 'two') list = [this.opt(rng, 'mid', shapes[0]), this.opt(rng, 'off', shapes[1]), d >= 2 && rng() < 0.4 ? this.opt(rng, shapes[2] === 'circle' ? 'cross' : 'strips4', shapes[2]) : this.opt(rng, 'off', shapes[2])];
-    else if (ask === 'four') list = [this.opt(rng, rng() < 0.5 || shapes[0] === 'circle' ? 'cross' : 'strips4', shapes[0]), this.opt(rng, shapes[1] === 'circle' ? 'offcross' : rng.pick(['offcross', 'ustrips4']), shapes[1]), rng() < 0.5 ? this.opt(rng, 'mid', shapes[2]) : this.opt(rng, 'offcross', shapes[2])];
-    else if (ask === 'three') { const sh = rng.shuffle(['circle', 'rect', 'square']); const ok = (s) => this.opt(rng, s === 'circle' ? 'sect3' : 'strips3', s), bad = (s) => this.opt(rng, s === 'circle' ? 'usect3' : 'ustrips3', s); list = [ok(sh[0]), bad(sh[1]), rng() < 0.5 ? bad(sh[2]) : this.opt(rng, sh[2] === 'circle' ? 'cross' : 'strips4', sh[2])]; }
+    const shp = () => (d === 1 ? 'circle' : rng.pick(['circle', 'square', 'rect']));
+    const O = (k, sh, shade, why) => { const s = sh || shp(), x = this.opt(rng, typeof k === 'function' ? k(s) : k, s); if (shade) x.shade = shade; if (why) x.why = why; return x; };
+    /* the right one and four different wrong ones: unequal parts, the wrong number of parts, too little / too much painted */
+    let right, pool;
+    if (ask === 'two') { right = O('mid'); pool = Array.from({ length: 10 }, (_, i) => (d >= 2 && i === 2 ? O(rng.pick([s => this.eq4(rng, s), s => this.eq3(s)])) : O('off'))); }
+    else if (ask === 'four') { right = O(s => this.eq4(rng, s)); pool = [O(s => this.un4(rng, s)), O(s => this.un4(rng, s)), O('mid'), O(s => this.eq3(s))].concat(Array.from({ length: 6 }, () => O(s => this.un4(rng, s)))); }
+    else if (ask === 'three') { right = O(s => this.eq3(s)); pool = [O(s => this.un3(s)), O(s => this.un3(s)), O(s => this.eq4(rng, s)), O('mid')].concat(Array.from({ length: 6 }, () => O(s => this.un3(s)))); }
     else if (ask === 'half') {
-      const a = this.opt(rng, 'mid', shapes[0]); a.shade = [rng.int(0, 1)];
-      const b = this.opt(rng, shapes[1] === 'circle' ? 'cross' : rng.pick(['cross', 'strips4']), shapes[1]); b.shade = [rng.int(0, 3)]; b.why = 'less';
-      const c = this.opt(rng, 'off', shapes[2]); c.shade = [rng.int(0, 1)]; c.why = 'uneqh';
-      list = [a, b, c];
+      right = O('mid', null, [rng.int(0, 1)]);
+      pool = [O(s => this.eq4(rng, s), null, [rng.int(0, 3)], 'less'), O('off', null, [rng.int(0, 1)], 'uneqh'), O(s => this.eq4(rng, s), null, rng.pick([[0, 1, 2], [1, 2, 3], [0, 1, 3]]), 'more'), O(s => this.eq3(s), null, [rng.int(0, 2)], 'less')]
+        .concat(Array.from({ length: 6 }, (_, i) => (i % 2 ? O('off', null, [rng.int(0, 1)], 'uneqh') : O(s => this.eq4(rng, s), null, [rng.int(0, 3)], 'less'))));
     } else {                                    /* half2: two of four equal pieces are half */
-      const a = this.opt(rng, shapes[0] === 'circle' ? 'cross' : rng.pick(['cross', 'strips4']), shapes[0]); a.shade = rng.pick([[0, 1], [0, 2], [1, 3], [2, 3]]);
-      const b = this.opt(rng, shapes[1] === 'circle' ? 'cross' : 'strips4', shapes[1]); b.shade = [rng.int(0, 3)]; b.why = 'less';
-      const c = this.opt(rng, shapes[2] === 'circle' ? 'cross' : 'strips4', shapes[2]); c.shade = rng.pick([[0, 1, 2], [1, 2, 3], [0, 1, 3]]); c.why = 'more';
-      list = [a, b, c];
+      right = O(s => this.eq4(rng, s), null, rng.pick([[0, 1], [0, 2], [1, 3], [2, 3]]));
+      /* unequal pieces, two of them next to each other painted: never half (a cross off the middle, never strips) */
+      pool = [O(s => this.eq4(rng, s), null, [rng.int(0, 3)], 'less'), O(s => this.eq4(rng, s), null, rng.pick([[0, 1, 2], [1, 2, 3], [0, 1, 3]]), 'more'), O('offcross', null, rng.pick([[0, 1], [1, 2], [2, 3], [3, 0]]), 'uneqh'), O(s => this.eq3(s), null, rng.pick([[0, 1], [1, 2]]), 'more')]
+        .concat(Array.from({ length: 6 }, (_, i) => O(s => this.eq4(rng, s), null, i % 2 ? [rng.int(0, 3)] : rng.pick([[0, 1, 2], [1, 2, 3]]), i % 2 ? 'less' : 'more')));
     }
-    const order = rng.shuffle([0, 1, 2]), opts = order.map(i => list[i]);
-    return { k: [ask, opts.map(x => x.sh + x.n + x.why + x.shade.join('')).join()], ask, opts, answer: order.indexOf(0) };
+    const foils = W3X.uniq(pool, x => this.sig(x), 4, [right]);
+    while (foils.length < 4) foils.push(O('off', null, ask === 'half' ? [0] : null, ask === 'half' ? 'uneqh' : null));
+    const opts = W3X.deal(G, right, foils, 'hv');
+    return { k: [ask, opts.map(x => x.sh + x.n + x.why + x.shade.join('')).join()], ask, opts, answer: opts.indexOf(right) };
+  },
+  /* the lines of a fair cut (an explanation): where the cake should have been cut */
+  guides(o, ask) {
+    const C = [100, 100], R = 130, b = this.bounds(o.sh), ln = th => [C[0] - Math.cos(th) * R, C[1] - Math.sin(th) * R, C[0] + Math.cos(th) * R, C[1] + Math.sin(th) * R];
+    const ray = deg => [C[0], C[1], C[0] + R * Math.cos(deg * Math.PI / 180), C[1] + R * Math.sin(deg * Math.PI / 180)];
+    const strips = n => Array.from({ length: n - 1 }, (_, i) => (o.vert ? [b.x + b.w * (i + 1) / n, b.y - 20, b.x + b.w * (i + 1) / n, b.y + b.h + 20] : [b.x - 20, b.y + b.h * (i + 1) / n, b.x + b.w + 20, b.y + b.h * (i + 1) / n]));
+    const want = { two: 2, four: 4, three: 3 }[ask];
+    if (want && o.n !== want) return null;                                     /* the number of pieces is wrong: they are counted */
+    if (ask === 'two') return [ln(o.th)];
+    if (ask === 'four') return /strips/.test(o.kind) ? strips(4) : [ln(o.qth), ln(o.qth + Math.PI / 2)];
+    if (ask === 'three') return /strips/.test(o.kind) ? strips(3) : [ray(o.a - 90), ray(o.a + 30), ray(o.a + 150)];
+    if (o.kind === 'mid' || o.kind === 'off') return [ln(o.th)];             /* half: one line that halves the cake */
+    if (/cross/.test(o.kind)) return [ln(o.qth)];
+    if (/strips/.test(o.kind)) return o.vert ? [[100, b.y - 20, 100, b.y + b.h + 20]] : [[b.x - 20, 100, b.x + b.w + 20, 100]];
+    return [ln((o.a - 90) * Math.PI / 180)];
+  },
+  /* the middle of a piece (inside the cake), in the drawing's units */
+  mid(o, i) {
+    const r = o.regs[i], b = this.bounds(o.sh), inPoly = (x, y) => { let c = false; for (let a = 0, z = r.length - 1; a < r.length; z = a++) { const [xa, ya] = r[a], [xz, yz] = r[z]; if ((ya > y) !== (yz > y) && x < (xz - xa) * (y - ya) / (yz - ya) + xa) c = !c; } return c; };
+    const inSh = (x, y) => (o.sh === 'circle' ? Math.hypot(x - 100, y - 100) < 80 : x > b.x + 4 && x < b.x + b.w - 4 && y > b.y + 4 && y < b.y + b.h - 4);
+    let sx = 0, sy = 0, n = 0; for (let x = 4; x < 200; x += 8) for (let y = 4; y < 200; y += 8) if (inSh(x, y) && inPoly(x, y)) { sx += x; sy += y; n++; }
+    return n ? [sx / n, sy / n] : [100, 100];
+  },
+  /* the pieces of a cake move a little apart */
+  burst(st, o) {
+    const cen = r => { const xs = r.map(p => Math.max(0, Math.min(200, p[0]))), ys = r.map(p => Math.max(0, Math.min(200, p[1]))); return [(Math.min(...xs) + Math.max(...xs)) / 2 - 100, (Math.min(...ys) + Math.max(...ys)) / 2 - 100]; };
+    (o.pieces || []).forEach((g, i) => { const c = cen(o.regs[i]), L = Math.hypot(c[0], c[1]) || 1; st.scope.anim(g, [{ transform: 'translate(0px,0px)' }, { transform: 'translate(' + (c[0] / L * 12).toFixed(1) + 'px,' + (c[1] / L * 12).toFixed(1) + 'px)' }], { duration: 420, easing: EASE.pop, fill: 'forwards' }); });
+  },
+  /* after a wrong answer: where his cake should have been cut (blue dashes) or its pieces counted; then the right one */
+  async explain(st, ans) {
+    const q = st.q, my = st, o = q.opts[ans], e = st.cakes[ans], ok = q.opts[q.answer];
+    if (o && e) {
+      W3X.mine(st, e, 6); this.burst(st, o);
+      const s = e.querySelector('svg'), lines = this.guides(o, q.ask);
+      if (lines && s) { const g = svg('g', { 'clip-path': 'url(#' + o.clip + ')' }, s); lines.forEach(l => W3X.lineIn(g, l[0], l[1], l[2], l[3], W3X.BLUE, 6)); }
+      else if (s) { for (let i = 0; i < o.n; i++) { if (!Session.alive(my)) return; const p = this.mid(o, i), P = W3X.svgPt(s, p[0], p[1]); W3X.badgeAt(st, P.x, P.y, i + 1, 40); await Count.beat(st.scope, 300, i + 1); } }
+      await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+    }
+    this.burst(st, ok); W3X.gold(st, st.cakes[q.answer], 6); Sfx.reveal();
+    W3X.tell(q.ask === 'half' || q.ask === 'half2' ? '涂了一半！' : '一样大的' + { two: '两', four: '四', three: '三' }[q.ask] + '块！');
+    await W3X.beat(st, 1600);
   },
   base: { circle: '#FFD3E0', square: '#F6D28B', rect: '#B9855A' },
   draw(o, size) {
     const s = svg('svg', { viewBox: '0 0 200 200', width: size, height: size }), ink = W2X.ink, sh = o.sh, b = this.bounds(sh);
-    const id = 'hv' + (MHalves.uid = (MHalves.uid || 0) + 1);
+    const id = 'hv' + (MHalves.uid = (MHalves.uid || 0) + 1); o.clip = id;
     const defs = svg('defs', {}, s), cp = svg('clipPath', { id }, defs);
     const shapeAt = (attrs, parent) => sh === 'circle' ? svg('circle', Object.assign({ cx: 100, cy: 100, r: 84 }, attrs), parent) : svg('rect', Object.assign({ x: b.x, y: b.y, width: b.w, height: b.h, rx: sh === 'rect' ? 12 : 16 }, attrs), parent);
     shapeAt({}, cp);
@@ -66,9 +191,10 @@ const MHalves = {
     shapeAt({ fill: 'none', stroke: ink, 'stroke-width': 6 }, s);
     return s;
   },
-  geo() { return K.L() ? { cy: 372, s: 214, gap: 40 } : { cy: 560, s: 200, gap: 18 }; },
+  /* five cakes: one row in landscape (above the watchers), 3 + 2 in portrait */
+  geo() { return K.L() ? { fr: { x: 20, y: 150, w: 984, h: 330 }, max: 214, gap: 16 } : { fr: { x: 16, y: 230, w: 672, h: 620 }, max: 200, gap: 18 }; },
   decor(G) { W3X.decor2(G, this.chars); },
-  place(st) { const g = this.geo(); W3X.row(3, Stage.W / 2, g.cy, g.s, g.gap).forEach((p, i) => place(st.cakes[i], p.x, p.y, g.s, g.s)); },
+  place(st) { const g = this.geo(), L = W3X.grid(st.cakes.length, g.fr, g.max, g.gap); st.cakes.forEach((e, i) => place(e, L.pos[i].x, L.pos[i].y, L.w, L.w)); },
   askIcon(ask) {
     const ink = W2X.ink;
     if (ask === 'two') return W3X.ic('<path d="M44 20A30 30 0 0 0 44 80Z" fill="#FFD3E0" stroke="' + ink + '" stroke-width="5"/><path d="M56 20A30 30 0 0 1 56 80Z" fill="#FFD3E0" stroke="' + ink + '" stroke-width="5"/>');
@@ -110,9 +236,11 @@ const MHalves = {
     void ink;
   },
   async feedback(st, ans) { const o = this.why(st.q.opts[ans], st.q.ask); if (st.cakes[ans]) K.wiggle(st, st.cakes[ans]); W3X.say(this.line(o, st.q.ask)); await st.scope.wait(500); },
-  next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % 3 : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
+  next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.opts.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
   workEls(st) { return st.cakes || []; },
   snap(st) { return { opts: st.q.opts.map(o => o.why) }; },
+  /* tests: how many choices, where the right one is, and an independent check that only one is right */
+  audit(q) { const want = { two: 2, four: 4, three: 3 }[q.ask], good = q.opts.filter(o => o.why === 'ok' && (!want || o.n === want) && (q.ask === 'half' || q.ask === 'half2' ? o.n === 2 * o.shade.length : o.shade.length === 0)); return { n: q.opts.length, pos: q.answer, err: good.length === 1 && good[0] === q.opts[q.answer] ? null : 'right ones: ' + good.length }; },
 };
 
 /* ================================================================ 佩奇 E2 · 排 what happens first: picture stories in time order */
@@ -204,6 +332,26 @@ const MStory = {
     W3X.say(fr && fr.foreign ? '这张不属于这里' : a[i] > i ? '它在后面哦' : '它在前面哦');
     await st.scope.wait(600);
   },
+  /* not a choice (the child orders them); after a wrong order: the pictures out of place (blue), then every picture flies
+     to its place (the one that does not belong goes back), and the story is told in order */
+  async explain(st, ans) {
+    const q = st.q, my = st, a = String(ans).split(',').map(Number), g = this.geo(st);
+    const rings = a.map((fi, k) => (fi !== k ? W3X.mine(st, st.cardsE.find(x => x.fi === fi).e, 4) : null)).filter(Boolean);
+    await st.scope.wait(T(1000)); if (!Session.alive(my)) return;
+    rings.forEach(r => r.remove());
+    W3X.tell('先后是这样的。');
+    await Promise.all(st.cardsE.map(o => {
+      const want = q.frames[o.fi].foreign ? null : o.fi; if (o.at === want) return null;
+      o.at = want; const b0 = box(o.e), sz = want != null ? g.slot - 12 : g.card, p = want != null ? this.slotXY(st, want) : this.poolXY(st, o.home);
+      place(o.e, b0.x, b0.y, sz, sz); return K.flyTo(st, o.e, p.x + (want != null ? 6 : 0), p.y + (want != null ? 6 : 0), 520, 40);
+    }));
+    if (!Session.alive(my)) return;
+    this.place(st);
+    for (let i = 0; i < q.n; i++) { if (!Session.alive(my)) return; const o = st.cardsE.find(x => x.at === i); K.hop(st, o.e, 18); Sfx.mar(Sfx.SCALE[2 + i * 2], 0, 0.35, 0.5); await st.scope.wait(T(320)); }
+    K.ring(st, st.slots.map(e => box(e)), 10, W3X.GOLD); Sfx.reveal(); W3X.tell(q.sum);
+    await W3X.beat(st, 1500);
+  },
+  audit() { return { none: 'the child orders the pictures' }; },
   next(st, strat) {
     if (st.done) return null;
     const placed = st.cardsE.filter(x => x.at != null).length;
@@ -222,23 +370,34 @@ const SOLIDS = { ball: ['beachball', 'yarnball'], cube: ['giftbox', 'dice'], cyl
 const SOLID_WORD = { ball: '球形', cube: '方块形', cyl: '圆柱形', cone: '圆锥形' };
 const MSolids = {
   kind0: 'solids', verb: '找！', intro: '找一样的形状！', praise: ['形状认得真准！'],
+  /* five things: the right one and four that are not (every other shape there at least once; never a thing that is also
+     right: no cone for "rolls" - it rolls round - nor for "prints a circle" - its bottom is one) */
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng;
+    const d = Math.min(5, o.level), rng = o.rng, all = k => SOLIDS[k].map(p => ({ s: k, p }));
+    const spread = (kinds, n) => { const per = rng.shuffle(kinds).map(k => rng.shuffle(all(k))), out = []; for (let r = 0; out.length < n && r < 2; r++) per.forEach(l => { if (out.length < n && l[r]) out.push(l[r]); }); return out; };
     if (d <= 2) {
-      const t = bagPick(G, 'sd' + d, d === 1 ? ['ball', 'cube', 'cyl'] : ['ball', 'cube', 'cyl', 'cone']);
-      const kinds = d === 1 ? ['ball', 'cube', 'cyl'] : [t].concat(rng.shuffle(['ball', 'cube', 'cyl', 'cone'].filter(k => k !== t)).slice(0, 2));
-      const opts = rng.shuffle(kinds.map(k => ({ s: k, p: rng.pick(SOLIDS[k]) })));
-      return { k: [d, t, opts.map(x => x.p).join()], mode: 'match', t, opts, answer: opts.findIndex(x => x.s === t) };
+      const t = bagPick(G, 'sd' + d, d === 1 ? ['ball', 'cube', 'cyl'] : ['ball', 'cube', 'cyl', 'cone']), right = { s: t, p: rng.pick(SOLIDS[t]) };
+      const opts = W3X.deal(G, right, spread(Object.keys(SOLIDS).filter(k => k !== t), 4), 'sd');
+      return { k: [d, t, opts.map(x => x.p).join()], mode: 'match', t, opts, answer: opts.indexOf(right) };
     }
-    if (d === 3) {
-      const t = bagPick(G, 'sd3', ['ball', 'cube', 'cyl', 'cone']), others = rng.shuffle(Object.keys(SOLIDS).filter(k => k !== t)).slice(0, 2);
-      const opts = rng.shuffle(SOLIDS[t].map(p => ({ s: t, p })).concat(others.map(k => ({ s: k, p: rng.pick(SOLIDS[k]) }))));
-      return { k: [d, t, opts.map(x => x.p).join()], mode: 'two', t, opts, answer: opts.map((x, i) => x.s === t ? i : -1).filter(i => i >= 0).join('-') };
+    if (d === 3) {                                       /* both things of that shape among five: two places from a bag */
+      const t = bagPick(G, 'sd3', ['ball', 'cube', 'cyl', 'cone']), pairs = []; for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) pairs.push(i + '-' + j);
+      const at = bagPick(G, 'sd3p', pairs).split('-').map(Number), foils = spread(Object.keys(SOLIDS).filter(k => k !== t), 3), mine = rng.shuffle(all(t));
+      const opts = []; for (let i = 0, a = 0, b = 0; i < 5; i++) opts.push(at.includes(i) ? mine[a++] : foils[b++]);
+      return { k: [d, t, opts.map(x => x.p).join()], mode: 'two', t, opts, answer: at.join('-') };
     }
     const ask = d === 4 ? bagPick(G, 'sd4', ['noroll', 'nostand']) : bagPick(G, 'sd5', ['pcircle', 'psquare']);
-    const opts = rng.shuffle(['ball', 'cube', 'cyl'].map(k => ({ s: k, p: rng.pick(SOLIDS[k]) })));
-    const t = { noroll: 'cube', nostand: 'ball', pcircle: 'cyl', psquare: 'cube' }[ask];
-    return { k: [d, ask, opts.map(x => x.p).join()], mode: ask, t, opts, answer: opts.findIndex(x => x.s === t) };
+    const t = { noroll: 'cube', nostand: 'ball', pcircle: 'cyl', psquare: 'cube' }[ask], right = { s: t, p: rng.pick(SOLIDS[t]) };
+    const fk = { noroll: ['ball', 'cyl'], nostand: ['cube', 'cyl', 'cone'], pcircle: ['ball', 'cube'], psquare: ['ball', 'cyl'] }[ask];
+    const opts = W3X.deal(G, right, spread(fk, 4), 'sd');
+    return { k: [d, ask, opts.map(x => x.p).join()], mode: ask, t, opts, answer: opts.indexOf(right) };
+  },
+  /* tests: an independent check (what rolls, stands, prints) that exactly one is right */
+  audit(q) {
+    const ok = x => (q.mode === 'match' || q.mode === 'two' ? x.s === q.t : q.mode === 'noroll' ? !['ball', 'cyl', 'cone'].includes(x.s) : q.mode === 'nostand' ? x.s === 'ball' : q.mode === 'pcircle' ? ['cyl', 'cone'].includes(x.s) : x.s === 'cube');
+    const good = q.opts.map((x, i) => (ok(x) ? i : -1)).filter(i => i >= 0), want = String(q.answer).split('-').map(Number);
+    const props = new Set(q.opts.map(x => x.p)).size === q.opts.length;
+    return { n: q.opts.length, pos: q.mode === 'two' ? want : q.answer, pick: q.mode === 'two' ? 2 : 1, err: props && good.join() === want.join() ? null : 'right ones ' + good + ' want ' + want + (props ? '' : ' (a thing twice)') };
   },
   solid(kind, size) {
     const s = svg('svg', { viewBox: '0 0 120 120', width: size, height: size }), k = W2X.ink, a = { stroke: k, 'stroke-width': 4, 'stroke-linejoin': 'round' };
@@ -249,13 +408,16 @@ const MSolids = {
     else { P('M60 12L96 92A36 12 0 0 1 24 92Z', '#9FD0FF'); svg('path', { d: 'M24 92A36 12 0 0 0 96 92', fill: 'none', stroke: k, 'stroke-width': 4 }, s); svg('path', { d: 'M58 26L44 82', stroke: '#fff', 'stroke-width': 5, opacity: 0.6 }, s); }
     return s;
   },
-  geo(st) { const L = K.L(), n = st.q.opts.length; return L ? { mx: 220, my: 360, ms: 240, cx: 650, cy: 360, cs: 150, gap: 26, per: n === 4 ? 2 : 3 } : { mx: 352, my: 330, ms: 230, cx: 352, cy: 690, cs: 150, gap: 22, per: n === 4 ? 2 : 3 }; },
+  /* the model on the left (on top in portrait), the five things 3 + 2 */
+  geo(st) { const L = K.L(); return L ? { mx: 210, my: 350, ms: 240, fr: { x: 380, y: 130, w: 630, h: 420 }, cs: 150, gap: 26 } : { mx: 352, my: 330, ms: 230, fr: { x: 20, y: 540, w: 664, h: 330 }, cs: 150, gap: 22 }; },
   decor(G) { W3X.decor2(G, this.chars, true); },
   place(st) {
     const g = this.geo(st);
     place(st.model, g.mx - g.ms / 2, g.my - g.ms / 2, g.ms, g.ms);
-    W3X.row(st.objs.length, g.cx, g.cy, g.cs, g.gap, g.per).forEach((p, i) => place(st.objs[i], p.x, p.y, g.cs, g.cs));
-    if (st.prints) st.prints.forEach((e, i) => { const b = box(st.objs[i]); place(e, b.x + b.w / 2 - 30, b.y + b.h + 4, 60, 60); });
+    const P = W3X.grid(st.objs.length, g.fr, g.cs, g.gap); st.objs.forEach((e, i) => place(e, P.pos[i].x, P.pos[i].y, P.w, P.w));
+    /* the prints (and the explanation's little shapes) sit on the card's lower corner: nothing below the cards to cover */
+    if (st.prints) st.prints.forEach((e, i) => { const b = box(st.objs[i]); place(e, b.x + b.w - 50, b.y + b.h - 50, 62, 62); });
+    if (st.tags) st.tags.forEach(t => { const b = box(st.objs[t.i]); place(t.e, b.x + b.w - 52, b.y + b.h - 52, 64, 64); });
   },
   modelNode(q) {
     const d = el('div', ''); Object.assign(d.style, { width: '100%', height: '100%' });
@@ -291,13 +453,35 @@ const MSolids = {
       st.objs.forEach((e, i) => { const s = q.opts[i].s; if (s === 'ball' || s === 'cyl') st.scope.anim(e.firstChild, [{ transform: 'translateX(0) rotate(0)' }, { transform: 'translateX(26px) rotate(160deg)' }, { transform: 'translateX(0) rotate(0)' }], { duration: 1200, easing: EASE.glide }); });
       st.summary = q.mode === 'noroll' ? '方块滚不动！' : '球站不稳！';
     } else if (q.mode === 'pcircle' || q.mode === 'psquare') {
-      st.prints = q.opts.map(o => { const e = W2X.thing(st, 60, 60, 5, ''); e.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%">' + (o.s === 'cube' ? '<rect x="12" y="12" width="36" height="36" fill="#E8414B"/>' : o.s === 'cyl' ? '<circle cx="30" cy="30" r="20" fill="#E8414B"/>' : '<circle cx="30" cy="30" r="4" fill="#E8414B"/>') + '</svg>'; return e; });
-      this.place(st); st.prints.forEach((e, i) => K.pop(st, e, 150 * i));
+      this.showPrints(st);
       st.summary = q.mode === 'pcircle' ? '圆柱印出圆形！' : '方块印出方形！';
     } else st.summary = '都是' + SOLID_WORD[q.t] + '！';
     Voice.say(st.summary, { tag: 'summary' });
     await st.scope.wait(1500);
     void my;
+  },
+  /* what each thing prints (on its card's corner) */
+  showPrints(st) {
+    if (st.prints) return;
+    st.prints = st.q.opts.map(o => { const e = W2X.thing(st, 62, 62, 7, ''); Object.assign(e.style, { background: '#FFF8EC', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118' }); e.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%">' + (o.s === 'cube' ? '<rect x="15" y="15" width="30" height="30" fill="#E8414B"/>' : o.s === 'cyl' || o.s === 'cone' ? '<circle cx="30" cy="30" r="16" fill="#E8414B"/>' : '<circle cx="30" cy="30" r="4" fill="#E8414B"/>') + '</svg>'; return e; });
+    this.place(st); st.prints.forEach((e, i) => K.pop(st, e, 150 * i));
+  },
+  /* a thing's shape, drawn on its card's corner */
+  tag(st, i) { const e = W2X.thing(st, 64, 64, 7, ''); Object.assign(e.style, { background: '#FFF8EC', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); e.appendChild(this.solid(st.q.opts[i].s, '86%')); (st.tags || (st.tags = [])).push({ e, i }); this.place(st); K.pop(st, e); return e; },
+  /* after a wrong answer: what his thing is (its shape / it rolls / it stands / what it prints), then the right one */
+  async explain(st, ans) {
+    const q = st.q, my = st, mine = String(ans).split('-').map(Number), right = String(q.answer).split('-').map(Number);
+    const bad = mine.filter(i => !right.includes(i));
+    bad.forEach(i => W3X.mine(st, st.objs[i], 6));
+    if (q.mode === 'match' || q.mode === 'two') { K.hop(st, st.model, 14); bad.forEach(i => this.tag(st, i)); }
+    else if (q.mode === 'noroll' || q.mode === 'nostand') {
+      st.objs.forEach((e, i) => { const s = q.opts[i].s; if (s === 'ball' || (q.mode === 'noroll' && s === 'cyl')) st.scope.anim(e.firstChild, [{ transform: 'translateX(0) rotate(0)' }, { transform: 'translateX(26px) rotate(160deg)' }, { transform: 'translateX(0) rotate(0)' }], { duration: 1200, easing: EASE.glide }); });
+    } else this.showPrints(st);
+    await st.scope.wait(T(1400)); if (!Session.alive(my)) return;
+    right.forEach(i => { W3X.gold(st, st.objs[i], 6); if (q.mode === 'match' || q.mode === 'two') this.tag(st, i); });
+    Sfx.reveal();
+    W3X.tell(q.mode === 'noroll' ? '方块滚不动！' : q.mode === 'nostand' ? '球站不稳！' : q.mode === 'pcircle' ? '圆柱印出圆形！' : q.mode === 'psquare' ? '方块印出方形！' : '都是' + SOLID_WORD[q.t] + '！');
+    await W3X.beat(st, 1600);
   },
   async feedback(st, ans) {
     const q = st.q, idx = String(ans).split('-').map(Number), bad = idx.find(i => q.opts[i].s !== q.t);
@@ -400,8 +584,14 @@ const MMissing = {
     const pic = bagPick(G, 'ms' + d, pics), P = MISS_PICS[pic];
     const cands = Object.keys(P.parts).filter(k => P.parts[k].name && (P.parts[k].lv || P.lv) <= d);
     const miss = rng.pick(cands);
-    return { k: [pic, miss], pic, miss, answer: miss, name: P.parts[miss].name };
+    /* at least five places to tap (client: five options): the parts, and empty places where a part could have been */
+    const zs = Object.keys(P.parts).filter(x => P.parts[x].name || P.parts[x].z).map(x => P.parts[x].at), spots = [];
+    [40, 95, 150, 205, 260].forEach(y => [40, 95, 150, 205, 260].forEach(x => spots.push([x, y])));
+    const near = p => Math.min(...zs.map(z => Math.hypot(z[0] - p[0], z[1] - p[1]))), decoys = [];
+    rng.shuffle(spots).sort((a, b) => near(a) - near(b)).forEach(p => { if (zs.length + decoys.length < 5 && zs.concat(decoys).every(z => Math.hypot(z[0] - p[0], z[1] - p[1]) >= 80)) decoys.push(p); });
+    return { k: [pic, miss], pic, miss, answer: miss, name: P.parts[miss].name, decoys };
   },
+  audit(q) { const P = MISS_PICS[q.pic], n = Object.keys(P.parts).filter(x => P.parts[x].name || P.parts[x].z).length + q.decoys.length; return { n, pos: null, err: n >= 5 && P.parts[q.miss] && P.parts[q.miss].name ? null : 'places ' + n }; },
   art(q, withMissing) {
     const P = MISS_PICS[q.pic], k = W2X.ink, s = svg('svg', { viewBox: '0 0 300 300', width: '100%', height: '100%' });
     s.style.pointerEvents = 'none'; s.style.overflow = 'visible';
@@ -423,13 +613,14 @@ const MMissing = {
   place(st) {
     const g = this.geo(), P = MISS_PICS[st.q.pic], k = g.s / 300;
     place(st.pic, g.x - g.s / 2, g.y - g.s / 2, g.s, g.s);
-    st.zones.forEach(z => { const a = P.parts[z.k].at; place(z.e, g.x - g.s / 2 + a[0] * k - 50, g.y - g.s / 2 + a[1] * k - 50, 100, 100); });
+    st.zones.forEach(z => { const a = z.at || P.parts[z.k].at; place(z.e, g.x - g.s / 2 + a[0] * k - 50, g.y - g.s / 2 + a[1] * k - 50, 100, 100); });
   },
   async present(st) {
     const q = st.q, P = MISS_PICS[q.pic];
     st.pic = W2X.thing(st, 10, 10, 4, ''); Object.assign(st.pic.style, { borderRadius: '28px', background: 'rgba(255,255,255,.88)', boxShadow: '0 0 0 5px #2B2118' });
     st.pic.appendChild(this.art(q, false));
-    st.zones = Object.keys(P.parts).filter(x => P.parts[x].name || P.parts[x].z).map(x => { const e = W2X.thing(st, 100, 100, 6, ''); Object.assign(e.style, { borderRadius: '50%' }); K.reg(st, 'pt_' + x, e, {}); return { k: x, e }; });
+    st.zones = Object.keys(P.parts).filter(x => P.parts[x].name || P.parts[x].z).map(x => { const e = W2X.thing(st, 100, 100, 6, ''); Object.assign(e.style, { borderRadius: '50%' }); K.reg(st, 'pt_' + x, e, {}); return { k: x, e }; })
+      .concat((q.decoys || []).map((at, i) => { const e = W2X.thing(st, 100, 100, 6, ''); Object.assign(e.style, { borderRadius: '50%' }); K.reg(st, 'pt_dk' + i, e, {}); return { k: 'dk' + i, e, at }; }));
     this.place(st);
     K.pop(st, st.pic);
     K.task(st, [[W3X.ic('<rect x="10" y="10" width="80" height="80" rx="14" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><circle cx="38" cy="44" r="9" fill="#2B2118"/><circle cx="64" cy="44" r="11" fill="none" stroke="#2B2118" stroke-width="4" stroke-dasharray="5 4"/><path d="M36 70Q50 80 64 70" fill="none" stroke="#2B2118" stroke-width="5" stroke-linecap="round"/>')], ['q']]);
@@ -447,6 +638,16 @@ const MMissing = {
     st.summary = '少了' + q.name + '！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1400);
   },
   async feedback(st, ans) { const z = st.zones.find(x => x.k === ans); if (z) K.flash(st, [z.e]); W3X.say('这里不缺哦'); await st.scope.wait(500); },
+  /* after a wrong answer: the place he tapped (blue), then the missing part drawn in where it belongs (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st, z = st.zones.find(x => x.k === ans);
+    if (z) W3X.ringAt(st, box(z.e), W3X.BLUE, 0);
+    await st.scope.wait(T(900)); if (!Session.alive(my)) return;
+    st.pic.innerHTML = ''; st.pic.appendChild(this.art(q, true));
+    const r = st.zones.find(x => x.k === q.miss); if (r) { W3X.ringAt(st, box(r.e), W3X.GOLD, 4); Fx.burst(center(r.e).x, center(r.e).y, { n: 12, dist: 60 }); }
+    Sfx.reveal(); W3X.tell('少了' + q.name + '！');
+    await W3X.beat(st, 1600);
+  },
   next(st, strat) { if (st.picked) return null; const k = strat === 'wrong' ? st.zones.find(z => z.k !== st.q.miss).k : st.q.miss; return { g: 'tap', p: { id: 'pt_' + k } }; },
   workEls(st) { return st.pic ? [st.pic] : []; },
   snap(st) { return { pic: st.q.pic }; },
@@ -471,7 +672,10 @@ const MGroups = {
     return s;
   },
   geo(st) { const L = K.L(), n = st.q.boxes; return L ? { y: 330, s: n >= 5 ? 160 : n === 4 ? 192 : 214, gap: n >= 5 ? 18 : 30, per: n } : { y: n > 3 ? 430 : 470, s: n > 3 ? 196 : 200, gap: 22, per: n === 4 ? 2 : 3 }; },
-  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 830 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 800 }; },
+  /* the five number cards: one row between the watchers (landscape), one row above them (portrait) */
+  cardFr(L) { return (L == null ? K.L() : L) ? { x: 160, y: 540, w: 704, h: 150 } : { x: 16, y: 730, w: 672, h: 140 }; },
+  cardSize(n) { return W3X.size2(n, [this.cardFr(true), this.cardFr(false)], 136, 16); },
   decor(G) { W3X.decor2(G, this.chars); },
   inBox(st, b, j) { const m = st.q.per, cols = m <= 2 ? m : m <= 4 ? 2 : 3, rows = Math.ceil(m / cols), r = Math.floor(j / cols), c = j % cols, inRow = Math.min(cols, m - r * cols), sz = Math.round(Math.min(58, b.w * (cols === 3 ? 0.27 : 0.34), b.h * (rows === 2 ? 0.34 : 0.5))); return { x: b.x + b.w / 2 + (c - (inRow - 1) / 2) * (sz + 4) - sz / 2, y: b.y + b.h * 0.62 + (r - (rows - 1) / 2) * (sz + 2) - sz / 2, s: sz }; },
   place(st) {
@@ -479,7 +683,7 @@ const MGroups = {
     W3X.row(st.q.boxes, Stage.W / 2, g.y, g.s, g.gap, g.per).forEach((p, i) => { place(st.boxEls[i], p.x, p.y, g.s, g.s * 120 / 140); });
     st.items.forEach(o => { const b = box(st.boxEls[o.b]), p = this.inBox(st, b, o.j); place(o.e, p.x, p.y, p.s, p.s); });
     if (st.lids) st.lids.forEach((l, i) => { const b = box(st.boxEls[i]); place(l, b.x + b.w / 2 - 34, b.y - 40, 68, 46); });
-    if (st.cards) K.cardsPlace(st, this.cardSpot());
+    if (st.cards) W3X.lay(st.cards, this.cardFr(), box(st.cards[0]).w, null, 16);
   },
   async present(st) {
     const q = st.q;
@@ -490,14 +694,22 @@ const MGroups = {
     if (q.open === 'one') st.lids = st.boxEls.map((_, i) => { const l = W2X.thing(st, 68, 46, 6, ''); if (i === 0) l.style.visibility = 'hidden'; else { l.appendChild(UI.qty(q.per, 34, { dotsOnly: true })); Object.assign(l.style, { background: '#FFF8EC', borderRadius: '12px', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center' }); } return l; });
     this.place(st);
     st.boxEls.forEach((e, i) => K.pop(st, e, 80 * i)); st.items.forEach((o, i) => K.pop(st, o.e, 200 + 30 * i));
-    K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot()));
+    K.cards(st, q.opts, Object.assign({ layout: 'frame', size: this.cardSize(q.opts.length), gap: 16 }, this.cardSpot())); this.place(st);
     if (q.open === 'one') { K.task(st, [[{ node: (() => { const d = el('span'); d.style.display = 'flex'; d.style.gap = '4px'; for (let i = 0; i < 3; i++) { const b = el('span'); b.style.width = b.style.height = '40px'; b.appendChild(this.boxSvg(i === 0)); d.appendChild(b); } return d; })() }], ['q']]); W3X.say2(st, '每盒一样多！', '一共几个？'); }
     else { K.task(st, [['assets/props/' + q.item + '.png'], ['q']]); K.say(st, '一共几个？'); }
   },
   onGesture(st, name, p) { return W3X.tapCards(st, name, p); },
   async reveal(st) {
+    await this.show(st); if (!Session.alive(st)) return;
+    Sfx.reveal(); this.cheerAll(st); st.summary = '一共' + CNQ(st.q.answer) + '个！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+  },
+  /* after a wrong answer: his card (blue), the boxes opened and counted box by box, the right card (gold) */
+  async explain(st, ans) { await W3X.explainCards(st, ans, { show: () => this.show(st), line: '一共' + CNQ(st.q.answer) + '个！' }); },
+  audit(q) { return W3X.auditNum(q); },
+  async show(st) {
     const q = st.q, my = st;
-    if (q.open === 'one') {                    /* the lids come off: every box holds the same */
+    if (q.open === 'one' && !st.opened) {      /* the lids come off: every box holds the same */
+      st.opened = true;
       for (let b = 1; b < q.boxes; b++) { st.boxEls[b].innerHTML = ''; st.boxEls[b].appendChild(this.boxSvg(true)); if (st.lids && st.lids[b]) st.lids[b].style.visibility = 'hidden'; for (let j = 0; j < q.per; j++) { const e = K.item(Stage.el, 'assets/props/' + q.item + '.png', 44, 44); e.style.zIndex = 5; st.els.push(e); st.items.push({ e, b, j }); } }
       this.place(st);
     }
@@ -507,7 +719,6 @@ const MGroups = {
       K.badge(st, st.boxEls[b], (b + 1) * q.per, 0, -10, 46);
       await Count.beat(st.scope, 420, (b + 1) * q.per);
     }
-    Sfx.reveal(); this.cheerAll(st); st.summary = '一共' + CNQ(q.answer) + '个！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(W2Say.notN(ans)); await st.scope.wait(400); },
   next(st, strat) { return st.picked ? null : K.cardNext(st, strat); },
@@ -527,10 +738,12 @@ const MGrid = {
     const cell = () => [rng.int(0, C - 1), rng.int(0, R - 1)];
     const t1 = cell(); let t2 = null; if (two) do { t2 = cell(); } while (t2[0] === t1[0] || t2[1] === t1[1]);
     if (mode === 'read') {
-      const opts = [t1]; let guard = 0;
-      while (opts.length < 3 && guard++ < 50) { const c = rng() < 0.5 ? [t1[0], (t1[1] + rng.int(1, R - 1)) % R] : [(t1[0] + rng.int(1, C - 1)) % C, t1[1]]; if (!opts.some(x => x[0] === c[0] && x[1] === c[1])) opts.push(c); }
-      const sh = rng.shuffle(opts);
-      return { k: [d, cols.map(c => c[0]).join(), rows.map(r => r[1]).join(), t1.join()], C, R, cols, rows, mode, t: [t1], opts: sh, answer: sh.findIndex(x => x[0] === t1[0] && x[1] === t1[1]) };
+      /* four wrong cells, each in the sprout's row or its column (the right colour with the wrong vegetable, or back) */
+      const cand = []; for (let r = 0; r < R; r++) if (r !== t1[1]) cand.push([t1[0], r]); for (let c = 0; c < C; c++) if (c !== t1[0]) cand.push([c, t1[1]]);
+      const sameC = rng.shuffle(cand.filter(x => x[0] === t1[0])), sameR = rng.shuffle(cand.filter(x => x[1] === t1[1])), foils = [];
+      for (let i = 0; foils.length < 4 && i < 6; i++) { if (sameC[i]) foils.push(sameC[i]); if (foils.length < 4 && sameR[i]) foils.push(sameR[i]); }
+      const sh = W3X.deal(G, t1, foils, 'gr');
+      return { k: [d, cols.map(c => c[0]).join(), rows.map(r => r[1]).join(), t1.join()], C, R, cols, rows, mode, t: [t1], opts: sh, answer: sh.indexOf(t1) };
     }
     return { k: [d, cols.map(c => c[0]).join(), rows.map(r => r[1]).join(), t1.join(), t2 ? t2.join() : ''], C, R, cols, rows, mode, t: two ? [t1, t2] : [t1], answer: (two ? [t1, t2] : [t1]).map(x => x.join(':')).join('|') };
   },
@@ -539,6 +752,8 @@ const MGrid = {
     return L ? { cs, x0: 500 - q.C * cs / 2 + 30, y0: 600 - q.R * cs, hx: 500 - q.C * cs / 2 - 62, hy: 600 - q.R * cs - 74 } : { cs, x0: 352 - q.C * cs / 2 + 34, y0: 330, hx: 352 - q.C * cs / 2 - 46, hy: 330 - 82 };
   },
   cardSpot() { return K.L() ? { cx: 880, cy: 380 } : { cx: 352, cy: 880 }; },
+  /* the five cards of "where is the sprout": two columns right of the field (landscape, above Bluey), one row under it */
+  cardFr(L) { return (L == null ? K.L() : L) ? { x: 770, y: 104, w: 240, h: 420 } : { x: 16, y: 790, w: 672, h: 210 }; },
   decor(G) { const L = K.L(); W2X.hideAll(G, this.chars); const a = G.actors[this.chars[0]]; if (a && L) showActor(a, 940, 698, 160); },
   cellXY(st, c, r) { const g = this.geo(st); return { x: g.x0 + c * g.cs, y: g.y0 + r * g.cs }; },
   place(st) {
@@ -547,8 +762,7 @@ const MGrid = {
     st.rowEls.forEach((e, r) => place(e, g.hx + 8, g.y0 + r * g.cs + g.cs / 2 - 30, 60, 60));
     st.colEls.forEach((e, c) => place(e, g.x0 + c * g.cs + g.cs / 2 - 32, g.hy + 4, 64, 64));
     st.plants.forEach(o => { const p = this.cellXY(st, o.c, o.r); place(o.e, p.x + g.cs / 2 - 32, p.y + g.cs / 2 - 34, 64, 64); });
-    if (st.cards) K.cardsPlace(st, Object.assign({ gap: 20 }, this.cardSpot()));
-    if (st.cards && K.L()) st.cards.forEach((c, i) => place(c, 880 - 68, 160 + i * 156, 136, 136));
+    if (st.cards) W3X.lay(st.cards, this.cardFr(), box(st.cards[0]).w, null, 12);
   },
   flag(color) { const d = el('div', ''); d.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%"><path d="M12 6V56" stroke="#2B2118" stroke-width="5" stroke-linecap="round"/><path d="M14 8H52L44 22L52 36H14Z" fill="' + color + '" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/></svg>'; return d; },
   cue(q, t) { const d = el('span'); d.style.display = 'flex'; d.style.alignItems = 'center'; d.style.gap = '4px'; const f = this.flag(q.rows[t[1]][0]); f.style.width = f.style.height = '44px'; d.appendChild(f); const v = img('assets/props/' + q.cols[t[0]][0] + '.png', '', d); v.style.height = v.style.width = '44px'; return d; },
@@ -562,7 +776,7 @@ const MGrid = {
     this.place(st);
     st.cellEls.forEach((o, i) => K.pop(st, o.e, 18 * i));
     if (q.mode === 'read') {
-      W2X.cards(st, q.opts.map(t => this.cue(q, t)), q.opts.map((_, i) => i), Object.assign({ size: 136, gap: 20 }, this.cardSpot()));
+      W2X.cards(st, q.opts.map(t => this.cue(q, t)), q.opts.map((_, i) => i), Object.assign({ size: W3X.size2(q.opts.length, [this.cardFr(true), this.cardFr(false)], 136, 12), gap: 12 }, this.cardSpot()));
       this.place(st);
       K.task(st, [['assets/props/sprout.png'], ['q']]); K.say(st, '小苗在哪一格？');
     } else this.ask(st);
@@ -593,6 +807,28 @@ const MGrid = {
     st.plants.forEach(o => { st.scope.anim(o.e, [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 500, easing: EASE.pop }); });
     Sfx.reveal(); this.cheerAll(st); st.summary = '行和列都对！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
+  /* the sprout's row (its flag and its cells) lights up, then its column (the vegetable and its cells) */
+  async showRC(st, t) {
+    K.flash(st, [st.rowEls[t[1]]].concat(st.cellEls.filter(o => o.r === t[1]).map(o => o.e)));
+    await st.scope.wait(T(700)); if (!Session.alive(st)) return;
+    K.flash(st, [st.colEls[t[0]]].concat(st.cellEls.filter(o => o.c === t[0]).map(o => o.e)));
+    await st.scope.wait(T(800));
+  },
+  /* after a wrong answer: his card / his sprout (blue); the row, then the column; where they meet (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st;
+    if (q.mode === 'read') { await W3X.explainCards(st, ans, { mine: ans, right: q.answer, show: () => this.showRC(st, q.t[0]) }); return; }
+    const got = String(ans).split('|').map(s => s.split(':').map(Number)), i = Math.max(0, got.findIndex((g2, k) => g2[0] !== q.t[k][0] || g2[1] !== q.t[k][1])), g2 = got[i], t = q.t[i];
+    const pl = g2 && st.plants.find(o => o.c === g2[0] && o.r === g2[1]); if (pl) W3X.mine(st, pl.e, 10);
+    await st.scope.wait(T(700)); if (!Session.alive(my)) return;
+    await this.showRC(st, t); if (!Session.alive(my)) return;
+    let ok = st.plants.find(o => o.c === t[0] && o.r === t[1]);
+    if (!ok) { const e = K.item(Stage.el, 'assets/props/sprout.png', 64, 64); e.style.zIndex = 6; st.els.push(e); ok = { e, c: t[0], r: t[1] }; st.plants.push(ok); this.place(st); K.pop(st, e); }
+    const c = st.cellEls.find(o => o.c === t[0] && o.r === t[1]); W3X.gold(st, c ? c.e : ok.e, 4, 0);
+    Sfx.reveal(); W3X.tell('种在这一格！');
+    await W3X.beat(st, 1600);
+  },
+  audit(q) { return q.mode === 'read' ? { n: q.opts.length, pos: q.answer, err: q.opts.filter(x => x[0] === q.t[0][0] && x[1] === q.t[0][1]).length === 1 && new Set(q.opts.map(x => x.join())).size === q.opts.length ? null : 'cells' } : { none: 'a field of ' + q.C * q.R + ' cells' }; },
   async feedback(st, ans) {
     const q = st.q;
     if (q.mode === 'read') { const t = q.opts[ans], a = q.t[0]; if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W3X.say(t[1] !== a[1] ? '不是' + q.rows[t[1]][1] + '那行' : '不是' + q.cols[t[0]][1] + '那列'); await st.scope.wait(500); return; }
@@ -616,16 +852,28 @@ const MGrid = {
 /* ================================================================ Bluey U3 · 变 the magic cups: which cup hides the ball */
 const MCups = {
   kind0: 'cups', verb: '变！', intro: '爸爸变魔术！', praise: ['眼睛跟得真紧！'],
+  /* five cups at every level (client: five options); the number of swaps and their speed grow with the level as before.
+     About two swaps in three move the ball's cup (as with three cups), so the ball is still followed, not just found */
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng;
-    const [n, swaps, ms] = [null, [3, 2, 760], [3, 3, 660], [3, 4, 560], [4, 4, 540], [4, 6, 460]][d];
-    const ball = rng.int(0, n - 1), list = [];
-    for (let i = 0; i < swaps; i++) { let a, b; do { a = rng.int(0, n - 1); b = rng.int(0, n - 1); } while (a === b || (list.length && ((list[list.length - 1][0] === a && list[list.length - 1][1] === b) || (list[list.length - 1][0] === b && list[list.length - 1][1] === a)))); list.push([a, b]); }
-    /* where the ball ends: slots are positions; cups move between slots */
-    let pos = ball; list.forEach(([a, b]) => { if (pos === a) pos = b; else if (pos === b) pos = a; });
-    return { k: [n, ball, list.map(x => x.join('')).join('.')], n, ball, swaps: list, ms, answer: pos };
+    const d = Math.min(5, o.level), rng = o.rng, n = 5;
+    const [swaps, ms] = [null, [2, 760], [3, 660], [4, 560], [4, 540], [6, 460]][d];
+    const end = bagPick(G, 'cu', [0, 1, 2, 3, 4]);                /* where the ball ends: each cup as often */
+    let best = null;
+    for (let t = 0; t < 60; t++) {
+      const ball = rng.int(0, n - 1), list = []; let pos = ball;
+      for (let i = 0; i < swaps; i++) {
+        let a, b, k = 0;
+        do { if (rng() < 0.67) { a = pos; b = rng.int(0, n - 1); } else { a = rng.int(0, n - 1); b = rng.int(0, n - 1); } k++; }
+        while (k < 50 && (a === b || (list.length && ((list[list.length - 1][0] === a && list[list.length - 1][1] === b) || (list[list.length - 1][0] === b && list[list.length - 1][1] === a)))));
+        list.push([a, b]); if (pos === a) pos = b; else if (pos === b) pos = a;
+      }
+      const moved = list.filter(([a, b]) => a !== b).length === swaps && pos !== ball;
+      best = { ball, list, pos };
+      if (moved && pos === end) break;
+    }
+    return { k: [n, best.ball, best.list.map(x => x.join('')).join('.')], n, ball: best.ball, swaps: best.list, ms, answer: best.pos };
   },
-  geo(st) { const L = K.L(), n = st.q.n; return L ? { y: 420, s: n === 4 ? 150 : 170, gap: n === 4 ? 46 : 70 } : { y: 560, s: n === 4 ? 140 : 160, gap: n === 4 ? 26 : 50 }; },
+  geo(st) { return K.L() ? { y: 420, s: 150, gap: 30 } : { y: 560, s: 120, gap: 14 }; },
   decor(G) { W3X.decor2(G, ['bandit', 'bluey']); },
   slotXY(st, i) { const g = this.geo(st); return W3X.row(st.q.n, Stage.W / 2, g.y, g.s, g.gap)[i]; },
   place(st) {
@@ -649,23 +897,47 @@ const MCups = {
     if (!Session.alive(my)) return;
     st.ballEl.style.visibility = 'hidden';
     await st.scope.wait(T(300));
-    const g = this.geo(st);
     for (const [a, b] of q.swaps) {           /* two cups trade places along little arcs */
       if (!Session.alive(my)) return;
-      const A = st.cups.find(o => o.slot === a), B = st.cups.find(o => o.slot === b), pa = this.slotXY(st, a), pb = this.slotXY(st, b), dx = pb.x - pa.x;
-      Sfx.whoosh(0.15);
-      await Promise.all([
-        st.scope.anim(A.e, [{ transform: 'translate(0,0)' }, { transform: 'translate(' + dx / 2 + 'px,-46px)' }, { transform: 'translate(' + dx + 'px,0)' }], { duration: T(q.ms) + 1, easing: 'ease-in-out', fill: 'forwards' }),
-        st.scope.anim(B.e, [{ transform: 'translate(0,0)' }, { transform: 'translate(' + (-dx / 2) + 'px,46px)' }, { transform: 'translate(' + (-dx) + 'px,0)' }], { duration: T(q.ms) + 1, easing: 'ease-in-out', fill: 'forwards' }),
-      ]);
-      if (!Session.alive(my)) return;
-      A.slot = b; B.slot = a; this.place(st); [A, B].forEach(o => o.e.getAnimations().forEach(x => x.cancel()));
-      void g;
+      await this.swap(st, a, b, q.ms, false);
     }
+    if (!Session.alive(my)) return;
     st.ballSlot = q.answer;
     st.phase = 'setup';
     K.say(st, '球在哪个杯子里？');
   },
+  /* two cups trade places along little arcs (the ball, when it is seen, goes with its cup) */
+  async swap(st, a, b, ms, withBall) {
+    const A = st.cups.find(o => o.slot === a), B = st.cups.find(o => o.slot === b), pa = this.slotXY(st, a), pb = this.slotXY(st, b), dx = pb.x - pa.x;
+    const kA = [{ transform: 'translate(0,0)' }, { transform: 'translate(' + dx / 2 + 'px,-46px)' }, { transform: 'translate(' + dx + 'px,0)' }], kB = [{ transform: 'translate(0,0)' }, { transform: 'translate(' + (-dx / 2) + 'px,46px)' }, { transform: 'translate(' + (-dx) + 'px,0)' }];
+    const o = { duration: T(ms) + 1, easing: 'ease-in-out', fill: 'forwards' }, all = [st.scope.anim(A.e, kA, o), st.scope.anim(B.e, kB, o)];
+    if (withBall && (st.ballSlot === a || st.ballSlot === b)) all.push(st.scope.anim(st.ballEl, st.ballSlot === a ? kA : kB, o));
+    Sfx.whoosh(0.15);
+    await Promise.all(all);
+    if (!Session.alive(st)) return;
+    A.slot = b; B.slot = a; if (withBall) st.ballSlot = st.ballSlot === a ? b : st.ballSlot === b ? a : st.ballSlot;
+    this.place(st); [A.e, B.e, st.ballEl].forEach(e => e.getAnimations().forEach(x => x.cancel()));
+  },
+  /* after a wrong answer: his cup is empty (blue); then the cups go back and swap again, slower and see-through, so the
+     ball can be followed; its cup (gold) comes up */
+  async explain(st, ans) {
+    const q = st.q, my = st, mine = st.pickedCup;
+    if (mine) W3X.mine(st, mine.e, 4);
+    await st.scope.wait(T(700)); if (!Session.alive(my)) return;
+    st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
+    st.cups.forEach(o => { o.e.getAnimations().forEach(x => x.cancel()); o.slot = o.id; o.e.style.opacity = '0.5'; });
+    st.ballSlot = q.ball; st.ballEl.style.visibility = ''; st.ballEl.style.zIndex = 7; this.place(st);
+    W3X.tell('再看一遍！');
+    await st.scope.wait(T(600)); if (!Session.alive(my)) return;
+    for (const [a, b] of q.swaps) { if (!Session.alive(my)) return; await this.swap(st, a, b, Math.min(q.ms, 380), true); }
+    if (!Session.alive(my)) return;
+    st.cups.forEach(o => { o.e.style.opacity = ''; });
+    const c = st.cups.find(o => o.slot === q.answer); W3X.gold(st, c.e, 4, 0); this.lift(st, c);
+    const b = box(st.ballEl); Fx.burst(b.x + 30, b.y + 30, { n: 12, dist: 60 });
+    Sfx.reveal(); W3X.tell('球在这里！');
+    await W3X.beat(st, 1500);
+  },
+  audit(q) { let p = q.ball; q.swaps.forEach(([a, b]) => { if (p === a) p = b; else if (p === b) p = a; }); return { n: q.n, pos: q.answer, err: p === q.answer && q.n >= 5 ? null : 'ball ' + p }; },
   onGesture(st, name, p) {
     const id = p.id || ''; if (name !== 'tap' || !/^cup\d$/.test(id) || st.picked || !['ready', 'act', 'input'].includes(st.phase)) return false;
     const o = st.cups.find(x => 'cup' + x.id === id); st.picked = true; st.pickedCup = o;
@@ -696,23 +968,60 @@ const MOverlay = {
     const A = {}, B = {};
     cells.slice(0, per).forEach(i => { A[i] = fig(); }); cells.slice(per, per * 2).forEach(i => { B[i] = fig(); });
     const U = Object.assign({}, A, B), key = c => Object.keys(c).sort().map(i => i + c[i].k + c[i].c).join(';');
+    const free = cells.slice(per * 2), other = (f, by) => (by === 'k' ? { k: rng.pick(kinds.filter(x => x !== f.k)), c: f.c } : { k: f.k, c: rng.pick(cols.filter(x => x !== f.c)) });
+    const moveOne = (c0, k0, j) => { const c = Object.assign({}, c0); c[j] = c[k0]; delete c[k0]; return c; };
     if (d <= 3) {
-      /* which picture do A and B make? */
-      const foils = [];
-      const free = cells.slice(per * 2);
-      const drop = Object.assign({}, U); delete drop[rng.pick(Object.keys(U))]; foils.push({ c: drop, why: 'less' });
-      const extra = Object.assign({}, U); extra[free[0]] = fig(); foils.push({ c: extra, why: 'more' });
-      const moved = Object.assign({}, U), mk = rng.pick(Object.keys(U)); moved[free[1]] = moved[mk]; delete moved[mk]; foils.push({ c: moved, why: 'pos' });
-      const pick = rng.shuffle(foils).slice(0, 2), opts = rng.shuffle([{ c: U, why: 'ok' }].concat(pick));
-      return { k: [d, key(A), key(B)], mode: 'make', A, B, opts, answer: opts.findIndex(x => x.why === 'ok') };
+      /* which picture do A and B make? Four wrong pictures, each with another mistake: one less, one more, one moved,
+         one with another shape, one with another colour */
+      const used = Object.keys(U), cats = {
+        less: used.map(i => { const c = Object.assign({}, U); delete c[i]; return c; }),
+        more: free.map(i => Object.assign({}, U, { [i]: fig() })),
+        pos: used.flatMap(i => free.map(j => moveOne(U, i, j))),
+        shape: used.map(i => Object.assign({}, U, { [i]: other(U[i], 'k') })),
+        color: used.map(i => Object.assign({}, U, { [i]: other(U[i], 'c') })),
+      };
+      const order = rng.shuffle(Object.keys(cats)), pool = [];
+      order.forEach(w => { const l = rng.shuffle(cats[w]); pool.push({ c: l[0], why: w }); });
+      order.forEach(w => rng.shuffle(cats[w]).forEach(c => pool.push({ c, why: w })));
+      const right = { c: U, why: 'ok' }, opts = W3X.deal(G, right, W3X.uniq(pool, x => key(x.c), 4, [right]), 'ov');
+      return { k: [d, key(A), key(B)], mode: 'make', A, B, opts, answer: opts.indexOf(right) };
     }
-    /* which two cards make this picture? */
-    const C1 = {}; cells.slice(per * 2, per * 2 + per).forEach(i => { C1[i] = fig(); });
-    const decoys = [C1];
-    if (d === 5) { const C2 = Object.assign({}, A); const k0 = rng.pick(Object.keys(C2)); C2[k0] = { k: kinds[(kinds.indexOf(C2[k0].k) + 1) % kinds.length], c: C2[k0].c }; decoys.push(C2); }
-    const all = rng.shuffle([A, B].concat(decoys).map((c, i) => ({ c, role: i < 2 ? 'part' : 'decoy' })));
-    const ans = all.map((x, i) => x.role === 'part' ? i : -1).filter(i => i >= 0).join('-');
-    return { k: [d, key(A), key(B), decoys.map(key).join('/')], mode: 'find', target: U, cardsC: all, answer: ans };
+    /* which two cards make this picture? Three cards that do not: things in other places (level 4); one of the two with a
+       shape / a colour changed or one thing moved (level 5) */
+    const mk = [() => { const c = {}; rng.shuffle(free).slice(0, per).forEach(i => { c[i] = fig(); }); return c; },
+      () => { const c = Object.assign({}, A), k0 = rng.pick(Object.keys(c)); c[k0] = other(c[k0], 'k'); return c; },
+      () => { const c = Object.assign({}, B), k0 = rng.pick(Object.keys(c)); c[k0] = other(c[k0], 'c'); return c; },
+      () => moveOne(B, rng.pick(Object.keys(B)), rng.pick(free)),
+      () => moveOne(A, rng.pick(Object.keys(A)), rng.pick(free))];
+    let all = null;
+    for (let t = 0; t < 60 && !all; t++) {
+      const dec = (d === 4 ? [mk[0], mk[0], rng.pick([mk[3], mk[4]])] : rng.shuffle(mk.slice(1)).slice(0, 3)).map(f => f());
+      const cs = [A, B].concat(dec);
+      if (new Set(cs.map(key)).size !== 5) continue;
+      if (this.pairs(cs, U).length !== 1) continue;
+      const pairs = []; for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) pairs.push(i + '-' + j);
+      const at = bagPick(G, 'ovp', pairs).split('-').map(Number), out = []; let k = 0;
+      for (let i = 0; i < 5; i++) out.push(at[0] === i ? { c: A, role: 'part' } : at[1] === i ? { c: B, role: 'part' } : { c: dec[k++], role: 'decoy' });
+      all = out;
+    }
+    if (!all) return this.gen(G, Object.assign({}, o, { level: 3 }));
+    const ans = all.map((x, i) => (x.role === 'part' ? i : -1)).filter(i => i >= 0).join('-');
+    return { k: [d, key(A), key(B), all.map(x => key(x.c)).join('/')], mode: 'find', target: U, cardsC: all, answer: ans };
+  },
+  /* the pairs of cards that together show exactly the picture (no place used twice) */
+  pairs(cs, U) {
+    const key = c => Object.keys(c).sort().map(i => i + c[i].k + c[i].c).join(';'), out = [];
+    for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) { const a = cs[i], b = cs[j]; if (Object.keys(a).some(x => b[x])) continue; if (key(Object.assign({}, a, b)) === key(U)) out.push(i + '-' + j); }
+    return out;
+  },
+  /* the places where two cards differ */
+  diff(a, b) { const out = []; for (let i = 0; i < 9; i++) { const x = a[i], y = b[i]; if (!x !== !y || (x && (x.k !== y.k || x.c !== y.c))) out.push(i); } return out; },
+  cellRing(s, i, color) { if (s) W3X.ringIn(s, 22 + (i % 3) * 38, 22 + Math.floor(i / 3) * 38, 18, color, 3.5); },
+  audit(q) {
+    const key = c => Object.keys(c).sort().map(i => i + c[i].k + c[i].c).join(';');
+    if (q.mode === 'make') { const U = key(Object.assign({}, q.A, q.B)), good = q.opts.map((x, i) => (key(x.c) === U ? i : -1)).filter(i => i >= 0); return { n: q.opts.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer && new Set(q.opts.map(x => key(x.c))).size === q.opts.length ? null : 'right ones ' + good }; }
+    const p = this.pairs(q.cardsC.map(x => x.c), q.target);
+    return { n: q.cardsC.length, pos: q.answer.split('-').map(Number), pick: 2, err: p.length === 1 && p[0] === q.answer ? null : 'pairs ' + p };
   },
   draw(c, size, tint) {
     const s = svg('svg', { viewBox: '0 0 120 120', width: size, height: size });
@@ -722,7 +1031,9 @@ const MOverlay = {
     s.style.pointerEvents = 'none';
     return s;
   },
-  geo(st) { const L = K.L(); return st.q.mode === 'make' ? (L ? { ay: 250, cs: 156, oy: 540 } : { ay: 380, cs: 168, oy: 760 }) : (L ? { ty: 250, cs: 150, oy: 520 } : { ty: 360, cs: 160, oy: 720 }); },
+  geo(st) { const L = K.L(); return st.q.mode === 'make' ? (L ? { ay: 250, cs: 156 } : { ay: 380, cs: 168 }) : (L ? { ty: 250, cs: 150 } : { ty: 360, cs: 160 }); },
+  /* the five cards: one row right of Bingo (landscape), 3 + 2 (portrait) */
+  optFr(L) { return (L == null ? K.L() : L) ? { x: 160, y: 440, w: 850, h: 230 } : { x: 16, y: 570, w: 672, h: 400 }; },
   decor(G) { W2X.hideAll(G, this.chars); const L = K.L(), a = G.actors[this.chars[0]]; if (a) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 160 : 120); },
   place(st) {
     const g = this.geo(st), q = st.q, L = K.L();
@@ -730,9 +1041,11 @@ const MOverlay = {
       W3X.row(2, Stage.W / 2, g.ay, g.cs, 90).forEach((p, i) => place(st.ab[i], p.x, p.y, g.cs, g.cs));
       place(st.plus, Stage.W / 2 - 26, g.ay - 26, 52, 52);
     } else place(st.tgt, Stage.W / 2 - g.cs / 2, g.ty - g.cs / 2, g.cs, g.cs);
-    const n = st.optEls.length, per = n === 4 && !L ? 2 : n;
-    W3X.row(n, Stage.W / 2, g.oy, g.cs - 10, 24, per).forEach((p, i) => place(st.optEls[i], p.x, p.y, g.cs - 10, g.cs - 10));
+    st.optEls.forEach(e => { if (e._moved) { e.style.transform = ''; e._moved = false; } });
+    W3X.lay(st.optEls, this.optFr(), this.optS(st), null, 20);
+    void L;
   },
+  optS(st) { return W3X.size2(st.optEls.length, [this.optFr(true), this.optFr(false)], 146, 20); },
   async present(st) {
     const q = st.q;
     st.sel = [];
@@ -777,9 +1090,55 @@ const MOverlay = {
     Sfx.reveal(); this.cheerAll(st);
     st.summary = '叠起来就是它！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
+  /* after a wrong answer (the client's own example): the two see-through cards really slide together into one; his card
+     is compared with it place by place - the places that differ get blue rings, on both; then the right card (gold),
+     and the picture of the two lies exactly on it */
+  async explain(st, ans) {
+    const q = st.q, my = st;
+    if (q.mode === 'make') {
+      const o = q.opts[ans], ce = st.optEls[ans], [A, B] = st.ab, ba = box(A), bb = box(B), U = Object.assign({}, q.A, q.B);
+      const meet = { x: (ba.x + bb.x) / 2, y: ba.y, w: ba.w, h: ba.h };
+      if (st.plus) st.plus.style.visibility = 'hidden';
+      [A, B].forEach(e => { e.style.zIndex = 9; });
+      W3X.tell('两张叠起来是这样。');
+      await Promise.all([A, B].map(e => K.flyTo(st, e, meet.x, meet.y, 650, 0))); if (!Session.alive(my)) return;
+      const M = W2X.thing(st, meet.w, meet.h, 10, ''); place(M, meet.x, meet.y, meet.w, meet.h); M.appendChild(this.draw(U, '100%', true)); K.hop(st, M, 10);
+      await st.scope.wait(T(400)); if (!Session.alive(my)) return;
+      if (o && ce) {
+        W3X.mine(st, ce, 6);
+        const dif = this.diff(U, o.c), sm = M.querySelector('svg'), sc = ce.querySelector('svg');
+        dif.forEach(i => { this.cellRing(sm, i, W3X.BLUE); this.cellRing(sc, i, W3X.BLUE); });
+        W3X.tell(dif.length > 1 ? '这几格不一样。' : '这一格不一样。');
+        await st.scope.wait(T(1500)); if (!Session.alive(my)) return;
+      }
+      const re = st.optEls[q.answer], rb = box(re), k = rb.w * 0.96 / meet.w;
+      await K.flyTo(st, M, rb.x + rb.w / 2 - meet.w / 2, rb.y + rb.h / 2 - meet.h / 2, 600, 40, k); if (!Session.alive(my)) return;
+      W3X.gold(st, re, 8, 0); Sfx.reveal(); W3X.tell('对的是这张！');
+      st.scope.anim(M, [{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], { duration: 1200, fill: 'forwards' });         /* it lies exactly on it, then the card itself shows */
+      await W3X.beat(st, 1500);
+      return;
+    }
+    /* which two: his two slide onto the picture (the places that differ: blue), go back; the right two slide on (gold) */
+    const sel = String(ans).split('-').map(Number), right = q.answer.split('-').map(Number), T0 = st.tgt, bt = box(T0), ts = T0.querySelector('svg');
+    const onto = async (idx) => { await Promise.all(idx.map(i => { const e = st.optEls[i], b = box(e); e.style.zIndex = 9; e._moved = true; return K.flyTo(st, e, bt.x + bt.w / 2 - b.w / 2, bt.y + bt.h / 2 - b.h / 2, 650, 30, bt.w / b.w); })); };
+    sel.forEach(i => W3X.mine(st, st.optEls[i], 6));
+    await st.scope.wait(T(600)); if (!Session.alive(my)) return;
+    st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
+    await onto(sel); if (!Session.alive(my)) return;
+    const a = q.cardsC[sel[0]].c, b = q.cardsC[sel[1]].c, both = Object.keys(a).filter(x => b[x]).map(Number);
+    const g = svg('g', {}, ts), dif = this.diff(q.target, Object.assign({}, a, b)).concat(both).filter((x, i, l) => l.indexOf(x) === i);
+    dif.forEach(i => this.cellRing(g, i, W3X.BLUE));
+    W3X.tell(dif.length > 1 ? '这几格不一样。' : '这一格不一样。');
+    await st.scope.wait(T(1800)); if (!Session.alive(my)) return;
+    g.remove(); sel.forEach(i => { st.optEls[i].style.zIndex = 5; }); this.place(st);
+    await st.scope.wait(T(300)); if (!Session.alive(my)) return;
+    await onto(right); if (!Session.alive(my)) return;
+    W3X.gold(st, T0, 10, 0); Sfx.reveal(); W3X.tell('叠起来就是它！');
+    await W3X.beat(st, 1800);
+  },
   async feedback(st, ans) {
     const q = st.q;
-    if (q.mode === 'make') { if (st.optEls[ans]) K.wiggle(st, st.optEls[ans]); W3X.say({ less: '少了一个', more: '多了一个', pos: '位置不对哦' }[q.opts[ans].why] || '不一样哦'); }
+    if (q.mode === 'make') { if (st.optEls[ans]) K.wiggle(st, st.optEls[ans]); W3X.say({ less: '少了一个', more: '多了一个', pos: '位置不对哦', shape: '形状不对哦', color: '颜色不对哦' }[q.opts[ans].why] || '不一样哦'); }
     else { String(ans).split('-').map(Number).forEach(i => st.optEls[i] && K.wiggle(st, st.optEls[i])); W3X.say('这两张叠不出来'); }
     await st.scope.wait(600);
   },
@@ -842,6 +1201,18 @@ const MLights = {
     Sfx.reveal(); this.cheerAll(st); st.summary = '和样子一模一样！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
   async feedback(st, ans) { const a = String(ans), n = a.split('').filter((v, i) => v !== st.q.answer[i]).length; W3X.say(n === 1 ? '有一格不一样' : n === 2 ? '有两格不一样' : '好几格不一样'); await st.scope.wait(600); },
+  /* not a choice (the child copies the picture); after a wrong answer: the windows that differ (blue, on both houses), then
+     they are lit like the picture (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st, a = String(ans), dif = q.model.map((v, i) => (String(v) !== a[i] ? i : -1)).filter(i => i >= 0);
+    dif.forEach(i => { W3X.ringAt(st, box(st.cWins[i]), W3X.BLUE, 5); W3X.ringAt(st, box(st.mWins[i]), W3X.BLUE, 4); });
+    W3X.tell(dif.length > 1 ? '这几格不一样。' : '这一格不一样。');
+    await st.scope.wait(T(1600)); if (!Session.alive(my)) return;
+    for (const i of dif) { if (!Session.alive(my)) return; st.state[i] = q.model[i]; this.paint(st.cWins[i], q.model[i]); K.pop(st, st.cWins[i]); Sfx.place(); await st.scope.wait(T(220)); }
+    W3X.gold(st, st.cFace, 10, 0); Sfx.reveal(); W3X.tell('和样子一模一样！');
+    await W3X.beat(st, 1600);
+  },
+  audit() { return { none: 'the child lights the windows' }; },
   next(st, strat) {
     if (st.picked) return null;
     if (strat === 'wrong') return { g: 'tap', p: { id: 'done' } };
@@ -894,7 +1265,7 @@ const MSpot = {
     const q = st.q;
     const disc = () => { const e = W2X.thing(st, 10, 10, 3, ''); Object.assign(e.style, { borderRadius: '50%', background: '#FFF8EC', boxShadow: '0 0 0 6px #2B2118, 0 10px 0 6px rgba(43,33,24,.2)' }); return e; };
     st.ca = disc(); st.cb = disc();
-    [['a', q.A], ['b', q.B]].forEach(([s, list]) => list.forEach(o => { const e = W2X.thing(st, 92, 92, 5, ''); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' }); const v = svg('svg', { viewBox: '0 0 100 100' }); v.innerHTML = '<g stroke="#2B2118" stroke-width="5" stroke-linejoin="round">' + SPOT_IC[o.k] + '</g>'; v.style.transform = 'rotate(' + o.rot + 'deg)'; v.style.pointerEvents = 'none'; v.style.overflow = 'visible'; e.appendChild(v); K.reg(st, s + '_' + o.k, e, {}); o.e = e; }));
+    [['a', q.A], ['b', q.B]].forEach(([s, list]) => list.forEach(o => { const e = W2X.thing(st, 92, 92, 5, ''); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', clipPath: 'circle(50%)' }); const v = svg('svg', { viewBox: '0 0 100 100' }); v.innerHTML = '<g stroke="#2B2118" stroke-width="5" stroke-linejoin="round">' + SPOT_IC[o.k] + '</g>'; v.style.transform = 'rotate(' + o.rot + 'deg)'; v.style.pointerEvents = 'none'; v.style.overflow = 'visible'; e.appendChild(v); K.reg(st, s + '_' + o.k, e, {}); o.e = e; }));
     this.place(st);
     K.pop(st, st.ca); K.pop(st, st.cb, 120);
     K.task(st, [[W3X.ic('<circle cx="28" cy="50" r="24" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><circle cx="72" cy="50" r="24" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><polygon points="28,38 31,47 40,47 33,52 35,61 28,56 21,61 23,52 16,47 25,47" fill="#FFC93C"/><polygon points="72,38 75,47 84,47 77,52 79,61 72,56 65,61 67,52 60,47 69,47" fill="#FFC93C"/>')], ['q']]);
@@ -907,6 +1278,18 @@ const MSpot = {
     Sfx.reveal(); st.summary = '两边都有它！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
   async feedback(st, ans) { const o = st.q.A.concat(st.q.B).find(x => x.k === ans); if (o) K.wiggle(st, o.e); W3X.say('那边没有它'); await st.scope.wait(500); },
+  /* all the pictures on both badges are the choices (5 to 13, more than five at every level); after a wrong answer: his
+     picture (blue) and the other badge, where it is not; then the one on both (gold, joined) */
+  async explain(st, ans) {
+    const q = st.q, my = st, inA = q.A.find(x => x.k === ans), o = (st.tapped || '').startsWith('b_') ? q.B.find(x => x.k === ans) : inA || q.B.find(x => x.k === ans);
+    if (o) { W3X.mine(st, o.e, 2); K.flash(st, [q.A.includes(o) ? st.cb : st.ca]); }
+    await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+    const c = q.common, a = q.A.find(x => x.k === c).e, b = q.B.find(x => x.k === c).e, s = K.lines(st);
+    K.link(st, s, center(a), center(b), W3X.GOLD); [a, b].forEach(e => { W3X.gold(st, e, 2); });
+    Sfx.reveal(); W3X.tell('两边都有它！');
+    await W3X.beat(st, 1600);
+  },
+  audit(q) { const both = q.A.filter(x => q.B.some(y => y.k === x.k)); return { n: new Set(q.A.concat(q.B).map(x => x.k)).size, pos: null, err: both.length === 1 && both[0].k === q.common ? null : 'common ' + both.length }; },
   next(st, strat) { if (st.picked) return null; const k = strat === 'wrong' ? st.q.A.find(o => o.k !== st.q.common).k : st.q.common; return { g: 'tap', p: { id: 'a_' + k } }; },
   workEls(st) { return [st.ca, st.cb].filter(Boolean); },
   snap(st) { return { n: st.q.n }; },
@@ -926,6 +1309,7 @@ const MTicTac = {
       const b = Array(9).fill(0), cells = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8]);
       cells.slice(0, nc).forEach(i => { b[i] = 1; }); cells.slice(nc, nc + nr).forEach(i => { b[i] = 2; });
       if (this.done3(b)) continue;
+      if (nc + nr > 4) continue;                          /* at least five empty places to choose from (client: five options) */
       const w = this.wins(b, 1), r = this.wins(b, 2);
       let ans = null;
       if (mode === 'win') { if (w.length !== 1 || r.length) continue; if (d === 1 && [[0, 4, 8], [2, 4, 6]].some(L => L.includes(w[0]) && L.filter(i => b[i] === 1).length === 2)) continue; ans = w[0]; }
@@ -965,6 +1349,22 @@ const MTicTac = {
     W3X.say(q.mode === 'win' ? '这样连不成一排' : q.mode === 'block' ? '罗密欧还能连' : q.why === 'win' ? '你自己能连成！' : '罗密欧还能连');
     await st.scope.wait(600);
   },
+  /* after a wrong answer: his piece fades (blue ring); the line that matters is drawn - his own three (gold) or Romeo's
+     three that a piece in the right place stops - and his piece goes there (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st, e = st.cells[ans];
+    if (e) { W3X.mine(st, e, 2); if (e.firstChild) e.firstChild.style.opacity = '0.4'; }
+    await st.scope.wait(T(900)); if (!Session.alive(my)) return;
+    const L = LINES3.find(l => l.includes(q.answer) && l.filter(x => x !== q.answer).every(x => q.b[x] === (q.why === 'win' ? 1 : 2)));
+    if (L && q.why !== 'win') { this.piece(st.cells[q.answer], 2); st.cells[q.answer].firstChild.style.opacity = '0.45'; const s = K.lines(st); await K.link(st, s, center(st.cells[L[0]]), center(st.cells[L[2]]), '#E8414B'); W3X.tell('罗密欧要连成！'); await st.scope.wait(T(1300)); if (!Session.alive(my)) return; s.remove(); }
+    if (e) this.piece(e, 0);
+    this.piece(st.cells[q.answer], 1); K.pop(st, st.cells[q.answer]); Sfx.place();
+    W3X.gold(st, st.cells[q.answer], 2, 0);
+    if (L) { const s = K.lines(st); await K.link(st, s, center(st.cells[L[0]]), center(st.cells[L[2]]), q.why === 'win' ? W3X.GOLD : '#5CC46E'); }
+    Sfx.reveal(); W3X.tell(q.why === 'win' ? '连成一排啦！' : '挡住罗密欧！');
+    await W3X.beat(st, 1600);
+  },
+  audit(q) { const free = q.b.filter(v => !v).length, w = this.wins(q.b, 1), r = this.wins(q.b, 2), right = w.length ? w : r; return { n: free, pos: null, err: free >= 5 && right.length === 1 && right[0] === q.answer ? null : 'free ' + free + ' right ' + right }; },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? st.q.b.findIndex((v, k) => !v && k !== st.q.answer) : st.q.answer; return { g: 'tap', p: { id: 'c' + i } }; },
   workEls(st) { return (st.cells || []).filter((_, i) => !st.b[i]); },
   snap(st) { return { mode: st.q.mode }; },
@@ -998,9 +1398,20 @@ const MTopView = {
       foils.push({ os: [objs[0], objs[2]], why: 'hide' });
       foils.push({ os: [Object.assign({}, objs[0], { k: top }), Object.assign({}, objs[1], { k: base }), objs[2]], why: 'shape' });
     }
-    const opts = rng.shuffle([{ os: objs, why: 'ok' }].concat(foils.slice(0, 2)));
-    return { k: [d, key(objs)], objs, opts, answer: opts.findIndex(x => x.why === 'ok') };
+    /* four wrong views: the mistakes of this level first (left / right, front / back, the hidden top), then another shape
+       or two colours swapped */
+    const others = [], swapC = (i, j) => objs.map((x, k) => (k === i ? Object.assign({}, x, { c: objs[j].c }) : k === j ? Object.assign({}, x, { c: objs[i].c }) : x));
+    objs.forEach((x, i) => kinds.filter(k => k !== x.k).forEach(k => others.push({ os: objs.map((y, j) => (j === i ? Object.assign({}, y, { k }) : y)), why: 'shape' })));
+    for (let i = 0; i < objs.length; i++) for (let j = i + 1; j < objs.length; j++) others.push({ os: swapC(i, j), why: 'color' });
+    if (objs.length === 1) [0, 1, 2, 3].filter(c => c !== objs[0].c).forEach(c => others.push({ os: [Object.assign({}, objs[0], { c })], why: 'color' }));
+    if (d >= 2) { others.push({ os: objs.map(x => Object.assign({}, x, { gx: 2 - x.gx })), why: 'lr' }); }
+    if (d === 4) others.push({ os: objs.map(x => Object.assign({}, x, { gx: 2 - x.gx, gz: 1 - x.gz })), why: 'turn' });
+    const vkey = os => os.map(x => x.k + x.gx + x.gz + x.c + (x.on != null ? 'o' : '') + (x.big || 1)).sort().join(';');
+    const pool = rng.shuffle(foils).concat(rng.shuffle(others)), wrong = W3X.uniq(pool, f => vkey(f.os), 4, [{ os: objs }]);
+    const right = { os: objs, why: 'ok' }, opts = W3X.deal(G, right, wrong, 'tv');
+    return { k: [d, key(objs)], objs, opts, answer: opts.indexOf(right) };
   },
+  audit(q) { const vkey = os => os.map(x => x.k + x.gx + x.gz + x.c + (x.on != null ? 'o' : '') + (x.big || 1)).sort().join(';'), t = vkey(q.objs), good = q.opts.map((o, i) => (vkey(o.os) === t ? i : -1)).filter(i => i >= 0); return { n: q.opts.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer && new Set(q.opts.map(o => vkey(o.os))).size === q.opts.length ? null : 'right ones ' + good }; },
   /* the scene, a little from the front: back row higher and smaller */
   scene(q, W, H) {
     const s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }), k = W2X.ink;
@@ -1036,13 +1447,15 @@ const MTopView = {
     s.style.pointerEvents = 'none';
     return s;
   },
-  geo() { return K.L() ? { sx: 512, sy: 290, sw: 520, sh: 330, oy: 590, os: 150 } : { sx: 352, sy: 400, sw: 560, sh: 360, oy: 790, os: 160 }; },
+  geo() { return K.L() ? { sx: 512, sy: 270, sw: 500, sh: 310 } : { sx: 352, sy: 390, sw: 560, sh: 350 }; },
+  /* the five views: one row right of Owlette (landscape), 3 + 2 (portrait) */
+  optFr(L) { return (L == null ? K.L() : L) ? { x: 170, y: 446, w: 840, h: 230 } : { x: 16, y: 590, w: 672, h: 400 }; },
   decor(G) { W3X.decor2(G, this.chars, true); },
-  place(st) { const g = this.geo(); place(st.sc, g.sx - g.sw / 2, g.sy - g.sh / 2, g.sw, g.sh); K.cardsPlace(st, { cx: g.sx, cy: g.oy, gap: 30 }); },
+  place(st) { const g = this.geo(); place(st.sc, g.sx - g.sw / 2, g.sy - g.sh / 2, g.sw, g.sh); if (st.cards) W3X.lay(st.cards, this.optFr(), box(st.cards[0]).w, null, 22); },
   async present(st) {
     const q = st.q, g = this.geo();
     st.sc = W2X.thing(st, 10, 10, 4, ''); st.sc.appendChild(this.scene(q, 520, 330));
-    W2X.cards(st, q.opts.map(o => this.top(o.os, '100%')), q.opts.map((_, i) => i), { size: g.os, gap: 30, cx: g.sx, cy: g.oy });
+    W2X.cards(st, q.opts.map(o => this.top(o.os, '100%')), q.opts.map((_, i) => i), { size: W3X.size2(q.opts.length, [this.optFr(true), this.optFr(false)], 160, 22), gap: 22, cx: g.sx, cy: 600 });
     this.place(st);
     K.pop(st, st.sc);
     K.task(st, [[W3X.ic('<path d="M50 6C40 18 36 26 36 34H64C64 26 60 18 50 6Z" fill="#B57BFF" stroke="#2B2118" stroke-width="4"/><path d="M50 40V60M42 52L50 62L58 52" stroke="#2B2118" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="24" y="68" width="52" height="26" rx="6" fill="#E6B98A" stroke="#2B2118" stroke-width="4"/>')], ['q']]);
@@ -1054,7 +1467,24 @@ const MTopView = {
     const ow = st.G.actors.owlette; if (ow && ow.x > 0) ow.hop();
     Sfx.reveal(); this.cheerAll(st); st.summary = '从上面看是这样！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
-  async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W3X.say({ shape: '形状不对哦', lr: '左右反了', fb: '前后反了', hide: '上面的也看得见' }[st.q.opts[ans].why] || '不对哦'); await st.scope.wait(500); },
+  async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W3X.say({ shape: '形状不对哦', lr: '左右反了', fb: '前后反了', hide: '上面的也看得见', color: '颜色不对哦', turn: '方向不对哦' }[st.q.opts[ans].why] || '形状不对哦'); await st.scope.wait(500); },
+  /* after a wrong answer: on his view, the shapes that are not as seen from above (blue rings); then the right view (gold)
+     and every thing on the table lights up with its shape seen from above */
+  async explain(st, ans) {
+    const q = st.q, my = st, o = q.opts[ans], c = st.cards[ans], k = x => x.k + x.gx + x.gz + x.c + (x.on != null ? 'o' : '') + (x.big || 1);
+    if (o && c) {
+      W3X.mine(st, c, 6);
+      const s = c.querySelector('svg'), have = q.objs.map(k), his = o.os.map(k);
+      o.os.forEach(x => { if (!have.includes(k(x))) W3X.ringIn(s, 24 + x.gx * 36, 38 + x.gz * 44, 15 * (x.big || 1) + 5, W3X.BLUE, 3.5); });
+      q.objs.forEach(x => { if (!his.includes(k(x)) && !o.os.some(y => y.gx === x.gx && y.gz === x.gz && (y.on != null) === (x.on != null))) W3X.ringIn(s, 24 + x.gx * 36, 38 + x.gz * 44, 15 * (x.big || 1) + 5, W3X.BLUE, 3.5); });
+      await st.scope.wait(T(1500)); if (!Session.alive(my)) return;
+    }
+    const r = st.cards[q.answer], s = r.querySelector('svg'); W3X.gold(st, r, 6);
+    const ow = st.G.actors.owlette; if (ow && ow.x > 0) ow.hop();
+    for (const x of q.objs.slice().sort((a, b) => a.gx - b.gx)) { if (!Session.alive(my)) return; const ring = W3X.ringIn(s, 24 + x.gx * 36, 38 + x.gz * 44, 15 * (x.big || 1) + 5, W3X.GOLD, 3.5); st.scope.anim(ring, [{ opacity: 0 }, { opacity: 1 }], { duration: 250 }); await st.scope.wait(T(380)); }
+    Sfx.reveal(); W3X.tell('从上面看是这样！');
+    await W3X.beat(st, 1500);
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.opts.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
   snap(st) { return { n: st.q.objs.length }; },
 };
@@ -1065,28 +1495,39 @@ const MSums = {
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng, max = [0, 5, 6, 9, 10, 10][d];
     const thing = rng.pick([['seal', '只', '海豹'], ['starfish', '个', '海星']]);
+    /* a sentence a child can check: numbers 0-10, the first and every one added or taken >= 1, never below 0 */
+    const legal = s => { let v = s[0]; if (!(v >= 1 && v <= 10)) return false; for (let i = 1; i + 1 < s.length && s[i] !== '='; i += 2) { const n = s[i + 1]; if (!(n >= 1 && n <= 10)) return false; v = s[i] === '+' ? v + n : v - n; if (v < 0 || v > 10) return false; } return !s.includes('=') || (s[s.length - 1] >= 0 && s[s.length - 1] <= 10); };
+    const key = x => x.s.join();
     for (let t = 0; t < 300; t++) {
       if (d === 5) {
         const a = rng.int(2, 6), b = rng.int(1, 4), c = rng.int(1, a + b - 1); if (a + b > max) continue;
-        const ok = { s: [a, '+', b, '-', c] }, f1 = { s: [a, '-', b, '+', c], why: 'op' }, f2 = { s: [a, '+', b, '+', c], why: 'op2' };
-        const opts = rng.shuffle([ok, f1, f2]);
+        const ok = { s: [a, '+', b, '-', c], why: 'ok' };
+        /* the wrong ones: the signs (came / went the other way), then a wrong number */
+        const cand = [{ s: [a, '-', b, '+', c], why: 'op' }, { s: [a, '+', b, '+', c], why: 'op2' }, { s: [a, '-', b, '-', c], why: 'op' }].filter(x => legal(x.s));
+        const nums = [{ s: [a, '+', b, '-', c + 1], why: 'c' }, { s: [a, '+', b, '-', c - 1], why: 'c' }, { s: [a + 1, '+', b, '-', c], why: 'a' }, { s: [a - 1, '+', b, '-', c], why: 'a' }, { s: [a, '+', b + 1, '-', c], why: 'b' }, { s: [a, '+', b - 1, '-', c], why: 'b' }].filter(x => legal(x.s));
+        const foils = W3X.uniq(rng.shuffle(cand).concat(rng.shuffle(nums)), key, 4, [ok]);
+        if (foils.length < 4) continue;
+        const opts = W3X.deal(G, ok, foils, 'sm');
         return { k: [d, a, b, c, thing[0]], kind: 'two', a, b, c, res: a + b - c, thing, opts, answer: opts.indexOf(ok) };
       }
       const op = d === 1 ? '+' : bagPick(G, 'op' + d, ['+', '-']);
       let a, b; if (op === '+') { a = rng.int(1, max - 1); b = rng.int(1, max - a); } else { a = rng.int(2, max); b = rng.int(1, a - 1); }
-      const res = op === '+' ? a + b : a - b, full = d === 4;
+      const res = op === '+' ? a + b : a - b, full = d === 4, R = (x, o2, y) => (o2 === '+' ? x + y : x - y);
       const mk = (x, o2, y, r, why) => ({ s: full ? [x, o2, y, '=', r] : [x, o2, y], why });
       const ok = mk(a, op, b, res, 'ok');
-      const other = op === '+' ? (a > b ? mk(a, '-', b, a - b, 'op') : mk(b, '-', a, b - a, 'op')) : mk(a, '+', b, a + b, 'op');
-      const nb = b + (b > 1 && rng() < 0.5 ? -1 : 1), na = a + (rng() < 0.5 && a > 2 ? -1 : 1);
-      const third = full ? mk(a, op, b, res + (res > 1 && rng() < 0.5 ? -1 : 1), 'res') : rng() < 0.5 ? mk(a, op, nb, 0, 'b') : mk(na, op, b, 0, 'a');
-      if (third.s[2] < 1 || (op === '-' && third.s[0] <= third.s[2])) continue;
-      const opts = rng.shuffle([ok, other, third]);
+      /* the wrong ones: the other sign (came / went), how many there were, how many came or went; at level 4 a wrong result */
+      const other = op === '+' ? (a >= b ? mk(a, '-', b, a - b, 'op') : mk(b, '-', a, b - a, 'op')) : mk(a, '+', b, a + b, 'op'), cand = [];
+      [-1, 1].forEach(dx => { cand.push(mk(a + dx, op, b, R(a + dx, op, b), 'a')); cand.push(mk(a, op, b + dx, R(a, op, b + dx), 'b')); if (full) cand.push(mk(a, op, b, res + dx, 'res')); });
+      const ok2 = cand.filter(x => legal(x.s) && !(op === '+' && x.s[0] === b && x.s[2] === a));
+      const foils = W3X.uniq([other].concat(full ? rng.shuffle(ok2.filter(x => x.why === 'res')) : []).concat(rng.shuffle(ok2)), key, 4, [ok]).filter(x => legal(x.s));
+      if (foils.length < 4) continue;
+      const opts = W3X.deal(G, ok, foils, 'sm');
       return { k: [d, a, op, b, thing[0], full], kind: op, a, b, res, thing, full, opts, answer: opts.indexOf(ok) };
     }
     return { k: [d, 'x'], kind: '+', a: 2, b: 1, res: 3, thing, full: false, opts: [{ s: [2, '+', 1], why: 'ok' }, { s: [2, '-', 1], why: 'op' }, { s: [3, '+', 1], why: 'a' }], answer: 0 };
   },
-  geo() { return K.L() ? { rock: { x: 50, y: 210, w: 420, h: 280 }, cx: 752, cy0: 214, cw: 466, ch: 122, gap: 16 } : { rock: { x: 90, y: 220, w: 524, h: 290 }, cx: 352, cy0: 590, cw: 620, ch: 114, gap: 12 }; },
+  /* five number sentences, one per row: right of the rock (landscape), under it (portrait) */
+  geo() { return K.L() ? { rock: { x: 50, y: 210, w: 420, h: 280 }, fr: { x: 500, y: 110, w: 510, h: 580 }, cw: 480, ch: 100, gap: 12 } : { rock: { x: 90, y: 196, w: 524, h: 250 }, fr: { x: 40, y: 466, w: 624, h: 548 }, cw: 620, ch: 100, gap: 12 }; },
   decor(G) { if (K.L()) W3X.decor2(G, this.chars, true); else W2X.hideAll(G, this.chars); },
   spot(st, i, n) { const r = this.geo().rock, cols = Math.min(5, Math.max(3, Math.ceil(n / 2))), rows = Math.ceil(n / cols), c = i % cols, rr = Math.floor(i / cols), inRow = Math.min(cols, n - rr * cols); return { x: r.x + r.w / 2 + (c - (inRow - 1) / 2) * 84 - 38, y: r.y + r.h / 2 + (rr - (rows - 1) / 2) * 84 - 38 }; },
   place(st) {
@@ -1095,7 +1536,7 @@ const MSums = {
     const here = st.items.filter(o => !o.gone);
     here.forEach((o, i) => { const p = this.spot(st, i, here.length); place(o.e, p.x, p.y, 76, 76); });
     st.items.filter(o => o.gone).forEach(o => place(o.e, -300, -300, 76, 76));
-    if (st.cards) st.cards.forEach((c, i) => place(c, g.cx - g.cw / 2, g.cy0 + i * (g.ch + g.gap), g.cw, g.ch));      /* one number sentence per row (R10-2) */
+    if (st.cards) { const n = st.cards.length, y0 = g.fr.y + (g.fr.h - n * g.ch - (n - 1) * g.gap) / 2; st.cards.forEach((c, i) => place(c, g.fr.x + (g.fr.w - g.cw) / 2, y0 + i * (g.ch + g.gap), g.cw, g.ch)); }      /* one number sentence per row (R10-2) */
   },
   /* a number sentence a child can check without reading: every number with its dots under it; after a minus the
      number taken away is drawn crossed out (R10-2) */
@@ -1156,11 +1597,26 @@ const MSums = {
     let line;
     if (o.why === 'op' || o.why === 'op2') line = q.kind === '-' ? '是走了，不是来了' : q.kind === 'two' ? (o.why === 'op' ? '先来了，后走了' : '后来是走了') : '是来了，不是走了';
     else if (o.why === 'a') line = '一开始有' + CNQ(q.a) + w;
-    else if (o.why === 'b') line = (q.kind === '+' ? '来了' : '走了') + CNQ(q.b) + w;
+    else if (o.why === 'b') line = (q.kind === '-' ? '走了' : '来了') + CNQ(q.b) + w;
+    else if (o.why === 'c') line = '走了' + CNQ(q.c) + w;
     else line = '不是等于' + CN[o.s[4]];
     W3X.say(line); await st.scope.wait(600);
   },
-  next(st, strat) { if (st.picked || !st.cards) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % 3 : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
+  /* after a wrong answer: in his sentence, the part that does not fit the story (blue); the story counted again on the
+     rock; the right sentence (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st, o = q.opts[ans], c = st.cards[ans], ok = q.opts[q.answer];
+    if (o && c) { W3X.mine(st, c, 4); const toks = c.firstChild ? c.firstChild.children : []; o.s.forEach((t, i) => { if (t !== ok.s[i] && toks[i]) W3X.ringAt(st, W3X.srect(toks[i]), W3X.BLUE, 5); }); }
+    await st.scope.wait(T(1000)); if (!Session.alive(my)) return;
+    const here = st.items.filter(x => !x.gone);
+    for (let i = 0; i < here.length; i++) { if (!Session.alive(my)) return; K.hop(st, here[i].e, 12); await Count.beat(st.scope, 200, i + 1); }
+    W3X.gold(st, st.cards[q.answer], 4, 0); Sfx.reveal();
+    W3X.tell(q.kind === 'two' ? '等于' + CN[q.res] + '！' : CN[q.a] + (q.kind === '+' ? '加' : '减') + CN[q.b] + '等于' + CN[q.res] + '！');
+    await W3X.beat(st, 1700);
+  },
+  /* tests: the sentence that tells the story is the right one, and only that one */
+  audit(q) { const tell = s => (q.kind === 'two' ? s.join() === [q.a, '+', q.b, '-', q.c].join() : s.slice(0, 3).join() === [q.a, q.kind, q.b].join() && (s.length === 3 || s[4] === q.res)); const good = q.opts.map((o, i) => (tell(o.s) ? i : -1)).filter(i => i >= 0); return { n: q.opts.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer && new Set(q.opts.map(o => o.s.join())).size === q.opts.length ? null : 'right ones ' + good }; },
+  next(st, strat) { if (st.picked || !st.cards) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.opts.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
   workEls(st) { return st.cards || []; },
   snap(st) { return { op: st.q.kind }; },
 };
@@ -1181,7 +1637,7 @@ const MBadges = {
   kind0: 'badges', verb: '接！', intro: '接上狗狗徽章！', praise: ['接得真对！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng, ics = Object.keys(BADGE_IC);
-    const rule = d === 1 ? 'color' : d === 2 ? 'icon' : 'or', n = d <= 3 ? 3 : 4;
+    const rule = d === 1 ? 'color' : d === 2 ? 'icon' : 'or', n = 5;
     const top = { c: rng.int(0, 5), i: rng.pick(ics) }, prev = d === 5 ? { c: (top.c + rng.int(1, 5)) % 6, i: rng.pick(ics.filter(x => x !== top.i)) } : null;
     const share = rule === 'color' ? 'c' : rule === 'icon' ? 'i' : rng.pick(['c', 'i']);
     const ok = share === 'c' ? { c: top.c, i: rng.pick(ics.filter(x => x !== top.i)) } : { c: (top.c + rng.int(1, 5)) % 6, i: top.i };
@@ -1194,17 +1650,22 @@ const MBadges = {
       if (hand.some(h => h.c === x.c && h.i === x.i)) continue;
       hand.push(x);
     }
-    const sh = rng.shuffle(hand);
+    const sh = W3X.deal(G, ok, hand.slice(1), 'bd');
     return { k: [d, top.c + top.i, sh.map(h => h.c + h.i).join()], rule, top, prev, hand: sh, share, answer: sh.indexOf(ok) };
   },
+  audit(q) { const fits = h => (q.rule === 'color' ? h.c === q.top.c : q.rule === 'icon' ? h.i === q.top.i : h.c === q.top.c || h.i === q.top.i), good = q.hand.map((h, i) => (fits(h) ? i : -1)).filter(i => i >= 0); return { n: q.hand.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer ? null : 'fitting ' + good }; },
   badge(b, size) { const s = svg('svg', { viewBox: '0 0 100 120', width: size, height: typeof size === 'number' ? size * 1.2 : size }); s.innerHTML = '<path d="M50 6L90 20V60Q90 96 50 114Q10 96 10 60V20Z" fill="' + BADGE_COL[b.c] + '" stroke="#2B2118" stroke-width="6" stroke-linejoin="round"/><path d="M50 16L80 27V60Q80 88 50 102Q20 88 20 60V27Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="4"/><g transform="translate(0 8)" stroke="#2B2118" stroke-width="2">' + BADGE_IC[b.i] + '</g>'; s.style.pointerEvents = 'none'; return s; },
-  geo(st) { const L = K.L(), n = st.q.hand.length; return L ? { px: 512, py: 248, pw: 150, hy: 548, hw: 136, gap: 26 } : { px: 352, py: 356, pw: 160, hy: 760, hw: n === 4 ? 140 : 150, gap: 18 }; },
+  geo(st) { return K.L() ? { px: 512, py: 248, pw: 150 } : { px: 352, py: 356, pw: 160 }; },
+  /* the five badges in the hand: one row right of Ryder (landscape), 3 + 2 (portrait) */
+  handFr(L) { return (L == null ? K.L() : L) ? { x: 170, y: 440, w: 840, h: 230 } : { x: 16, y: 590, w: 672, h: 410 }; },
+  handW(n) { return W3X.size2(n, [this.handFr(true), this.handFr(false)], 150, 20, 1.2); },
   decor(G) { W3X.decor2(G, this.chars, true); },
   place(st) {
     const g = this.geo(st);
     if (st.prevEl) place(st.prevEl, g.px - g.pw / 2 - 34, g.py - g.pw * 0.6 - 14, g.pw, g.pw * 1.2);
     place(st.topEl, g.px - g.pw / 2, g.py - g.pw * 0.6, g.pw, g.pw * 1.2);
-    W3X.row(st.handEls.length, Stage.W / 2, g.hy, g.hw, g.gap).forEach((p, i) => { if (!st.handEls[i]._played) place(st.handEls[i], p.x, p.y - g.hw * 0.1, g.hw, g.hw * 1.2); });
+    const w = this.handW(st.handEls.length), P = W3X.grid(st.handEls.length, this.handFr(), w, 20, 1.2);
+    st.handEls.forEach((e, i) => { if (!e._played) place(e, P.pos[i].x + (P.w - w) / 2, P.pos[i].y + (P.h - w * 1.2) / 2, w, w * 1.2); });
   },
   async present(st) {
     const q = st.q;
@@ -1228,6 +1689,17 @@ const MBadges = {
     st.summary = q.share === 'c' ? '颜色一样！' : '图案一样！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
   },
   async feedback(st, ans) { const q = st.q; if (st.handEls[ans]) K.wiggle(st, st.handEls[ans]); W3X.say(q.rule === 'color' ? '颜色不一样' : q.rule === 'icon' ? '图案不一样' : '颜色图案都不同'); await st.scope.wait(600); },
+  /* after a wrong answer: his badge goes back to the hand (blue: it shares nothing with the top one); the right badge goes
+     on top (gold) - the same colour or the same picture */
+  async explain(st, ans) {
+    const q = st.q, my = st, e = st.handEls[ans];
+    if (e) { e._played = false; e.getAnimations().forEach(a => a.cancel()); e.style.transform = ''; this.place(st); W3X.mine(st, e, 4); }
+    await st.scope.wait(T(1100)); if (!Session.alive(my)) return;
+    const r = st.handEls[q.answer], t = box(st.topEl); r._played = true; r.style.zIndex = 8;
+    await K.flyTo(st, r, t.x + 16, t.y + 10, 520, 50); if (!Session.alive(my)) return;
+    W3X.gold(st, st.topEl, 12, 0); Sfx.reveal(); W3X.tell(q.share === 'c' ? '颜色一样！' : '图案一样！');
+    await W3X.beat(st, 1600);
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.hand.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
   workEls(st) { return st.handEls || []; },
   snap(st) { return { rule: st.q.rule }; },
@@ -1250,7 +1722,7 @@ const MFence = {
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const sh = d === 1 ? 'blob' : d === 2 ? rng.pick(['U', 'C']) : d === 3 ? rng.pick(['S', 'G']) : rng.pick(['S', 'G', 'W']);
-    const ask = d >= 4 ? bagPick(G, 'fa' + d, ['in', 'out']) : 'in', n = d >= 4 ? 4 : 3;
+    const ask = d >= 4 ? bagPick(G, 'fa' + d, ['in', 'out']) : 'in', n = 5;
     const fx = rng() < 0.5, fy = rng() < 0.5;
     const R = this.rects(sh).map(r => ({ x: fx ? 100 - r.x - r.w : r.x, y: fy ? 100 - r.y - r.h : r.y, w: r.w, h: r.h }));
     const isIn = p => this.inside(R, p, 7), isOut = p => !this.inside(R, p, -7);
@@ -1258,7 +1730,7 @@ const MFence = {
       const pts = [];
       const want = ask === 'in' ? 1 : n - 1;
       for (let k = 0; k < 4000 && pts.length < n; k++) {
-        const p = [6 + rng() * 88, 6 + rng() * 88], inn = isIn(p), out = isOut(p);
+        const p = [Math.round(6 + rng() * 88), Math.round(6 + rng() * 88)], inn = isIn(p), out = isOut(p);
         if (!inn && !out) continue;
         const nIn = pts.filter(x => x.inn).length;
         if (inn && nIn >= want) continue; if (out && pts.length - nIn >= n - want) continue;
@@ -1267,7 +1739,7 @@ const MFence = {
         pts.push({ p: p.map(v => Math.round(v)), inn });
       }
       if (pts.length < n) continue;
-      const list = rng.shuffle(pts), ans = list.findIndex(x => ask === 'in' ? x.inn : !x.inn);
+      const one = pts.find(x => (ask === 'in' ? x.inn : !x.inn)), list = W3X.deal(G, one, pts.filter(x => x !== one), 'fe'), ans = list.indexOf(one);
       return { k: [d, sh, fx, fy, list.map(x => x.p.join(',')).join('|')], sh, R, ask, list, answer: ans };
     }
     return this.gen(G, Object.assign({}, o, { level: 1 }));
@@ -1308,6 +1780,16 @@ const MFence = {
     Sfx.reveal(); this.cheerAll(st); st.summary = st.q.ask === 'in' ? '在羊圈里面！' : '在羊圈外面！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1400);
   },
   async feedback(st, ans) { if (st.sheep[ans]) K.wiggle(st, st.sheep[ans]); W3X.say(st.q.list[ans].inn ? '这只在里面哦' : '这只在外面哦'); await st.scope.wait(600); },
+  /* after a wrong answer: the inside of the fence fills with grass, his sheep (blue) is on the other side; the right one
+     (gold) */
+  async explain(st, ans) {
+    const my = st; if (st.fillG) st.scope.anim(st.fillG, [{ opacity: 0 }, { opacity: 0.85 }], { duration: 700, fill: 'forwards' });
+    if (st.sheep[ans]) W3X.mine(st, st.sheep[ans], 2);
+    await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+    W3X.gold(st, st.sheep[st.q.answer], 2); Sfx.reveal(); W3X.tell(st.q.ask === 'in' ? '在羊圈里面！' : '在羊圈外面！');
+    await W3X.beat(st, 1600);
+  },
+  audit(q) { const inn = p => this.inside(q.R, p, 7), out = p => !this.inside(q.R, p, -7), good = q.list.map((x, i) => ((q.ask === 'in' ? inn(x.p) : out(x.p)) ? i : -1)).filter(i => i >= 0), clear = q.list.every(x => inn(x.p) || out(x.p)); return { n: q.list.length, pos: q.answer, err: clear && good.length === 1 && good[0] === q.answer ? null : 'right ones ' + good }; },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.list.length : st.q.answer; return { g: 'tap', p: { id: 'sh' + i } }; },
   workEls(st) { return st.sheep || []; },
   gestureHint(st) { if (st.field) K.flash(st, [st.field]); },     /* follow the fence */
@@ -1317,33 +1799,38 @@ const MFence = {
 /* ================================================================ 汪汪队 R4 · 管 the water pipes: which flower gets water (reasoning) */
 const MPipes = {
   kind0: 'pipes', verb: '浇！', intro: '水会流到哪里？', praise: ['水路想通啦！'],
+  /* five flowers at every level (client: five options); the pipes get deeper with the level, the top level has a cross
+     pipe (water can come round) */
   layouts: {
-    2: { n: { s: [50, 6], j: [50, 30], p0: [24, 90], p1: [76, 90] }, e: [['s', 'j', 0], ['j', 'p0', 1], ['j', 'p1', 1]] },
-    3: { n: { s: [50, 6], j: [50, 24], a: [22, 50], b: [74, 50], p0: [22, 90], p1: [58, 90], p2: [90, 90] }, e: [['s', 'j', 0], ['j', 'a', 1], ['j', 'b', 1], ['a', 'p0', 1], ['b', 'p1', 1], ['b', 'p2', 1]] },
-    4: { n: { s: [50, 6], j: [50, 22], a: [28, 44], b: [72, 44], p0: [12, 90], p1: [38, 90], p2: [62, 90], p3: [88, 90] }, e: [['s', 'j', 0], ['j', 'a', 1], ['j', 'b', 1], ['a', 'p0', 1], ['a', 'p1', 1], ['b', 'p2', 1], ['b', 'p3', 1]] },
-    5: { n: { s: [50, 6], j: [50, 22], a: [28, 44], b: [72, 44], c: [38, 68], e: [62, 68], p0: [12, 90], p1: [38, 90], p2: [62, 90], p3: [88, 90] }, e: [['s', 'j', 0], ['j', 'a', 1], ['j', 'b', 1], ['a', 'p0', 1], ['a', 'c', 1], ['c', 'p1', 1], ['b', 'e', 1], ['e', 'p2', 1], ['b', 'p3', 1], ['c', 'e', 1]] },
+    3: { n: { s: [50, 6], j: [50, 24], a: [24, 48], b: [76, 48], p0: [10, 90], p1: [30, 90], p2: [50, 90], p3: [70, 90], p4: [90, 90] }, e: [['s', 'j', 0], ['j', 'a', 1], ['j', 'b', 1], ['a', 'p0', 1], ['a', 'p1', 1], ['b', 'p2', 1], ['b', 'p3', 1], ['b', 'p4', 1]] },
+    4: { n: { s: [50, 6], j: [50, 20], a: [26, 40], b: [74, 40], c: [36, 62], p0: [10, 90], p1: [30, 90], p2: [50, 90], p3: [70, 90], p4: [90, 90] }, e: [['s', 'j', 0], ['j', 'a', 1], ['j', 'b', 1], ['a', 'p0', 1], ['a', 'c', 1], ['c', 'p1', 1], ['c', 'p2', 1], ['b', 'p3', 1], ['b', 'p4', 1]] },
+    5: { n: { s: [50, 6], j: [50, 20], a: [26, 40], b: [74, 40], c: [30, 64], m: [50, 64], e: [70, 64], p0: [10, 90], p1: [30, 90], p2: [50, 90], p3: [70, 90], p4: [90, 90] }, e: [['s', 'j', 0], ['j', 'a', 1], ['j', 'b', 1], ['a', 'p0', 1], ['a', 'c', 1], ['c', 'p1', 1], ['c', 'm', 1], ['m', 'p2', 1], ['m', 'e', 1], ['b', 'e', 1], ['e', 'p3', 1], ['b', 'p4', 1]] },
   },
   reach(Lay, open) { const adj = {}; Lay.e.forEach(([a, b], i) => { if (!open[i]) return; (adj[a] = adj[a] || []).push(b); (adj[b] = adj[b] || []).push(a); }); const seen = { s: 1 }, q = ['s'], order = []; while (q.length) { const x = q.shift(); order.push(x); (adj[x] || []).forEach(y => { if (!seen[y]) { seen[y] = 1; q.push(y); } }); } return { seen, order }; },
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng, L = d <= 2 ? 3 : d === 3 ? 4 : 5, Lay = this.layouts[L];
     const pots = Object.keys(Lay.n).filter(k => k[0] === 'p');
-    for (let t = 0; t < 500; t++) {
-      const open = Lay.e.map(e => !e[2] || rng() < 0.55);
+    const want = bagPick(G, 'pi', pots.slice());                      /* the flower that gets water: each place as often */
+    let keep = null;
+    for (let t = 0; t < 1500; t++) {
+      const open = Lay.e.map(e => !e[2] || rng() < 0.5);
       const closed = open.filter(x => !x).length; if (closed < (d === 1 ? 1 : d <= 3 ? 2 : 3)) continue;
       const { seen } = this.reach(Lay, open), wet = pots.filter(p => seen[p]);
       if (wet.length !== 1) continue;
-      if (d >= 4) { const viaCross = Lay.e.findIndex(e => e[0] === 'c' && e[1] === 'e'); if (!open[viaCross] && rng() < 0.6) continue; }
-      return { k: [d, open.map(x => x ? 1 : 0).join('')], L, open, pots, answer: wet[0] };
+      if (d >= 4) { const cross = Lay.e.findIndex(e => e[0] === 'c' && e[1] === 'm'), cross2 = Lay.e.findIndex(e => e[0] === 'm' && e[1] === 'e'); if (!open[cross] && !open[cross2] && rng() < 0.6) continue; }
+      keep = { k: [d, open.map(x => (x ? 1 : 0)).join('')], L, open, pots, answer: wet[0] };
+      if (wet[0] === want) break;
     }
-    return { k: [d, 'x'], L: 2, open: [true, true, false], pots: ['p0', 'p1'], answer: 'p0' };
+    return keep || { k: [d, 'x'], L: 3, open: [true, true, false, true, false, false, false, false], pots, answer: 'p0' };
   },
-  geo() { return K.L() ? { x: 262, y: 104, w: 500, h: 520 } : { x: 62, y: 230, w: 580, h: 640 }; },
+  audit(q) { const { seen } = this.reach(this.layouts[q.L], q.open), wet = q.pots.filter(p => seen[p]); return { n: q.pots.length, pos: q.pots.indexOf(q.answer), err: wet.length === 1 && wet[0] === q.answer ? null : 'wet ' + wet }; },
+  geo() { return K.L() ? { x: 212, y: 104, w: 600, h: 520 } : { x: 62, y: 230, w: 580, h: 640 }; },
   decor(G) { const L = K.L(); W2X.hideAll(G, this.chars); const a = G.actors[this.chars[0]]; if (a) showActor(a, L ? 120 : 600, L ? 698 : 1016, L ? 180 : 120); },
   xy(k) { const g = this.geo(), p = this.layouts[this.cur].n[k]; return [g.x + p[0] / 100 * g.w, g.y + p[1] / 100 * g.h]; },
   place(st) {
     this.cur = st.q.L; const g = this.geo();
     place(st.pipe, g.x, g.y, g.w, g.h);
-    st.potEls.forEach(o => { const p = this.xy(o.k); place(o.e, p[0] - 50, p[1] - 70, 100, 110); });
+    st.potEls.forEach(o => { const p = this.xy(o.k); place(o.e, p[0] - 48, p[1] - 70, 96, 110); });
     const t = this.xy('s'); place(st.tank, t[0] - 60, t[1] - 48, 120, 76);
   },
   draw(st) {
@@ -1353,13 +1840,14 @@ const MPipes = {
     Lay.e.forEach(([a, b]) => svg('path', { d: path(a, b), fill: 'none', stroke: k, 'stroke-width': 5.4, 'stroke-linejoin': 'round', 'vector-effect': 'none' }, s));
     Lay.e.forEach(([a, b]) => svg('path', { d: path(a, b), fill: 'none', stroke: '#C9D4E0', 'stroke-width': 3.4, 'stroke-linejoin': 'round' }, s));
     st.water = Lay.e.map(([a, b]) => svg('path', { d: path(a, b), fill: 'none', stroke: '#3D9BFF', 'stroke-width': 2.4, 'stroke-linejoin': 'round', opacity: 0 }, s));
-    st.valves = [];
+    st.valves = []; st.valveAt = {};
     Lay.e.forEach(([a, b, v], i) => {
       if (!v) return;
       const A = P(a), B = P(b), horiz = !(A[0] === B[0] || A[1] === B[1]) ? false : A[1] === B[1];
-      const mx = A[0] === B[0] || A[1] === B[1] ? (A[0] + B[0]) / 2 : B[0], my = A[0] === B[0] || A[1] === B[1] ? (A[1] + B[1]) / 2 : (A[1] + B[1]) / 2 + (B[1] - A[1]) * 0.1;
+      const toPot = b[0] === 'p', mx = A[0] === B[0] || A[1] === B[1] ? (A[0] + B[0]) / 2 : B[0], my = toPot ? A[1] + (B[1] - A[1]) * (A[0] === B[0] ? 0.3 : 0.45) : A[0] === B[0] || A[1] === B[1] ? (A[1] + B[1]) / 2 : (A[1] + B[1]) / 2 + (B[1] - A[1]) * 0.1;     /* a valve before a flower stays clear of its pot */
+      st.valveAt[i] = [mx, my];
       const ox = q.open[i], g = svg('g', {}, s);
-      svg('ellipse', { cx: mx, cy: my, rx: 4.2, ry: 4.2 * (K.L() ? 500 / 520 : 580 / 640), fill: ox ? '#5CC46E' : '#E8414B', stroke: k, 'stroke-width': 1.2 }, g);
+      svg('ellipse', { cx: mx, cy: my, rx: 4.2, ry: 4.2 * (K.L() ? 600 / 520 : 580 / 640), fill: ox ? '#5CC46E' : '#E8414B', stroke: k, 'stroke-width': 1.2 }, g);
       const vert = A[0] === B[0] || (!horiz && !(A[1] === B[1]));
       svg('path', { d: ox ? (vert ? 'M' + mx + ' ' + (my - 3) + 'V' + (my + 3) : 'M' + (mx - 3) + ' ' + my + 'H' + (mx + 3)) : (vert ? 'M' + (mx - 3) + ' ' + my + 'H' + (mx + 3) : 'M' + mx + ' ' + (my - 3) + 'V' + (my + 3)), stroke: '#fff', 'stroke-width': 1.6, 'stroke-linecap': 'round' }, g);
       st.valves.push(g);
@@ -1385,6 +1873,23 @@ const MPipes = {
     Sfx.reveal(); this.cheerAll(st); st.summary = '水流到这里啦！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
   async feedback(st, ans) { const o = st.potEls.find(x => x.k === ans); if (o) K.wiggle(st, o.e); W3X.say('水过不去哦'); await st.scope.wait(500); },
+  /* after a wrong answer: the water runs as far as it can; the closed valves that stop it on the way to his flower get
+     blue rings (and his flower); the flower the water reaches (gold) */
+  async explain(st, ans) {
+    const q = st.q, Lay = this.layouts[q.L], my = st, { seen } = this.reach(Lay, q.open), g = this.geo();
+    for (let i = 0; i < Lay.e.length; i++) { if (!Session.alive(my)) return; const [a, b] = Lay.e[i]; if (q.open[i] && seen[a] && seen[b]) { st.water[i].setAttribute('opacity', 1); await st.scope.wait(T(110)); } }
+    /* his flower's dry part of the pipes, and the closed valves between it and the water */
+    const dry = { [ans]: 1 }, todo = [ans];
+    while (todo.length) { const x = todo.shift(); Lay.e.forEach(([a, b]) => { const y = a === x ? b : b === x ? a : null; if (y && !seen[y] && !dry[y]) { dry[y] = 1; todo.push(y); } }); }
+    const stop = Lay.e.map(([a, b, v], i) => (v && !q.open[i] && ((seen[a] && dry[b]) || (seen[b] && dry[a])) ? i : -1)).filter(i => i >= 0);
+    const o = st.potEls.find(x => x.k === ans); if (o) W3X.mine(st, o.e, 2);
+    stop.forEach(i => { const v = st.valveAt[i]; if (v) W3X.ringAt(st, { x: g.x + v[0] / 100 * g.w - 20, y: g.y + v[1] / 100 * g.h - 20, w: 40, h: 40 }, W3X.BLUE, 6); });
+    if (stop.length) W3X.tell('这里关着呢。');
+    await st.scope.wait(T(1600)); if (!Session.alive(my)) return;
+    const r = st.potEls.find(x => x.k === q.answer); r.im.style.filter = ''; W3X.gold(st, r.e, 2, 20);
+    Sfx.reveal(); W3X.tell('水流到这里啦！');
+    await W3X.beat(st, 1600);
+  },
   next(st, strat) { if (st.picked) return null; const k = strat === 'wrong' ? st.q.pots.find(x => x !== st.q.answer) : st.q.answer; return { g: 'tap', p: { id: k } }; },
   workEls(st) { return (st.potEls || []).map(o => o.e); },
   gestureHint(st) { if (st.valves) K.flash(st, [st.pipe]); },
@@ -1485,6 +1990,19 @@ const MColorMap = {
     else W3X.say('挨着的不能同色');
     await st.scope.wait(700);
   },
+  /* not a choice (the child colours); after a wrong answer: the fields that break the rule (blue: a blank left, or two
+     touching fields of one colour), then the blanks get the colours that work (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st, cells = r => st.cells.filter((_, i) => q.reg[i] === r).map(e => box(e)), colOf = r => (q.blanks.includes(r) ? st.state[q.blanks.indexOf(r)] : q.col[r]), bad = new Set();
+    q.blanks.forEach(b => { const c = colOf(b); if (c < 0) bad.add(b); else q.adj[b].forEach(y => { if (colOf(y) === c) { bad.add(b); bad.add(y); } }); });
+    bad.forEach(r => K.ring(st, cells(r), 4, W3X.BLUE));
+    await st.scope.wait(T(1500)); if (!Session.alive(my)) return;
+    st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
+    for (const b of q.blanks) { if (!Session.alive(my)) return; st.state[q.blanks.indexOf(b)] = q.col[b]; this.paint(st); st.cells.forEach((e, i) => { if (q.reg[i] === b) K.hop(st, e, 8); }); K.ring(st, cells(b), 4, W3X.GOLD); Sfx.place(); await st.scope.wait(T(380)); }
+    Sfx.reveal(); W3X.tell('挨着的都不一样！');
+    await W3X.beat(st, 1600);
+  },
+  audit() { return { none: 'the child colours the fields' }; },
   next(st, strat) {
     if (st.picked) return null;
     if (strat === 'wrong') return { g: 'tap', p: { id: 'done' } };
@@ -1577,6 +2095,30 @@ const MStroke = {
     W3X.say(odd.length && !odd.includes(st.path[0]) ? '换个点开始试试' : '还有线没画到');      /* what went wrong, not where to start (R11-3) */
     await st.scope.wait(700);
   },
+  /* not a choice (the child draws); after a wrong answer: where he got stuck and the lines not drawn (blue); then, from
+     the right dot (gold), the whole figure in one stroke */
+  async explain(st, ans) {
+    const q = st.q, my = st, P = (x, y) => [x, y];
+    if (st.at >= 0) W3X.ringAt(st, box(st.dots[st.at]), W3X.BLUE, -8);
+    q.e.forEach(([a, b], k) => { if (!st.used[k]) { const s = st.segs[k]; s.setAttribute('x1', q.v[a][0]); s.setAttribute('y1', q.v[a][1]); s.setAttribute('x2', q.v[b][0]); s.setAttribute('y2', q.v[b][1]); s.setAttribute('stroke', W3X.BLUE); s.setAttribute('stroke-dasharray', '3 3'); } });
+    await st.scope.wait(T(1100)); if (!Session.alive(my)) return;
+    st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
+    st.segs.forEach((s, k) => { const [a] = q.e[k]; s.setAttribute('x2', q.v[a][0]); s.setAttribute('y2', q.v[a][1]); s.setAttribute('x1', q.v[a][0]); s.setAttribute('y1', q.v[a][1]); s.setAttribute('stroke', '#2B2118'); s.removeAttribute('stroke-dasharray'); });
+    const path = q.good, used = q.e.map(() => false);
+    st.dots.forEach((e, i) => e.querySelector('circle').setAttribute('fill', i === path[0] ? '#E8414B' : '#5CC46E'));
+    W3X.ringAt(st, box(st.dots[path[0]]), W3X.GOLD, -8); W3X.tell('从这里开始！');
+    await st.scope.wait(T(700)); if (!Session.alive(my)) return;
+    for (let i = 1; i < path.length; i++) {
+      if (!Session.alive(my)) return;
+      const a = path[i - 1], b = path[i], k = q.e.findIndex(([x, y], j) => !used[j] && ((x === a && y === b) || (x === b && y === a))); if (k < 0) continue;
+      used[k] = true; const s = st.segs[k]; s.setAttribute('x1', q.v[a][0]); s.setAttribute('y1', q.v[a][1]); s.setAttribute('x2', q.v[b][0]); s.setAttribute('y2', q.v[b][1]); s.setAttribute('stroke', '#E89A00');
+      st.dots.forEach((e, j) => e.querySelector('circle').setAttribute('fill', j === b ? '#E8414B' : '#5CC46E')); Sfx.count(i);
+      await st.scope.wait(T(230));
+    }
+    void P; K.ring(st, [box(st.paper)], 4, W3X.GOLD); Sfx.reveal(); W3X.tell('一笔画完啦！');
+    await W3X.beat(st, 1200);
+  },
+  audit() { return { none: 'the child draws the figure' }; },
   next(st, strat) {
     if (st.picked) return null;
     const seq = strat === 'wrong' && st.q.bad ? st.q.bad : st.q.good;
@@ -1597,6 +2139,10 @@ const MAbacus = {
     const rods = n >= 10 ? 2 : 1;
     return { k: [d, mode, n], mode, n, rods, answer: n, opts: mode === 'read' ? numOptions(G, n, 1, 20) : null };
   },
+  audit(q) { return q.mode === 'read' ? W3X.auditNum(q) : { none: 'the child moves the beads' }; },
+  /* the five number cards (read): two columns right of the abacus (landscape), one row under it (portrait, right of the
+     watcher) */
+  cardFr(L) { return (L == null ? K.L() : L) ? { x: 760, y: 120, w: 250, h: 560 } : { x: 140, y: 796, w: 550, h: 214 }; },
   val(r) { return r.u * 5 + r.l; },
   total(st) { return st.rods.reduce((s, r, i) => s + this.val(r) * (st.rods.length === 2 && i === 0 ? 10 : 1), 0); },
   geo(st) { const L = K.L(), n = st.q.rods; return L ? { cx: st.q.mode === 'read' ? 420 : 470, top: 126, h: 520, rw: 170, n } : { cx: 352, top: 236, h: 530, rw: 190, n }; },
@@ -1619,8 +2165,7 @@ const MAbacus = {
       if (r.zc) { const split = Ly.beam + 14 + r.l * (Ly.bh + 4) + (Ly.bot - (4 - r.l) * (Ly.bh + 4) - Ly.beam - 14 - r.l * (Ly.bh + 4)) / 2; place(r.zc, x - g.rw / 2 + 6, Ly.beam + 8, g.rw - 12, split - Ly.beam - 8); r.zc.style.display = r.l ? '' : 'none'; place(r.zr, x - g.rw / 2 + 6, split, g.rw - 12, Ly.bot - split + 10); r.zr.style.display = r.l < 4 ? '' : 'none'; }
     });
     place(st.beam, Ly.x0 - 10, Ly.beam - 8, Ly.W + 20, 16);
-    if (st.cards) K.cardsPlace(st, this.cardSpot());
-    if (st.cards && K.L()) st.cards.forEach((c, i) => place(c, 840 - 68, 160 + i * 150, 136, 136));
+    if (st.cards) W3X.lay(st.cards, this.cardFr(), box(st.cards[0]).w, null, 14);
     if (st.doneBtn) K.placeDone(st.doneBtn);
   },
   async present(st) {
@@ -1638,7 +2183,7 @@ const MAbacus = {
     this.place(st);
     K.pop(st, st.frame);
     if (make) { st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {}); K.task(st, [[W3X.ic('<rect x="22" y="8" width="56" height="84" rx="8" fill="#FFF8EC" stroke="#8A5A2E" stroke-width="7"/><path d="M22 34H78" stroke="#8A5A2E" stroke-width="6"/><path d="M36 22H64" stroke="#E8414B" stroke-width="10" stroke-linecap="round"/><path d="M36 48H64M36 62H64" stroke="#C98B4A" stroke-width="10" stroke-linecap="round"/>')], [{ qty: q.n }]]); K.say(st, '拨出' + CN[q.n] + '！'); if (!st.G.toldBead) { st.G.toldBead = true; W3X.tip('上面一颗是五！'); } }
-    else { K.cards(st, q.opts, Object.assign({ layout: 'frame' }, this.cardSpot())); this.place(st); K.task(st, [[W3X.ic('<rect x="22" y="8" width="56" height="84" rx="8" fill="#FFF8EC" stroke="#8A5A2E" stroke-width="7"/><path d="M22 34H78" stroke="#8A5A2E" stroke-width="6"/><path d="M36 42H64" stroke="#E8414B" stroke-width="10" stroke-linecap="round"/><path d="M36 54H64" stroke="#C98B4A" stroke-width="10" stroke-linecap="round"/>')], ['q']]); K.say(st, '算盘上是几？'); }
+    else { K.cards(st, q.opts, Object.assign({ layout: 'frame', size: W3X.size2(q.opts.length, [this.cardFr(true), this.cardFr(false)], 136, 14), gap: 14 }, this.cardSpot())); this.place(st); K.task(st, [[W3X.ic('<rect x="22" y="8" width="56" height="84" rx="8" fill="#FFF8EC" stroke="#8A5A2E" stroke-width="7"/><path d="M22 34H78" stroke="#8A5A2E" stroke-width="6"/><path d="M36 42H64" stroke="#E8414B" stroke-width="10" stroke-linecap="round"/><path d="M36 54H64" stroke="#C98B4A" stroke-width="10" stroke-linecap="round"/>')], ['q']]); K.say(st, '算盘上是几？'); }
   },
   onGesture(st, name, p) {
     const id = p.id || ''; if (name !== 'tap' || st.picked) return false;
@@ -1650,6 +2195,27 @@ const MAbacus = {
     Sfx.place(); this.place(st); return 'ok';
   },
   async reveal(st) {
+    await this.count(st); if (!Session.alive(st)) return;
+    Sfx.reveal(); this.cheerAll(st);
+    st.summary = this.sum(st.q.n);
+    Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+  },
+  sum(n) { return n >= 10 && n !== 10 && n !== 20 ? '十和' + CN[n - 10] + '是' + CN[n] + '！' : n >= 6 && n <= 9 ? '五和' + CN[n - 5] + '是' + CN[n] + '！' : '是' + CN[n] + '！'; },
+  /* after a wrong answer: (read) his card (blue), the beads counted, the right card (gold); (make) the rods that are not
+     right (blue), then the beads move to the right places and are counted (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st;
+    if (q.mode === 'read') { await W3X.explainCards(st, ans, { show: () => this.count(st), line: this.sum(q.n) }); return; }
+    const want = q.rods === 2 ? [Math.floor(q.n / 10), q.n % 10] : [q.n], Ly = this.lay(st);
+    st.rods.forEach((r, i) => { if (r.u !== (want[i] >= 5 ? 1 : 0) || r.l !== want[i] % 5) W3X.ringAt(st, { x: Ly.rodX(i) - Ly.g.rw / 2 + 8, y: Ly.g.top - 6, w: Ly.g.rw - 16, h: Ly.g.h + 12 }, W3X.BLUE, 0); });
+    await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+    st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
+    await this.count(st); if (!Session.alive(my)) return;
+    K.ring(st, [box(st.frame)], 6, W3X.GOLD); Sfx.reveal(); W3X.tell(this.sum(q.n));
+    await W3X.beat(st, 1500);
+  },
+  /* the beads set to the number (make) and counted: five for the upper bead, one for each lower one, ten for a ten */
+  async count(st) {
     const q = st.q, my = st;
     if (q.mode === 'make') { const show = q.rods === 2 ? [Math.floor(q.n / 10), q.n % 10] : [q.n]; st.rods.forEach((r, i) => { r.u = show[i] >= 5 ? 1 : 0; r.l = show[i] % 5; }); this.place(st); }
     let run = 0;
@@ -1659,9 +2225,6 @@ const MAbacus = {
       if (r.u) { if (!Session.alive(my)) return; K.hop(st, r.up, 12); run += 5; await Count.beat(st.scope, 380, run); }
       for (let j = 0; j < r.l; j++) { if (!Session.alive(my)) return; K.hop(st, r.lows[j], 12); run += 1; await Count.beat(st.scope, 330, run); }
     }
-    Sfx.reveal(); this.cheerAll(st);
-    const n = q.n; st.summary = n >= 10 && n !== 10 && n !== 20 ? '十和' + CN[n - 10] + '是' + CN[n] + '！' : n >= 6 && n <= 9 ? '五和' + CN[n - 5] + '是' + CN[n] + '！' : '是' + CN[n] + '！';
-    Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
   },
   async feedback(st, ans) {
     if (st.q.mode === 'read') { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CN[ans]); }
@@ -1701,17 +2264,21 @@ const MCloth = {
     const hs = d === 1 ? 1 : 2, r0 = rng.int(0, this.R - hs), c0 = rng.int(1, this.C - hs - 1);
     const patch = (rr, cc, f) => { const out = []; for (let i = 0; i < hs; i++) for (let j = 0; j < hs; j++) out.push(f ? f(cell(rr + i, cc + j), i, j) : cell(rr + i, cc + j)); return out; };
     const key = p => p.map(x => x.k + x.c + x.s + x.rot).join(';');
-    const ok = patch(r0, c0), cand = [];
-    cand.push({ p: patch(r0, c0 + 1), why: 'pos' }, { p: patch(r0 + (r0 + hs < this.R ? 1 : -1), c0), why: 'pos' });
-    cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { c: cols[(cols.indexOf(x.c) + 1) % 6] })), why: 'color' });
-    if (type === 'grow') cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { s: x.s === 0.55 ? 1.05 : x.s === 1.05 ? 0.55 : 0.8 })), why: 'size' });
-    if (type === 'turn') cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { rot: (x.rot + 90) % 360 })), why: 'turn' });
-    if (type === 'check' || type === 'shift') cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { k: sh[(sh.indexOf(x.k) + 1) % 3] })), why: 'shape' });
-    const foils = []; rng.shuffle(cand).forEach(c => { if (key(c.p) !== key(ok) && !foils.some(f => key(f.p) === key(c.p)) && foils.length < 2) foils.push(c); });
-    const opts = rng.shuffle([{ p: ok, why: 'ok' }].concat(foils));
+    const ok = patch(r0, c0), cand = [], near = [];
+    /* the wrong patches: cut from another place of the cloth, or with the pattern changed (the kind of change this cloth
+       is about first: size, turn, shape), then another colour */
+    [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1], [0, 2], [2, 0]].forEach(([dr, dc]) => { const rr = r0 + dr, cc = c0 + dc; if (rr >= 0 && cc >= 0 && rr + hs <= this.R && cc + hs <= this.C) near.push({ p: patch(rr, cc), why: 'pos' }); });
+    if (type === 'grow') [1, 2].forEach(t => cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { s: [0.55, 0.8, 1.05][([0.55, 0.8, 1.05].indexOf(x.s) + t) % 3] })), why: 'size' }));
+    if (type === 'turn') [90, 180, 270].forEach(t => cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { rot: (x.rot + t) % 360 })), why: 'turn' }));
+    if (type === 'check' || type === 'shift') [1, 2].forEach(t => cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { k: sh[(sh.indexOf(x.k) + t) % 3] })), why: 'shape' }));
+    if (type === 'stripes') cand.push({ p: patch(r0, c0, x => Object.assign({}, x, { k: 'circle' })), why: 'shape' });
+    const colr = [1, 2, 3, 4, 5].map(t => ({ p: patch(r0, c0, x => Object.assign({}, x, { c: cols[(cols.indexOf(x.c) + t) % 6] })), why: 'color' }));
+    const foils = W3X.uniq(rng.shuffle(near).slice(0, 2).concat(rng.shuffle(cand), rng.shuffle(near), rng.shuffle(colr)), c => key(c.p), 4, [{ p: ok }]);
+    const right = { p: ok, why: 'ok' }, opts = W3X.deal(G, right, foils, 'cl');
     const grid = []; for (let r = 0; r < this.R; r++) for (let c = 0; c < this.C; c++) grid.push(cell(r, c));
-    return { k: [d, type, k, vert, r0, c0, cols.join('')], type, hs, r0, c0, grid, opts, answer: opts.findIndex(x => x.why === 'ok') };
+    return { k: [d, type, k, vert, r0, c0, cols.join('')], type, hs, r0, c0, grid, opts, answer: opts.indexOf(right) };
   },
+  audit(q) { const key = p => p.map(x => x.k + x.c + x.s + x.rot).join(';'), want = []; for (let i = 0; i < q.hs; i++) for (let j = 0; j < q.hs; j++) want.push(q.grid[(q.r0 + i) * this.C + q.c0 + j]); const good = q.opts.map((o, i) => (key(o.p) === key(want) ? i : -1)).filter(i => i >= 0); return { n: q.opts.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer && new Set(q.opts.map(o => key(o.p))).size === q.opts.length ? null : 'right ones ' + good }; },
   motif(s, x, cx, cy, r) {
     if (x.k === 'arrow') { W2X.shape(s, 'arrow', cx, cy, r * 1.2, W2X.pal[x.c], x.rot, 3); return; }
     W2X.shape(s, x.k, cx, cy, r * x.s, W2X.pal[x.c], x.rot, 3);
@@ -1725,14 +2292,17 @@ const MCloth = {
     return s;
   },
   patchSvg(p, hs) { const s = svg('svg', { viewBox: '0 0 ' + hs * 40 + ' ' + hs * 40, width: '100%', height: '100%' }); svg('rect', { x: 0, y: 0, width: hs * 40, height: hs * 40, fill: '#FFF3D6' }, s); p.forEach((x, i) => this.motif(s, x, (i % hs) * 40 + 20, Math.floor(i / hs) * 40 + 20, 12)); s.style.pointerEvents = 'none'; return s; },
-  geo(st) { const L = K.L(), cw = L ? 66 : 84; return L ? { cw, x: 512 - this.C * cw / 2, y: 120, oy: 600, os: st.q.hs === 1 ? 110 : 134 } : { cw, x: 352 - this.C * cw / 2, y: 230, oy: 820, os: st.q.hs === 1 ? 120 : 150 }; },
+  geo(st) { const L = K.L(), cw = L ? 66 : 84; return L ? { cw, x: 512 - this.C * cw / 2, y: 120 } : { cw, x: 352 - this.C * cw / 2, y: 230 }; },
+  /* the five patches: one row right of the watcher (landscape), 3 + 2 (portrait) */
+  optFr(L) { return (L == null ? K.L() : L) ? { x: 170, y: 500, w: 840, h: 190 } : { x: 16, y: 688, w: 672, h: 320 }; },
+  optS(st) { return W3X.size2(st.q.opts.length, [this.optFr(true), this.optFr(false)], st.q.hs === 1 ? 116 : 140, 24); },
   decor(G) { W3X.decor2(G, this.chars, true); },
-  place(st) { const g = this.geo(st); place(st.cloth, g.x, g.y, this.C * g.cw, this.R * g.cw); place(st.frame, g.x - 14, g.y - 14, this.C * g.cw + 28, this.R * g.cw + 28); K.cardsPlace(st, { cx: Stage.W / 2, cy: g.oy, gap: 34 }); },
+  place(st) { const g = this.geo(st); place(st.cloth, g.x, g.y, this.C * g.cw, this.R * g.cw); place(st.frame, g.x - 14, g.y - 14, this.C * g.cw + 28, this.R * g.cw + 28); if (st.cards) { st.cards.forEach(c => { if (c._moved) { c._moved = false; c.style.transform = ''; c.style.zIndex = ''; } }); W3X.lay(st.cards, this.optFr(), this.optS(st), null, 24); } },
   async present(st) {
-    const q = st.q, g = this.geo(st);
+    const q = st.q;
     st.frame = W2X.thing(st, 10, 10, 3, ''); Object.assign(st.frame.style, { borderRadius: '10px', background: '#C8323C', boxShadow: '0 0 0 4px #2B2118, inset 0 0 0 4px #FFC93C' });
     st.cloth = W2X.thing(st, 10, 10, 4, ''); st.cloth.appendChild(this.clothSvg(q));
-    W2X.cards(st, q.opts.map(o => this.patchSvg(o.p, q.hs)), q.opts.map((_, i) => i), { size: g.os, gap: 34, cx: Stage.W / 2, cy: g.oy });
+    W2X.cards(st, q.opts.map(o => this.patchSvg(o.p, q.hs)), q.opts.map((_, i) => i), { size: this.optS(st), gap: 24, cx: Stage.W / 2, cy: 600 });
     this.place(st);
     K.pop(st, st.frame);
     K.task(st, [[W3X.ic('<rect x="8" y="8" width="84" height="84" rx="6" fill="#FFF3D6" stroke="#2B2118" stroke-width="5"/><rect x="50" y="50" width="30" height="30" fill="#6B4A2E" stroke="#2B2118" stroke-width="3" stroke-dasharray="5 4"/><circle cx="28" cy="28" r="9" fill="#FF6B5B"/><circle cx="64" cy="28" r="9" fill="#4FB3FF"/><circle cx="28" cy="64" r="9" fill="#4FB3FF"/>')], ['q']]);
@@ -1744,7 +2314,28 @@ const MCloth = {
     await K.flyTo(st, c, g.x + q.c0 * g.cw - (b.w - q.hs * g.cw) / 2, g.y + q.r0 * g.cw - (b.h - q.hs * g.cw) / 2, 480, 60, q.hs * g.cw / b.w);
     Sfx.reveal(); this.cheerAll(st); st.summary = '花布补好啦！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
   },
-  async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W3X.say({ pos: '位置不对哦', color: '颜色不对哦', size: '大小不对哦', turn: '方向不对哦', shape: '形状不对哦' }[st.q.opts[ans].why] || '不对哦'); await st.scope.wait(500); },
+  async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W3X.say({ pos: '位置不对哦', color: '颜色不对哦', size: '大小不对哦', turn: '方向不对哦', shape: '形状不对哦' }[st.q.opts[ans].why] || '形状不对哦'); await st.scope.wait(500); },
+  /* a patch flies into the hole (scaled to it) */
+  async into(st, c) { const q = st.q, g = this.geo(st), b = box(c); c.style.zIndex = 9; c._moved = true; await K.flyTo(st, c, g.x + q.c0 * g.cw - (b.w - q.hs * g.cw) / 2, g.y + q.r0 * g.cw - (b.h - q.hs * g.cw) / 2, 480, 60, q.hs * g.cw / (b.w * 0.84)); },
+  /* after a wrong answer: his patch goes into the hole - the pieces that do not go on with the cloth get blue rings; back
+     to its place; the right patch goes in (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st, c = st.cards[ans], o = q.opts[ans], ok = q.opts[q.answer], key = x => x.k + x.c + x.s + x.rot, g = this.geo(st);
+    if (c && o) {
+      W3X.mine(st, c, 6);
+      const s = c.querySelector('svg'); o.p.forEach((x, i) => { if (key(x) !== key(ok.p[i])) W3X.ringIn(s, (i % q.hs) * 40 + 20, Math.floor(i / q.hs) * 40 + 20, 18, W3X.BLUE, 3); });
+      await st.scope.wait(T(700)); if (!Session.alive(my)) return;
+      st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
+      await this.into(st, c); if (!Session.alive(my)) return;
+      await st.scope.wait(T(1400)); if (!Session.alive(my)) return;
+      this.place(st);
+      await st.scope.wait(T(250)); if (!Session.alive(my)) return;
+    }
+    await this.into(st, st.cards[q.answer]); if (!Session.alive(my)) return;
+    W3X.ringAt(st, { x: g.x + q.c0 * g.cw, y: g.y + q.r0 * g.cw, w: q.hs * g.cw, h: q.hs * g.cw }, W3X.GOLD, 10);
+    Sfx.reveal(); W3X.tell('花布补好啦！');
+    await W3X.beat(st, 1600);
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.opts.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
   snap(st) { return { type: st.q.type }; },
 };
@@ -1756,20 +2347,23 @@ const MBaskets = {
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const mode = d === 1 ? 'all' : d === 2 ? 'none' : d === 3 ? bagPick(G, 'bk3', ['all', 'none']) : d === 4 ? bagPick(G, 'bk4', ['one', 'all']) : bagPick(G, 'bk5', ['one', 'none', 'all']);
-    const n = d <= 3 ? 3 : 4, m = d <= 2 ? 3 : d === 3 ? 4 : d === 4 ? rng.int(4, 5) : 5;
+    const m = d <= 2 ? 3 : d === 3 ? 4 : d === 4 ? rng.int(4, 5) : 5;
     const t = rng.int(0, 2), oth = [0, 1, 2].filter(x => x !== t);
     const ok = { all: m, none: 0, one: 1 }[mode];
-    const bad = { all: [m - 1, rng.int(1, m - 2), 0], none: [1, rng.int(2, m), m], one: [0, 2, rng.int(2, m)] }[mode];
-    const counts = rng.shuffle([ok].concat(rng.shuffle(bad).slice(0, n - 1)));
-    const plates = counts.map(c => rng.shuffle(Array(c).fill(t).concat(Array.from({ length: m - c }, () => rng.pick(oth)))));
-    return { k: [d, mode, t, plates.map(p => p.join('')).join('|')], mode, t, plates, counts, answer: counts.indexOf(ok) };
+    /* five plates: the right one and four that are not (nearly all / one too many / none ...) */
+    const bad = { all: [m - 1, m - 1, rng.int(1, Math.max(1, m - 2)), 0], none: [1, 1, rng.int(2, m), m], one: [0, 2, rng.int(2, m), m] }[mode];
+    const plate = c => rng.shuffle(Array(c).fill(t).concat(Array.from({ length: m - c }, () => rng.pick(oth))));
+    const right = plate(ok), plates = W3X.deal(G, right, bad.map(plate), 'bk'), counts = plates.map(p => p.filter(f => f === t).length);
+    return { k: [d, mode, t, plates.map(p => p.join('')).join('|')], mode, t, plates, counts, answer: plates.indexOf(right) };
   },
-  geo(st) { const L = K.L(), n = st.q.plates.length; return L ? { y: 372, s: n === 4 ? 200 : 228, gap: n === 4 ? 22 : 40, per: n } : { y: n === 4 ? 520 : 560, s: n === 4 ? 230 : 200, gap: 22, per: n === 4 ? 2 : 3 }; },
+  audit(q) { const ok = { all: q.plates[0].length, none: 0, one: 1 }[q.mode], good = q.counts.map((c, i) => (c === ok ? i : -1)).filter(i => i >= 0); return { n: q.plates.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer ? null : 'right ones ' + good }; },
+  /* five plates: one row between the watchers (landscape), 3 + 2 (portrait) */
+  geo(st) { return K.L() ? { fr: { x: 20, y: 150, w: 984, h: 330 }, max: 228, gap: 16 } : { fr: { x: 16, y: 230, w: 672, h: 620 }, max: 230, gap: 20 }; },
   decor(G) { W3X.decor2(G, this.chars); },
   fruitXY(i, m, b) { const per = m <= 3 ? m : Math.ceil(m / 2), r = Math.floor(i / per), c = i % per, inRow = Math.min(per, m - r * per), rows = Math.ceil(m / per), s = b.w * (m <= 3 ? 0.31 : 0.28); return { x: b.x + b.w / 2 + (c - (inRow - 1) / 2) * s * 0.92 - s / 2, y: b.y + b.h * 0.5 + (r - (rows - 1) / 2) * s * 0.78 - s / 2 - b.h * 0.06, s }; },
   place(st) {
-    const g = this.geo(st);
-    W3X.row(st.plateEls.length, Stage.W / 2, g.y, g.s, g.gap, g.per).forEach((p, i) => place(st.plateEls[i], p.x, p.y, g.s, g.s * 0.82));
+    const g = this.geo(st), P = W3X.grid(st.plateEls.length, g.fr, g.max, g.gap, 0.82);
+    st.plateEls.forEach((e, i) => place(e, P.pos[i].x, P.pos[i].y, P.w, P.h));
     st.fr.forEach(o => { const b = box(st.plateEls[o.p]), q = this.fruitXY(o.i, st.q.plates[o.p].length, b); place(o.e, q.x, q.y, q.s, q.s); });
   },
   async present(st) {
@@ -1793,6 +2387,16 @@ const MBaskets = {
     st.summary = q.mode === 'all' ? '全是' + F[1] + '！' : q.mode === 'none' ? '没有' + F[1] + '！' : '只有一个' + F[1] + '！';
     Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
+  /* after a wrong answer: his plate (blue) and the fruit on it that breaks the rule (blue rings); the right plate (gold),
+     its fruit hops */
+  async explain(st, ans) {
+    const q = st.q, my = st, F = FRUIT3[q.t], e = st.plateEls[ans];
+    if (e) { W3X.mine(st, e, 6); st.fr.filter(o => o.p === ans && (q.mode === 'all' ? o.f !== q.t : o.f === q.t)).forEach(o => W3X.ringAt(st, box(o.e), W3X.BLUE, 2)); }
+    await st.scope.wait(T(1500)); if (!Session.alive(my)) return;
+    W3X.gold(st, st.plateEls[q.answer], 6, 0); st.fr.filter(o => o.p === q.answer && o.f === q.t).forEach(o => K.hop(st, o.e, 16));
+    Sfx.reveal(); W3X.tell(q.mode === 'all' ? '全是' + F[1] + '！' : q.mode === 'none' ? '没有' + F[1] + '！' : '只有一个' + F[1] + '！');
+    await W3X.beat(st, 1600);
+  },
   async feedback(st, ans) {
     const q = st.q, c = q.counts[ans], F = FRUIT3[q.t]; if (st.plateEls[ans]) K.wiggle(st, st.plateEls[ans]);
     st.fr.filter(o => o.p === ans && o.f === q.t).forEach(o => K.hop(st, o.e, 10));
@@ -1813,37 +2417,46 @@ const MDoors = {
     const d = Math.min(5, o.level), rng = o.rng;
     const who = d === 1 ? ['bajie'] : d === 2 ? ['tangseng'] : d === 3 ? [rng.pick(['shaseng', 'bajie'])] : d === 4 ? ['bajie', 'tangseng'] : [rng.pick(['shaseng', 'bajie', 'tangseng'])];
     const need = who.map(id => this.size(id)).reduce((a, b) => ({ w: Math.max(a.w, b.w), h: Math.max(a.h, b.h) }), { w: 0, h: 0 });
-    const W = need.w + 14, H = need.h + 14, n = d === 5 ? 4 : 3, gapW = d === 5 ? 18 : 30, gapH = d === 5 ? 18 : 30;
+    const W = need.w + 14, H = need.h + 14, gap = d === 5 ? 10 : 13;
     const ok = { w: W + rng.int(6, 18), h: H + rng.int(6, 18), why: 'ok' };
-    let foils;
-    if (d === 1) foils = [{ w: W - gapW - 10, h: H + 30, why: 'narrow' }, { w: W - gapW * 2 - 14, h: H + 18, why: 'narrow' }];
-    else if (d === 2) foils = [{ w: W + 26, h: H - gapH - 10, why: 'low' }, { w: W + 14, h: H - gapH * 2 - 6, why: 'low' }];
-    else foils = [{ w: W + 40, h: H - gapH - 8, why: 'low' }, { w: W - gapW - 8, h: H + 40, why: 'narrow' }, { w: W - gapW, h: H - gapH, why: 'narrow' }].slice(0, n - 1);
-    const doors = rng.shuffle([ok].concat(foils));
+    /* four doors they cannot get through: too narrow (level 1), too low (level 2), either (3 - 5; closer at 5) - every one
+       clearly smaller than the one who must pass */
+    const nar = j => ({ w: W - 34 - gap * j, h: H + rng.int(10, 40), why: 'narrow' }), low = j => ({ w: W + rng.int(10, 36), h: H - 34 - gap * j, why: 'low' }), both = j => ({ w: W - 34 - gap * j, h: H - 34 - gap * j, why: 'narrow' });
+    const foils = d === 1 ? [nar(0), nar(1), nar(2), nar(3)] : d === 2 ? [low(0), low(1), low(2), low(3)] : rng.shuffle([nar(0), low(0), rng.pick([nar(1), low(1)]), both(1)]);
+    const doors = W3X.deal(G, ok, foils, 'dr');
     return { k: [d, who.join(), doors.map(x => x.w + 'x' + x.h).join()], who, need: { w: W, h: H }, doors, answer: doors.indexOf(ok) };
   },
+  audit(q) { const fit = q.who.map(id => this.size(id)).reduce((a, b) => ({ w: Math.max(a.w, b.w), h: Math.max(a.h, b.h) }), { w: 0, h: 0 }), good = q.doors.map((d, i) => (d.w > fit.w && d.h > fit.h ? i : -1)).filter(i => i >= 0); return { n: q.doors.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer ? null : 'doors that fit ' + good }; },
   geo(st) {
     /* R11-2: everyone on the ground, the walkers side by side just left of the doors, each door as wide as itself;
-       as big as fits (at most the old sizes), so nothing leaves the screen and no narrow door gets small */
-    const L = K.L(), q = st.q, n = q.doors.length, ws = q.who.map(id => this.size(id).w), sum = a => a.reduce((x, y) => x + y, 0);
-    const fixed = 12 * (ws.length - 1) + 36 + 16 * n + 14 * (n - 1), k = Math.min(L ? 1 : 0.78, (Stage.W - 40 - fixed) / (sum(ws) + sum(q.doors.map(d => d.w))));
-    let x = (Stage.W - fixed - k * (sum(ws) + sum(q.doors.map(d => d.w)))) / 2;
-    const wx = ws.map(w => { const a = x; x += w * k + 12; return a; }); x += 24;
-    const dx = q.doors.map(d => { const a = x + (d.w * k + 16) / 2; x += d.w * k + 16 + 14; return a; });
-    return { k, base: L ? 600 : 820, wx, dx };
+       as big as fits (at most the old sizes), so nothing leaves the screen and no narrow door gets small. Five doors in
+       portrait: the walkers and two doors on the upper ledge, three doors on the lower one */
+    const L = K.L(), q = st.q, n = q.doors.length, ws = q.who.map(id => this.size(id).w), sum = a => a.reduce((x, y) => x + y, 0), dw = q.doors.map(d => d.w);
+    const rows = L ? [Array.from({ length: n }, (_, i) => i)] : [[0, 1], [2, 3, 4].filter(i => i < n)], bases = L ? [600] : [560, 950];
+    const fix = (r, wk) => (wk ? 12 * (ws.length - 1) + 36 : 0) + 16 * r.length + 14 * (r.length - 1), wid = (r, wk) => (wk ? sum(ws) : 0) + sum(r.map(i => dw[i]));
+    const k = Math.min(1, ...rows.map((r, j) => (Stage.W - 40 - fix(r, j === 0)) / wid(r, j === 0)));
+    const dx = [], db = [], wx = [];
+    rows.forEach((r, j) => {
+      let x = (Stage.W - fix(r, j === 0) - k * wid(r, j === 0)) / 2;
+      if (j === 0) { ws.forEach(w => { wx.push(x); x += w * k + 12; }); x += 24; }
+      r.forEach(i => { dx[i] = x + (dw[i] * k + 16) / 2; db[i] = bases[j]; x += dw[i] * k + 16 + 14; });
+    });
+    return { k, base: bases[0], bases, wx, dx, db };
   },
   decor(G) { W2X.hideAll(G, this.chars); },
   doorX(st, i) { return this.geo(st).dx[i]; },
   place(st) {
     const g = this.geo(st);
-    place(st.wall, 0, g.base - 330 * g.k, Stage.W, 330 * g.k + 30);
+    place(st.wall, 0, g.bases[0] - 330 * g.k, Stage.W, 330 * g.k + 30);
+    if (st.wall2) { st.wall2.style.display = g.bases.length > 1 ? '' : 'none'; if (g.bases.length > 1) place(st.wall2, 0, g.bases[1] - 330 * g.k, Stage.W, 330 * g.k + 30); }
     if (st.ledge) st.ledge.style.display = 'none';
-    st.doorEls.forEach((e, i) => { const dd = st.q.doors[i], w = dd.w * g.k, h = dd.h * g.k, x = this.doorX(st, i); place(e, x - w / 2 - 8, g.base - h - 8, w + 16, h + 8); });
-    st.walkers.forEach((o, j) => { const s = this.size(o.id), w = s.w * g.k, h = s.h * g.k, x = o.at != null ? this.doorX(st, o.at) - w / 2 : g.wx[j]; place(o.e, x, g.base - h, w, h); });
+    st.doorEls.forEach((e, i) => { const dd = st.q.doors[i], w = dd.w * g.k, h = dd.h * g.k, x = g.dx[i]; place(e, x - w / 2 - 8, g.db[i] - h - 8, w + 16, h + 8); });
+    st.walkers.forEach((o, j) => { const s = this.size(o.id), w = s.w * g.k, h = s.h * g.k, x = o.at != null ? g.dx[o.at] - w / 2 : g.wx[j]; place(o.e, x, (o.at != null ? g.db[o.at] : g.base) - h, w, h); });
   },
   async present(st) {
     const q = st.q;
     st.wall = W2X.thing(st, 10, 10, 2, ''); st.wall.innerHTML = '<svg viewBox="0 0 100 40" width="100%" height="100%" preserveAspectRatio="none"><path d="M0 6Q10 0 20 5Q34 -1 48 4Q62 0 76 5Q90 0 100 4V40H0Z" fill="#B9855A" stroke="#2B2118" stroke-width=".6"/><path d="M8 16H22M40 24H56M70 14H88M14 32H30M62 30H80" stroke="#8A5A2E" stroke-width=".8" stroke-linecap="round"/></svg>';
+    st.wall2 = W2X.thing(st, 10, 10, 2, ''); st.wall2.innerHTML = st.wall.innerHTML;
     st.doorEls = q.doors.map((dd, i) => { const e = W3X.card(st, 'card' + i, 3, ''); e.innerHTML = '<svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="none"><path d="M4 100V30Q4 4 50 4Q96 4 96 30V100Z" fill="#3A2614" stroke="#FFC93C" stroke-width="5" vector-effect="non-scaling-stroke"/></svg>'; return e; });
     st.cards = st.doorEls; st.opts = q.doors.map((_, i) => i);
     st.ledge = W2X.thing(st, 10, 10, 2, ''); st.ledge.innerHTML = '<svg viewBox="0 0 220 40" width="100%" height="100%" preserveAspectRatio="none"><path d="M4 8Q110 -2 216 8L200 36Q110 44 20 36Z" fill="#B9855A" stroke="#2B2118" stroke-width="4" vector-effect="non-scaling-stroke"/></svg>';
@@ -1858,6 +2471,21 @@ const MDoors = {
     const q = st.q, my = st;
     for (const o of st.walkers) { if (!Session.alive(my)) return; o.at = q.answer; const b = box(o.e); this.place(st); const a = box(o.e); place(o.e, b.x, b.y); await K.flyTo(st, o.e, a.x, a.y, 600, 30); await st.scope.anim(o.e, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.85)' }], { duration: 400, fill: 'forwards' }); }
     Sfx.reveal(); st.summary = q.who.length === 2 ? '都钻过去啦！' : '钻过去啦！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+  },
+  /* after a wrong answer: they go to his door and stand in it - they stick out (blue); then they go through the right
+     door (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st;
+    if (st.doorEls[ans]) W3X.mine(st, st.doorEls[ans], 4);
+    await Promise.all(st.walkers.map(o => { o.at = ans; const b = box(o.e); this.place(st); const a = box(o.e); place(o.e, b.x, b.y); o.e.style.zIndex = 9; o.e.style.opacity = '0.8'; return K.flyTo(st, o.e, a.x, a.y, 650, 30); }));
+    if (!Session.alive(my)) return;
+    st.walkers.forEach(o => K.wiggle(st, o.e));
+    await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+    st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
+    W3X.gold(st, st.doorEls[q.answer], 4, 0);
+    for (const o of st.walkers) { if (!Session.alive(my)) return; o.e.style.opacity = ''; o.at = q.answer; const b = box(o.e); this.place(st); const a = box(o.e); place(o.e, b.x, b.y); await K.flyTo(st, o.e, a.x, a.y, 600, 30); await st.scope.anim(o.e, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.85)' }], { duration: 400, fill: 'forwards' }); }
+    Sfx.reveal(); W3X.tell(q.who.length === 2 ? '都钻过去啦！' : '钻过去啦！');
+    await W3X.beat(st, 1400);
   },
   async feedback(st, ans) {
     const dd = st.q.doors[ans], n = st.q.need; if (st.doorEls[ans]) K.wiggle(st, st.doorEls[ans]);
@@ -1874,17 +2502,24 @@ const MFans = {
   kind0: 'fans', verb: '比！', intro: '芭蕉扇来啦！', praise: ['角度看得真准！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
-    const ask = d <= 3 ? 'big' : d === 4 ? 'small' : 'same', n = d === 1 ? 2 : d === 5 ? 4 : 3;
+    /* five fans at every level (client: five options); the widest (smallest) one stands out by 40 degrees at level 1, 30
+       at 2, 20 later; two that open the same at level 5 */
+    const ask = d <= 3 ? 'big' : d === 4 ? 'small' : 'same', n = 5;
     for (let t = 0; t < 400; t++) {
       let angs;
-      if (ask === 'same') { const a = rng.int(5, 12) * 10; angs = [a, a]; while (angs.length < n) { const b = rng.int(4, 14) * 10; if (angs.every(x => Math.abs(x - b) >= 30)) angs.push(b); } }
-      else { angs = []; for (let k = 0; k < 200 && angs.length < n; k++) { const b = rng.int(4, 15) * 10; if (angs.every(x => Math.abs(x - b) >= (d === 1 ? 50 : 30))) angs.push(b); } if (angs.length < n) continue; }
+      if (ask === 'same') { const a = rng.int(5, 12) * 10; angs = [a, a]; for (let k = 0; k < 300 && angs.length < n; k++) { const b = rng.int(3, 17) * 10; if (Math.abs(b - a) >= 30 && angs.slice(2).every(x => Math.abs(x - b) >= 20)) angs.push(b); } if (angs.length < n) continue; }
+      else {
+        angs = []; for (let k = 0; k < 300 && angs.length < n; k++) { const b = rng.int(3, 17) * 10; if (angs.every(x => Math.abs(x - b) >= 20)) angs.push(b); } if (angs.length < n) continue;
+        const s = angs.slice().sort((x, y) => x - y); if ((ask === 'small' ? s[1] - s[0] : s[n - 1] - s[n - 2]) < (d === 1 ? 40 : d === 2 ? 30 : 20)) continue;
+      }
       const rad = d <= 2 ? angs.map(() => 1) : angs.map(() => [0.62, 0.8, 1][rng.int(0, 2)]);
       const ext = ask === 'small' ? Math.min(...angs) : Math.max(...angs), ai = angs.indexOf(ext);
       if (d >= 3 && ask !== 'same') { /* the decoy: the biggest fan is not the widest one */ const bi = rad.indexOf(Math.max(...rad)); if (bi === ai) { rad[ai] = 0.62; const j = (ai + 1) % n; rad[j] = 1; } }
       if (ask === 'same') { rad[0] = 0.62; rad[1] = 1; }
       const rot = angs.map(() => d >= 4 ? rng.int(-3, 3) * 12 : 0);
-      const order = rng.shuffle(angs.map((_, i) => i));
+      let order;
+      if (ask === 'same') { const pairs = []; for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) pairs.push(i + '-' + j); const at = bagPick(G, 'fap', pairs).split('-').map(Number), rest = rng.shuffle([2, 3, 4]); order = Array.from({ length: n }, (_, i) => (i === at[0] ? 0 : i === at[1] ? 1 : rest.shift())); }
+      else order = W3X.deal(G, ai, angs.map((_, i) => i).filter(i => i !== ai), 'fa');
       const fans = order.map(i => ({ a: angs[i], r: rad[i], rot: rot[i] }));
       const answer = ask === 'same' ? [order.indexOf(0), order.indexOf(1)].sort((x, y) => x - y).join('-') : order.indexOf(ai);
       return { k: [d, ask, fans.map(f => f.a + ':' + f.r).join()], ask, fans, answer };
@@ -1904,9 +2539,33 @@ const MFans = {
     s.style.pointerEvents = 'none';
     return s;
   },
-  geo(st) { const L = K.L(), n = st.q.fans.length; return L ? { y: 372, s: n === 4 ? 210 : 240, gap: n === 4 ? 16 : 34, per: n } : { y: n === 4 ? 540 : 560, s: n === 4 ? 250 : 210, gap: 18, per: n === 4 ? 2 : 3 }; },
+  audit(q) {
+    const as = q.fans.map(f => f.a), want = String(q.answer).split('-').map(Number);
+    const good = q.ask === 'same' ? as.map((a, i) => (as.filter(b => b === a).length === 2 ? i : -1)).filter(i => i >= 0) : [as.indexOf(q.ask === 'big' ? Math.max(...as) : Math.min(...as))];
+    const once = q.ask === 'same' || as.filter(a => a === as[good[0]]).length === 1;
+    return { n: q.fans.length, pos: q.ask === 'same' ? want : q.answer, pick: q.ask === 'same' ? 2 : 1, err: once && good.join() === want.join() ? null : 'right ones ' + good };
+  },
+  /* five fans: one row between the watchers (landscape), 3 + 2 (portrait) */
+  geo(st) { return K.L() ? { fr: { x: 20, y: 130, w: 984, h: 350 }, max: 240, gap: 14 } : { fr: { x: 16, y: 220, w: 672, h: 640 }, max: 250, gap: 18 }; },
   decor(G) { W3X.decor2(G, this.chars); },
-  place(st) { const g = this.geo(st); W3X.row(st.fanEls.length, Stage.W / 2, g.y, g.s, g.gap, g.per).forEach((p, i) => place(st.fanEls[i], p.x, p.y, g.s, g.s)); },
+  place(st) { const g = this.geo(st), P = W3X.grid(st.fanEls.length, g.fr, g.max, g.gap); st.fanEls.forEach((e, i) => place(e, P.pos[i].x, P.pos[i].y, P.w, P.w)); },
+  /* an opening of `a` degrees drawn (dashed) on a fan, to compare */
+  wedge(g, a, R, color) { const a0 = (-90 - a / 2) * Math.PI / 180, a1 = (-90 + a / 2) * Math.PI / 180, P = t => [(R * Math.cos(t)).toFixed(1), (R * Math.sin(t)).toFixed(1)], p0 = P(a0), p1 = P(a1); return svg('path', { d: 'M0 0L' + p0[0] + ' ' + p0[1] + 'A' + R + ' ' + R + ' 0 ' + (a > 180 ? 1 : 0) + ' 1 ' + p1[0] + ' ' + p1[1] + 'Z', fill: 'none', stroke: color, 'stroke-width': 7, 'stroke-dasharray': '12 8', 'stroke-linejoin': 'round' }, g); },
+  /* after a wrong answer: the openings light up; his fan (blue) - its opening laid on the right fan (blue dashes) shows the
+     right one opens more (less); the right one (gold) */
+  async explain(st, ans) {
+    const q = st.q, my = st, sel = String(ans).split('-').map(Number), right = String(q.answer).split('-').map(Number), gOf = i => st.fanEls[i] && st.fanEls[i].querySelector('svg > g');
+    q.fans.forEach(f => { if (f.arc) f.arc.setAttribute('opacity', 1); });
+    sel.filter(i => !right.includes(i)).forEach(i => W3X.mine(st, st.fanEls[i], 4));
+    await st.scope.wait(T(900)); if (!Session.alive(my)) return;
+    if (q.ask !== 'same') { const f = q.fans[sel[0]], r = q.fans[right[0]]; if (f && gOf(right[0])) this.wedge(gOf(right[0]), f.a, 100 * r.r, W3X.BLUE); }
+    else if (sel.length === 2 && gOf(sel[1])) this.wedge(gOf(sel[1]), q.fans[sel[0]].a, 100 * q.fans[sel[1]].r, W3X.BLUE);
+    await st.scope.wait(T(1400)); if (!Session.alive(my)) return;
+    if (q.ask === 'same') this.wedge(gOf(right[1]), q.fans[right[0]].a, 100 * q.fans[right[1]].r, W3X.GOLD);
+    right.forEach(i => W3X.gold(st, st.fanEls[i], 4));
+    Sfx.reveal(); W3X.tell(q.ask === 'big' ? '这把张得最大！' : q.ask === 'small' ? '这把张得最小！' : '张得一样大！');
+    await W3X.beat(st, 1600);
+  },
   async present(st) {
     const q = st.q;
     st.sel = [];
@@ -1968,11 +2627,14 @@ const MFurnace = {
     d.appendChild(s); return d;
   },
   geo(st) { const L = K.L(), m = st.q.ex.length + 1; return L ? { x: 400, y0: m === 4 ? 150 : 180, dy: m === 4 ? 118 : 140, bw: 214, bh: 96, fx: 400, cx: 850, cy: 380 } : { x: 352, y0: 280, dy: 128, bw: 214, bh: 100, cx: 352, cy: 860 }; },
+  /* the five number cards: two columns on the right (landscape), one row at the bottom left of Wukong (portrait) */
+  cardFr(L) { return (L == null ? K.L() : L) ? { x: 770, y: 110, w: 240, h: 580 } : { x: 16, y: 800, w: 560, h: 214 }; },
+  audit(q) { return W3X.auditNum(q); },
   decor(G) { W2X.hideAll(G, this.chars); const L = K.L(), a = G.actors[this.chars[0]]; if (a && !L) showActor(a, 640, 1016, 120); },
   place(st) {
     const g = this.geo(st);
     st.rows.forEach((r, i) => { const y = g.y0 + i * g.dy; place(r.inE, g.x - 86 - g.bw, y - g.bh / 2, g.bw, g.bh); place(r.fur, g.x - 48, y - 52, 96, 96); place(r.outE, g.x + 86, y - g.bh / 2, g.bw, g.bh); place(r.arr, g.x - 84, y - 16, 168, 32); });
-    if (st.cards) { K.cardsPlace(st, { cx: g.cx, cy: g.cy, gap: 22 }); if (K.L()) st.cards.forEach((c, i) => place(c, g.cx - 64, 200 + i * 150, 128, 128)); }
+    if (st.cards) W3X.lay(st.cards, this.cardFr(), box(st.cards[0]).w, null, 14);
   },
   slot(st, q) { const e = W2X.thing(st, 10, 10, 4, ''); Object.assign(e.style, { borderRadius: '18px', background: q ? 'rgba(255,255,255,.55)' : '#FFF8EC', boxShadow: '0 0 0 4px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center', border: q ? '4px dashed #2B2118' : '' }); return e; },
   async present(st) {
@@ -1990,7 +2652,7 @@ const MFurnace = {
       await st.scope.wait(T(420)); r.outE.appendChild(this.qty(r.b, 56)); K.pop(st, r.outE); await st.scope.wait(T(500));
     }
     if (!Session.alive(my)) return;
-    K.cards(st, q.opts, Object.assign({ layout: 'frame' }, { cx: this.geo(st).cx, cy: this.geo(st).cy }));
+    K.cards(st, q.opts, Object.assign({ layout: 'frame', size: W3X.size2(q.opts.length, [this.cardFr(true), this.cardFr(false)], 128, 14), gap: 14 }, { cx: this.geo(st).cx, cy: this.geo(st).cy }));
     this.place(st);
     W3X.say2(st, '放进' + CNQ(q.x) + '个，', '出来几个？');
   },
@@ -2005,45 +2667,66 @@ const MFurnace = {
     Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(W2Say.notN(ans)); await st.scope.wait(400); },
+  /* after a wrong answer: his card (blue); the furnace's rule again - what went in and came out before hops, row by row -
+     and the last pills come out; the right card (gold) */
+  async explain(st, ans) {
+    const q = st.q;
+    await W3X.explainCards(st, ans, { show: async () => {
+      for (const x of st.rows.slice(0, -1)) { if (!Session.alive(st)) return; K.hop(st, x.inE, 10); K.hop(st, x.outE, 10); await st.scope.wait(T(380)); }
+      const r = st.rows[st.rows.length - 1]; st.scope.anim(r.fur, [{ transform: 'scale(1)' }, { transform: 'scale(1.2) rotate(5deg)' }, { transform: 'scale(1)' }], { duration: 600 });
+      r.outE.innerHTML = ''; r.outE.style.border = ''; r.outE.style.background = '#FFF3C4'; r.outE.appendChild(this.qty(q.answer, 56)); K.pop(st, r.outE);
+      await st.scope.wait(T(500));
+    }, line: q.rule > 0 ? '每次多' + CNQ(q.rule) + '个！' : '每次少' + CNQ(-q.rule) + '个！' });
+  },
   next(st, strat) { return st.picked || !st.cards ? null : K.cardNext(st, strat); },
   workEls(st) { return st.cards || []; },
   snap(st) { return { rule: st.q.rule }; },
 };
 
 /* ================================================================ 复仇者 T1 · 分拣机 the sorting machine: follow the yes / no signs */
+/* Five options (client 2026-10-10): with two or three boxes there are only 2-3 possible answers, so two things go down one
+   after the other and both must be right (一题两问: guessing gets 1/4 or 1/9); with more signs the machine has five boxes;
+   "who lands here" offers five things */
 const MSorter = {
   kind0: 'sorter', verb: '分！', intro: '分拣机开动啦！', praise: ['一步一步想对啦！'],
   tests: [{ a: 'c', v: 0 }, { a: 's', v: 1 }, { a: 'k', v: 'circle' }],
   trees: {
     1: { n: { g0: [50, 18], b0: [27, 86], b1: [73, 86] }, kids: { g0: ['b0', 'b1'] }, bins: ['b0', 'b1'] },
     3: { n: { g0: [50, 16], g1: [27, 48], b0: [13, 86], b1: [41, 86], b2: [73, 86] }, kids: { g0: ['g1', 'b2'], g1: ['b0', 'b1'] }, bins: ['b0', 'b1', 'b2'] },
-    4: { n: { g0: [50, 16], g1: [27, 48], g2: [73, 48], b0: [13, 86], b1: [39, 86], b2: [61, 86], b3: [87, 86] }, kids: { g0: ['g1', 'g2'], g1: ['b0', 'b1'], g2: ['b2', 'b3'] }, bins: ['b0', 'b1', 'b2', 'b3'] },
+    5: { n: { g0: [50, 14], g1: [20, 42], g2: [60, 42], g3: [80, 64], b0: [10, 88], b1: [30, 88], b2: [50, 88], b3: [70, 88], b4: [90, 88] }, kids: { g0: ['g1', 'g2'], g1: ['b0', 'b1'], g2: ['b2', 'g3'], g3: ['b3', 'b4'] }, bins: ['b0', 'b1', 'b2', 'b3', 'b4'] },
   },
   truth(t, it) { return t.a === 'c' ? it.c === t.v : t.a === 's' ? it.s === t.v : it.k === t.v; },
   ask(t) { return t.a === 'c' ? '是红色的吗？' : t.a === 's' ? '是大的吗？' : '是圆的吗？'; },      /* what a sign asks (R9-2) */
   route(q, it) { const T = this.trees[q.tree]; let n = 'g0'; const path = [n]; while (n[0] === 'g') { n = T.kids[n][this.truth(q.gates[n], it) ? 0 : 1]; path.push(n); } return path; },
+  binOf(q, it) { return this.trees[q.tree].bins.indexOf(this.route(q, it).slice(-1)[0]); },
+  ALL: [0, 1].flatMap(c => [0, 1].flatMap(s => ['circle', 'sq'].map(k => ({ c, s, k })))),
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
-    const tree = d <= 2 ? 1 : d === 3 ? 3 : 4, T = this.trees[tree];
+    const tree = d <= 2 ? 1 : d === 3 ? 3 : 5, T = this.trees[tree];
     const gates = {};
     const pickT = ex => rng.pick(this.tests.filter(t => !ex.includes(t.a)));
     gates.g0 = d === 1 ? this.tests[0] : d === 2 ? rng.pick(this.tests.slice(1)) : pickT([]);
     if (T.kids.g0[0] === 'g1') gates.g1 = pickT([gates.g0.a]);
     if (T.kids.g0[1] === 'g2') gates.g2 = pickT([gates.g0.a]);
-    const item = () => ({ c: rng.int(0, 1), s: rng.int(0, 1), k: rng.pick(['circle', 'sq']) });
-    const q = { tree, gates };
-    if (d < 5) {
-      const it = item(), bin = this.route(q, it).slice(-1)[0];
-      return { k: [d, JSON.stringify(gates), JSON.stringify(it)], mode: 'where', tree, gates, it, answer: T.bins.indexOf(bin) };
+    if (T.kids.g2 && T.kids.g2[1] === 'g3') gates.g3 = pickT([gates.g0.a, gates.g2.a]);
+    const q = { tree, gates }, nb = T.bins.length, of = b => rng.shuffle(this.ALL.filter(x => this.binOf(q, x) === b));
+    if (d <= 3) {                        /* two things, the boxes they fall into dealt from a bag (each pair of boxes as often) */
+      const pairs = []; for (let a = 0; a < nb; a++) for (let b = 0; b < nb; b++) pairs.push(a + ',' + b);
+      const want = bagPick(G, 'sop' + tree, pairs).split(',').map(Number), i1 = of(want[0])[0], i2 = of(want[1]).find(x => x !== i1) || of(want[1])[0];
+      if (!i1 || !i2) return this.gen(G, Object.assign({}, o, { level: 4 }));
+      return { k: [d, JSON.stringify(gates), JSON.stringify([i1, i2])], mode: 'two', tree, gates, its: [i1, i2], answer: want.join(',') };
     }
-    for (let t = 0; t < 200; t++) {
-      const items = [item(), item(), item()], bins = items.map(x => this.route(q, x).slice(-1)[0]);
-      const tgt = bins[0]; if (bins.filter(b => b === tgt).length !== 1) continue;
-      if (items.some((x, i) => items.some((y, j) => i < j && x.c === y.c && x.s === y.s && x.k === y.k))) continue;
-      const order = rng.shuffle([0, 1, 2]), its = order.map(i => items[i]);
-      return { k: [d, JSON.stringify(gates), JSON.stringify(its)], mode: 'who', tree, gates, items: its, target: T.bins.indexOf(tgt), answer: order.indexOf(0) };
-    }
-    return this.gen(G, Object.assign({}, o, { level: 4 }));
+    if (d === 4) { const b = bagPick(G, 'sob', [0, 1, 2, 3, 4]), it = of(b)[0]; return { k: [d, JSON.stringify(gates), JSON.stringify(it)], mode: 'where', tree, gates, it, answer: b }; }
+    /* who lands in the gold box: one thing that does, four that do not */
+    const tgt = bagPick(G, 'sot', [0, 1, 2, 3, 4]), right = of(tgt)[0], others = rng.shuffle(this.ALL.filter(x => this.binOf(q, x) !== tgt)).slice(0, 4);
+    const items = W3X.deal(G, right, others, 'so');
+    return { k: [d, JSON.stringify(gates), JSON.stringify(items)], mode: 'who', tree, gates, items, target: tgt, answer: items.indexOf(right) };
+  },
+  audit(q) {
+    if (q.mode === 'two') { const b = q.its.map(x => this.binOf(q, x)); return { two: true, n: this.trees[q.tree].bins.length, pos: b, err: b.join(',') === q.answer ? null : 'bins ' + b }; }
+    if (q.mode === 'where') return { n: this.trees[q.tree].bins.length, pos: q.answer, err: this.binOf(q, q.it) === q.answer ? null : 'bin' };
+    const good = q.items.map((x, i) => (this.binOf(q, x) === q.target ? i : -1)).filter(i => i >= 0);
+    return { n: q.items.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer && new Set(q.items.map(x => JSON.stringify(x))).size === q.items.length ? null : 'landing ' + good };
   },
   itemSvg(it, size) { const s = svg('svg', { viewBox: '0 0 100 100', width: size, height: size }), r = it.s ? 34 : 20, c = it.c ? '#4F7BFF' : '#E8414B'; if (it.k === 'circle') svg('circle', { cx: 50, cy: 50, r, fill: c, stroke: '#2B2118', 'stroke-width': 5 }, s); else svg('rect', { x: 50 - r, y: 50 - r, width: 2 * r, height: 2 * r, rx: 4, fill: c, stroke: '#2B2118', 'stroke-width': 5 }, s); s.style.pointerEvents = 'none'; return s; },
   gateSvg(t) {
@@ -2055,36 +2738,39 @@ const MSorter = {
     s.style.pointerEvents = 'none';
     return s;
   },
-  geo(st) { const L = K.L(); return L ? { x: 210, y: 150, w: 600, h: 500, ix: 512, iy: 120, cx: 910 } : { x: 40, y: 260, w: 624, h: 600, ix: 352, iy: 226, cy: 935 }; },
+  geo(st) { const L = K.L(); return L ? { x: 210, y: 150, w: 600, h: 500, ix: 512, iy: 120 } : { x: 40, y: 260, w: 624, h: 580, ix: 352, iy: 226 }; },
+  /* the five things ("who lands here"): a column right of the machine (landscape), a row under it (portrait) */
+  cardFr(L) { return (L == null ? K.L() : L) ? { x: 830, y: 100, w: 190, h: 590 } : { x: 16, y: 876, w: 672, h: 140 }; },
+  binWH(st) { return st.q.tree === 5 ? [104, 92] : [136, 108]; },
   decor(G) { W2X.hideAll(G, this.chars); },
   P(st, n) { const g = this.geo(st), p = this.trees[st.q.tree].n[n]; return [g.x + p[0] / 100 * g.w, g.y + p[1] / 100 * g.h]; },
   place(st) {
-    const g = this.geo(st), T = this.trees[st.q.tree];
+    const g = this.geo(st), [bw, bh] = this.binWH(st);
     place(st.wires, g.x, g.y, g.w, g.h);
-    Object.keys(st.nodes).forEach(n => { const p = this.P(st, n), e = st.nodes[n]; if (n[0] === 'g') place(e, p[0] - 54, p[1] - 54, 108, 108); else place(e, p[0] - 68, p[1] - 52, 136, 108); });
-    if (st.itemEl) place(st.itemEl, g.ix - 46, g.iy - 46, 92, 92);
+    Object.keys(st.nodes).forEach(n => { const p = this.P(st, n), e = st.nodes[n]; if (n[0] === 'g') place(e, p[0] - 54, p[1] - 54, 108, 108); else place(e, p[0] - bw / 2, p[1] - bh / 2, bw, bh); });
+    if (st.itemEl && !st.itemEl._moved) place(st.itemEl, g.ix - 46, g.iy - 46, 92, 92);
+    (st.parked || []).forEach((o, k) => { if (o.e._moved) return; const p = this.P(st, this.trees[st.q.tree].bins[o.bin]); place(o.e, p[0] - 30 + (k ? 18 : -18), p[1] - bh / 2 - 34, 60, 60); });
     (st.marks || []).forEach(o => { const x = g.x + (o.a[0] + o.b[0]) / 2 / 100 * g.w, y = g.y + o.a[1] / 100 * g.h; place(o.m, x - 20, y - 20, 40, 40); });
-    if (st.cards) { if (K.L()) st.cards.forEach((c, i) => place(c, g.cx - 60, 190 + i * 150, 120, 120)); else K.cardsPlace(st, { cx: 352, cy: g.cy, gap: 24 }); }
-    void T;
+    if (st.cards) W3X.lay(st.cards, this.cardFr(), box(st.cards[0]).w, null, 12);
   },
   async present(st) {
-    const q = st.q, T = this.trees[q.tree], k = W2X.ink;
+    const q = st.q, T = this.trees[q.tree];
     st.wires = W2X.thing(st, 10, 10, 2, ''); const s = svg('svg', { viewBox: '0 0 100 100', width: '100%', height: '100%', preserveAspectRatio: 'none' }); st.wires.appendChild(s);
     Object.keys(T.kids).forEach(gn => T.kids[gn].forEach((c, j) => { const a = T.n[gn], b = T.n[c]; svg('path', { d: 'M' + a[0] + ' ' + a[1] + 'H' + b[0] + 'V' + b[1], fill: 'none', stroke: j ? '#E8414B' : '#3FA34D', 'stroke-width': 1.6, 'stroke-dasharray': '2.5 1.6' }, s); }));
     st.marks = [];
-    Object.keys(T.kids).forEach(gn => T.kids[gn].forEach((c, j) => { const a = T.n[gn], b = T.n[c], m = W2X.thing(st, 40, 40, 5, ''); m.innerHTML = j ? '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="20" r="17" fill="#E8414B" stroke="#2B2118" stroke-width="3"/><path d="M13 13L27 27M27 13L13 27" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="20" r="17" fill="#3FA34D" stroke="#2B2118" stroke-width="3"/><path d="M11 21L18 28L30 13" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>'; st.marks.push({ m, a, b }); }));
+    Object.keys(T.kids).forEach(gn => T.kids[gn].forEach((c, j) => { const a = T.n[gn], b = T.n[c], m = W2X.thing(st, 40, 40, 5, ''); m.innerHTML = j ? '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="20" r="17" fill="#E8414B" stroke="#2B2118" stroke-width="3"/><path d="M13 13L27 27M27 13L13 27" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>' : '<svg viewBox="0 0 40 40" width="100%" height="100%"><circle cx="20" cy="20" r="17" fill="#3FA34D" stroke="#2B2118" stroke-width="3"/><path d="M11 21L18 28L30 13" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>'; st.marks.push({ m, a, b, g: gn, c }); }));
     st.nodes = {};
     Object.keys(T.n).forEach(n => {
       if (n[0] === 'g') { const e = W2X.thing(st, 88, 88, 4, ''); e.appendChild(this.gateSvg(q.gates[n])); K.reg(st, 'gate_' + n, e, {}); st.nodes[n] = e; }
-      else { const i = T.bins.indexOf(n), e = W3X.card(st, q.mode === 'where' ? 'bin' + i : null, 4, ''); e.innerHTML = '<svg viewBox="0 0 120 96" width="100%" height="100%"><path d="M8 18H112L102 90H18Z" fill="' + ['#FFC93C', '#4FB3FF', '#B57BFF', '#5CC46E'][i] + '" stroke="#2B2118" stroke-width="5" stroke-linejoin="round"/><path d="M4 12H116V22H4Z" fill="#2B2118"/></svg>'; if (q.mode === 'who' && i === q.target) { e.style.boxShadow = '0 0 0 6px #FFC93C, 0 0 24px 8px rgba(255,201,60,.8)'; e.style.borderRadius = '14px'; } st.nodes[n] = e; }
+      else { const i = T.bins.indexOf(n), e = W3X.card(st, q.mode === 'who' ? null : 'bin' + i, 4, ''); e.innerHTML = '<svg viewBox="0 0 120 96" width="100%" height="100%"><path d="M8 18H112L102 90H18Z" fill="' + ['#FFC93C', '#4FB3FF', '#B57BFF', '#5CC46E', '#FF9F43'][i] + '" stroke="#2B2118" stroke-width="5" stroke-linejoin="round"/><path d="M4 12H116V22H4Z" fill="#2B2118"/></svg>'; if (q.mode === 'who' && i === q.target) { e.style.boxShadow = '0 0 0 6px #FFC93C, 0 0 24px 8px rgba(255,201,60,.8)'; e.style.borderRadius = '14px'; } st.nodes[n] = e; }
     });
-    if (q.mode === 'where') { st.itemEl = W2X.thing(st, 80, 80, 7, ''); st.itemEl.appendChild(this.itemSvg(q.it, '100%')); }
-    else { W2X.cards(st, q.items.map(x => this.itemSvg(x, '84%')), q.items.map((_, i) => i), { size: 120, gap: 24, cx: 352, cy: 935 }); }
+    if (q.mode !== 'who') { st.step = 0; st.parked = []; st.itemEl = W2X.thing(st, 80, 80, 7, ''); st.itemEl.appendChild(this.itemSvg(q.mode === 'two' ? q.its[0] : q.it, '100%')); }
+    else W2X.cards(st, q.items.map(x => this.itemSvg(x, '84%')), q.items.map((_, i) => i), { size: W3X.size2(q.items.length, [this.cardFr(true), this.cardFr(false)], 120, 12), gap: 12, cx: 352, cy: 935 });
     this.place(st);
     Object.values(st.nodes).forEach((e, i) => K.pop(st, e, 60 * i));
     K.task(st, [[W3X.ic('<polygon points="50,8 88,46 50,84 12,46" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><circle cx="50" cy="46" r="14" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><circle cx="18" cy="88" r="9" fill="#3FA34D"/><circle cx="82" cy="88" r="9" fill="#E8414B"/>')], ['q']]);
     if (!st.G.toldGate) { st.G.toldGate = true; W3X.tip('是就走绿色，'); W3X.tip('不是走红色！'); await st.scope.guard(Voice.afterSay(80)); if (!Session.alive(st)) return; }   /* the queue keeps three sentences (R10-1) */
-    W3X.say2(st, this.ask(q.gates.g0), q.mode === 'where' ? '它会掉进哪个箱子？' : '谁会掉进这里？');
+    W3X.say2(st, this.ask(q.gates.g0), q.mode === 'who' ? '谁会掉进这里？' : '它会掉进哪个箱子？');
     st.lead = ['是就走绿色，', '不是走红色！'];          /* replay and hints say the rule again (R11-3); a tap on a sign says its question */
   },
   onGesture(st, name, p) {
@@ -2092,38 +2778,90 @@ const MSorter = {
     if (id.startsWith('gate_')) { const n = id.slice(5); Voice.sayNow(this.ask(st.q.gates[n]), { tag: 'hint1' }); K.hop(st, st.nodes[n], 12); return 'ok'; }
     if (st.q.mode === 'who') return W3X.tapCards(st, name, p);
     if (!/^bin\d$/.test(id)) return false;
-    st.picked = true; Session.submit(st, Number(id.slice(3))); return 'ok';
+    const i = Number(id.slice(3));
+    if (st.q.mode === 'two' && st.step === 0) {        /* the first thing goes on the box he chose; then the second one comes */
+      st.step = 1; st.got = [i]; st.parked.push({ e: st.itemEl, bin: i }); st.itemEl = W2X.thing(st, 80, 80, 7, ''); st.itemEl.appendChild(this.itemSvg(st.q.its[1], '100%'));
+      this.place(st); K.pop(st, st.itemEl); Sfx.place(); K.say(st, '这个呢？'); return 'ok';
+    }
+    st.picked = true;
+    if (st.q.mode === 'two') { st.got.push(i); st.parked.push({ e: st.itemEl, bin: i }); st.itemEl = null; this.place(st); Sfx.place(); Session.submit(st, st.got.join(',')); return 'ok'; }
+    Session.submit(st, i); return 'ok';
+  },
+  /* a thing goes down from the top along the signs; each sign's answer (the branch it takes) lights up */
+  async fall(st, it, e, voice, ms) {
+    const q = st.q, my = st, g = this.geo(st), path = this.route(q, it);
+    e.style.zIndex = 9; e._moved = true; e.getAnimations().forEach(a => a.cancel()); e.style.transform = ''; place(e, g.ix - 46, g.iy - 46, 92, 92);
+    for (let k = 0; k < path.length; k++) {
+      const n = path[k]; if (!Session.alive(my)) return; const p = this.P(st, n); await K.flyTo(st, e, p[0] - 46, p[1] - 46 - (n[0] === 'b' ? 10 : 0), ms || 340, 10); Sfx.place();
+      if (n[0] === 'g') { const t = q.gates[n], y = this.truth(t, it), mk = st.marks.find(m => m.g === n && m.c === path[k + 1]); K.hop(st, st.nodes[n], 10); if (mk) K.hop(st, mk.m, 14); if (voice) { Voice.say(this.ask(t), { tag: 'summary' }); Voice.say(y ? '是！' : '不是！', { tag: 'summary' }); await st.scope.guard(Voice.afterSay(120)); } else await st.scope.wait(T(160)); }
+    }
   },
   async reveal(st) {
-    const q = st.q, my = st, it = q.mode === 'where' ? q.it : q.items[q.answer];
-    let e = st.itemEl; if (!e) { e = W2X.thing(st, 80, 80, 7, ''); e.appendChild(this.itemSvg(it, '100%')); const g = this.geo(st); place(e, g.ix - 40, g.iy - 40, 80, 80); }
-    e.style.zIndex = 9;
-    for (const n of this.route(q, it)) {
-      if (!Session.alive(my)) return; const p = this.P(st, n); await K.flyTo(st, e, p[0] - 46, p[1] - 46 - (n[0] === 'b' ? 10 : 0), 340, 10); Sfx.place();
-      if (n[0] === 'g') { const t = q.gates[n], y = this.truth(t, it); K.hop(st, st.nodes[n], 10); Voice.say(this.ask(t), { tag: 'summary' }); Voice.say(y ? '是！' : '不是！', { tag: 'summary' }); await st.scope.guard(Voice.afterSay(120)); }
+    const q = st.q, my = st, TR = this.trees[q.tree];
+    if (q.mode === 'two') {
+      for (let k = 0; k < 2; k++) { if (!Session.alive(my)) return; await this.fall(st, q.its[k], st.parked[k].e, false, 260); K.ring(st, [box(st.nodes[TR.bins[st.got[k]]])], 4, W3X.GOLD); }
+      Sfx.reveal(); this.cheerAll(st); st.summary = '都掉对啦！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100); return;
     }
+    const it = q.mode === 'where' ? q.it : q.items[q.answer];
+    let e = st.itemEl; if (!e) { e = W2X.thing(st, 80, 80, 7, ''); e.appendChild(this.itemSvg(it, '100%')); }
+    await this.fall(st, it, e, true); if (!Session.alive(my)) return;
     Sfx.reveal(); this.cheerAll(st); st.summary = q.mode === 'where' ? '掉进这个箱子！' : '它掉进这里！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
   },
   say(t, it) { const y = this.truth(t, it); return t.a === 'c' ? (y ? '它是红色的' : '它不是红色的') : t.a === 's' ? (y ? '它是大的' : '它是小的') : (y ? '它是圆的' : '它不是圆的'); },
-  async feedback(st, ans) {
-    const q = st.q, T = this.trees[q.tree];
-    let it, truePath, wantBin;
-    if (q.mode === 'where') { it = q.it; truePath = this.route(q, it); wantBin = T.bins[ans]; if (st.nodes[wantBin]) K.wiggle(st, st.nodes[wantBin]); }
-    else { it = q.items[ans]; truePath = this.route(q, it); wantBin = T.bins[q.target]; if (st.cards[ans]) K.wiggle(st, st.cards[ans]); }
-    /* the first sign where the thing goes the other way */
-    const toBin = b => { const path = ['g0']; let n = 'g0'; while (n[0] === 'g') { const kids = T.kids[n], sub = x => x === b || (x[0] === 'g' && T.kids[x].some(y => y === b || (y[0] === 'g' && T.kids[y].includes(b)))); n = sub(kids[0]) ? kids[0] : kids[1]; path.push(n); } return path; };
+  /* the first sign where the thing goes the other way than the box he chose */
+  why(q, it, wantBin) {
+    const TR = this.trees[q.tree], truePath = this.route(q, it);
+    const toBin = b => { const path = ['g0']; let n = 'g0'; while (n[0] === 'g') { const kids = TR.kids[n], sub = x => x === b || (x[0] === 'g' && TR.kids[x].some(y => y === b || (y[0] === 'g' && TR.kids[y].includes(b)))); n = sub(kids[0]) ? kids[0] : kids[1]; path.push(n); } return path; };
     const want = toBin(wantBin), i = want.findIndex((n, k) => truePath[k] !== n), gate = want[Math.max(0, i - 1)];
-    W3X.say(this.say(q.gates[gate] || q.gates.g0, it)); await st.scope.wait(700);
+    return this.say(q.gates[gate] || q.gates.g0, it);
+  },
+  async feedback(st, ans) {
+    const q = st.q, TR = this.trees[q.tree];
+    let it, wantBin;
+    if (q.mode === 'two') { const got = String(ans).split(',').map(Number), k = q.its.findIndex((x, j) => this.binOf(q, x) !== got[j]); it = q.its[Math.max(0, k)]; wantBin = TR.bins[got[Math.max(0, k)]]; if (st.nodes[wantBin]) K.wiggle(st, st.nodes[wantBin]); }
+    else if (q.mode === 'where') { it = q.it; wantBin = TR.bins[ans]; if (st.nodes[wantBin]) K.wiggle(st, st.nodes[wantBin]); }
+    else { it = q.items[ans]; wantBin = TR.bins[q.target]; if (st.cards[ans]) K.wiggle(st, st.cards[ans]); }
+    W3X.say(this.why(q, it, wantBin)); await st.scope.wait(700);
+  },
+  /* after a wrong answer: the thing that went wrong goes down along the signs from the top - every sign's answer lights up
+     - to the box it really falls into (gold); the box he chose (blue). "Who lands here": his thing goes down (to another
+     box, blue), then the right one (into the gold box) */
+  async explain(st, ans) {
+    const q = st.q, my = st, TR = this.trees[q.tree];
+    if (q.mode === 'who') {
+      const mine = q.items[ans]; if (st.cards[ans]) W3X.mine(st, st.cards[ans], 4);
+      const e1 = W2X.thing(st, 80, 80, 9, ''); e1.appendChild(this.itemSvg(mine, '100%'));
+      await this.fall(st, mine, e1, false, 300); if (!Session.alive(my)) return;
+      W3X.ringAt(st, box(st.nodes[TR.bins[this.binOf(q, mine)]]), W3X.BLUE, 4);
+      await st.scope.wait(T(900)); if (!Session.alive(my)) return;
+      const e2 = W2X.thing(st, 80, 80, 9, ''); e2.appendChild(this.itemSvg(q.items[q.answer], '100%'));
+      W3X.gold(st, st.cards[q.answer], 4, 0);
+      await this.fall(st, q.items[q.answer], e2, false, 300); if (!Session.alive(my)) return;
+      W3X.ringAt(st, box(st.nodes[TR.bins[q.target]]), W3X.GOLD, 6); Sfx.reveal(); W3X.tell('它掉进这里！');
+      await W3X.beat(st, 1500); return;
+    }
+    const its = q.mode === 'two' ? q.its : [q.it], got = q.mode === 'two' ? String(ans).split(',').map(Number) : [ans], els = q.mode === 'two' ? st.parked.map(o => o.e) : [st.itemEl];
+    for (let k = 0; k < its.length; k++) {
+      const right = this.binOf(q, its[k]); if (got[k] === right || !els[k]) continue;
+      if (!Session.alive(my)) return;
+      W3X.mine(st, st.nodes[TR.bins[got[k]]], 4);
+      await this.fall(st, its[k], els[k], false, 320); if (!Session.alive(my)) return;
+      W3X.ringAt(st, box(st.nodes[TR.bins[right]]), W3X.GOLD, 6);
+      await st.scope.wait(T(500));
+    }
+    Sfx.reveal(); W3X.tell('掉进这个箱子！');
+    await W3X.beat(st, 1500);
   },
   next(st, strat) {
     if (st.picked) return null;
-    const q = st.q;
-    if (q.mode === 'who') { if (!st.cards) return null; const i = strat === 'wrong' ? (q.answer + 1) % 3 : q.answer; return { g: 'tap', p: { id: 'card' + i } }; }
-    const n = this.trees[q.tree].bins.length, i = strat === 'wrong' ? (q.answer + 1) % n : q.answer; return { g: 'tap', p: { id: 'bin' + i } };
+    const q = st.q, nb = this.trees[q.tree].bins.length;
+    if (q.mode === 'who') { if (!st.cards) return null; const i = strat === 'wrong' ? (q.answer + 1) % q.items.length : q.answer; return { g: 'tap', p: { id: 'card' + i } }; }
+    if (q.mode === 'two') { const want = q.answer.split(',').map(Number)[st.step || 0]; return { g: 'tap', p: { id: 'bin' + (strat === 'wrong' && !st.step ? (want + 1) % nb : want) } }; }
+    const i = strat === 'wrong' ? (q.answer + 1) % nb : q.answer; return { g: 'tap', p: { id: 'bin' + i } };
   },
   workEls(st) { return st.q.mode === 'who' ? (st.cards || []) : this.trees[st.q.tree].bins.map(b => st.nodes[b]); },
   gestureHint(st) { if (st.nodes) K.flash(st, [st.nodes.g0]); },
-  snap(st) { return { mode: st.q.mode, tree: st.q.tree }; },
+  snap(st) { return { mode: st.q.mode, tree: st.q.tree, step: st.step || 0 }; },
 };
 
 /* ================================================================ 复仇者 T2 · 战甲 how many different suits from helmets x bodies (combinations) */
@@ -2137,6 +2875,9 @@ const MSuits = {
     const total = H * B * (F || 1);
     return { k: [d, cols.join('')], H, B, F, hc: cols.slice(0, H), bc: rng.shuffle(cols.slice()).slice(0, B), fc: F ? rng.shuffle(cols.slice()).slice(0, F) : [], answer: total, opts: numOptions(G, total, 2, 12) };
   },
+  audit(q) { return W3X.auditNum(q); },
+  /* the five number cards: a column on the right (landscape), a row at the bottom (portrait) */
+  cardFr(L) { return (L == null ? K.L() : L) ? { x: 818, y: 110, w: 196, h: 580 } : { x: 16, y: 836, w: 672, h: 176 }; },
   suit(h, b, f, size) {
     const s = svg('svg', { viewBox: '0 0 100 150', width: size, height: typeof size === 'number' ? size * 1.5 : size }), k = W2X.ink;
     s.innerHTML = '<g stroke="' + k + '" stroke-width="4" stroke-linejoin="round">'
@@ -2159,7 +2900,7 @@ const MSuits = {
     place(st.cam, g.cam[0] - 50, g.cam[1] - 46, 100, 92);
     if (st.grid) { const q = st.q, cols = q.B * (q.F || 1), rows = q.H, w = K.L() ? 84 : 92, h = w * 1.3, cx = K.L() ? 512 : 352, cy = K.L() ? 360 : 520; st.photos.forEach((o, i) => place(o.e, cx - (cols * (w + 10)) / 2 + (i % cols) * (w + 10), cy - (rows * (h + 10)) / 2 + Math.floor(i / cols) * (h + 10), w, h)); }
     else { const n = st.photos.length, w = 62; st.photos.forEach((o, i) => place(o.e, g.strip[0] - (Math.max(n, 1) * (w + 6)) / 2 + i * (w + 6), g.strip[1] - 40, w, 80)); }
-    if (st.cards) { if (K.L()) st.cards.forEach((c, i) => place(c, g.cards[0] - 58, 200 + i * 140, 116, 116)); else K.cardsPlace(st, { cx: g.cards[0], cy: g.cards[1], gap: 24 }); }
+    if (st.cards) W3X.lay(st.cards, this.cardFr(), box(st.cards[0]).w, null, 12);
     void q;
   },
   render(st) { const q = st.q; st.man.innerHTML = ''; st.man.appendChild(this.suit(SUIT_COL[q.hc[st.cur.h]], SUIT_COL[q.bc[st.cur.b]], q.F ? SUIT_COL[q.fc[st.cur.f]] : null, '100%')); },
@@ -2172,7 +2913,7 @@ const MSuits = {
     st.bb = q.bc.map((c, i) => this.swatch(st, 'b' + i, SUIT_COL[c], 'b'));
     st.fb = q.fc.map((c, i) => this.swatch(st, 'f' + i, SUIT_COL[c], 'f'));
     st.cam = W3X.card(st, 'cam', 5, 'card'); st.cam.innerHTML = '<svg viewBox="0 0 80 70" width="78%" height="78%"><rect x="6" y="18" width="68" height="44" rx="10" fill="#4F7BFF" stroke="#2B2118" stroke-width="5"/><rect x="26" y="8" width="26" height="14" rx="4" fill="#4F7BFF" stroke="#2B2118" stroke-width="5"/><circle cx="40" cy="40" r="13" fill="#BFF3FF" stroke="#2B2118" stroke-width="5"/></svg>';
-    K.cards(st, q.opts, Object.assign({ layout: 'frame', size: K.L() ? 116 : 126 }, { cx: this.geo(st).cards[0], cy: this.geo(st).cards[1] }));
+    K.cards(st, q.opts, Object.assign({ layout: 'frame', size: W3X.size2(q.opts.length, [this.cardFr(true), this.cardFr(false)], 126, 12), gap: 12 }, { cx: this.geo(st).cards[0], cy: this.geo(st).cards[1] }));
     this.place(st);
     K.pop(st, st.man);
     K.task(st, [[W3X.ic('<path d="M22 40Q22 14 40 14Q58 14 58 40V50Q40 60 22 50Z" fill="#E8414B" stroke="#2B2118" stroke-width="5"/><path d="M62 54H82L80 92H64Z" fill="#4F7BFF" stroke="#2B2118" stroke-width="5"/>')], ['q']]);
@@ -2195,15 +2936,21 @@ const MSuits = {
     return false;
   },
   async reveal(st) {
+    await this.showAll(st, false); if (!Session.alive(st)) return;
+    Sfx.reveal(); st.summary = '一共' + CNQ(st.q.answer) + '种！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+  },
+  /* after a wrong answer: his card (blue); every suit there is, laid out and counted (the cards stay); the right card (gold) */
+  async explain(st, ans) { await W3X.explainCards(st, ans, { show: () => this.showAll(st, true), line: '一共' + CNQ(st.q.answer) + '种！' }); },
+  /* every suit, a photo each, in rows (one row per helmet), counted */
+  async showAll(st, keepCards) {
     const q = st.q, my = st;
     const all = []; for (let h = 0; h < q.H; h++) for (let b = 0; b < q.B; b++) for (let f = 0; f < (q.F || 1); f++) all.push({ h, b, f });
     st.photos.forEach(o => o.e.remove()); st.photos = []; st.grid = true;
-    [st.man, st.cam].concat(st.hb, st.bb, st.fb, st.cards || []).forEach(e => { if (e) e.style.visibility = 'hidden'; });
+    [st.man, st.cam].concat(st.hb, st.bb, st.fb, keepCards ? [] : st.cards || []).forEach(e => { if (e) e.style.visibility = 'hidden'; });
     all.forEach(c => { const e = W2X.thing(st, 62, 80, 6, ''); Object.assign(e.style, { background: '#FFF8EC', borderRadius: '8px', boxShadow: '0 0 0 3px #2B2118' }); e.appendChild(this.suit(SUIT_COL[q.hc[c.h]], SUIT_COL[q.bc[c.b]], q.F ? SUIT_COL[q.fc[c.f]] : null, '100%')); st.photos.push({ k: this.comboKey(c), e }); });
     this.place(st);
     st.photos.forEach(o => { o.e.style.visibility = 'hidden'; o.e.style.zIndex = 9; });
-    for (let i = 0; i < st.photos.length; i++) { if (!Session.alive(my)) return; st.photos[i].e.style.visibility = ''; K.pop(st, st.photos[i].e); await Count.beat(st.scope, 460, i + 1); }
-    Sfx.reveal(); st.summary = '一共' + CNQ(q.answer) + '种！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+    for (let i = 0; i < st.photos.length; i++) { if (!Session.alive(my)) return; st.photos[i].e.style.visibility = ''; K.pop(st, st.photos[i].e); await Count.beat(st.scope, 400, i + 1); }
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '种'); await st.scope.wait(500); },
   next(st, strat) { return st.picked ? null : K.cardNext(st, strat); },
@@ -2223,7 +2970,8 @@ const MArrows = {
     return t0 <= t1;
   },
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng, n = d === 1 ? 2 : d <= 3 ? 3 : 4, no = d === 1 ? 1 : d === 2 ? 2 : 3, ask = d === 5 ? 'cant' : 'can';
+    /* five targets (client: five options); the walls are more as fewer targets may be hit */
+    const d = Math.min(5, o.level), rng = o.rng, n = 5, no = [0, 3, 3, 4, 4, 2][d], ask = d === 5 ? 'cant' : 'can';
     for (let t = 0; t < 3000; t++) {
       const tg = []; for (let k = 0; k < 200 && tg.length < n; k++) { const p = [rng.int(68, 93), rng.int(10, 90)]; if (tg.every(x => Math.abs(x[1] - p[1]) >= 19 || Math.abs(x[0] - p[0]) >= 16)) tg.push(p); }
       if (tg.length < n) continue;
@@ -2236,8 +2984,10 @@ const MArrows = {
       if (ask === 'cant' && clear !== n - 1) continue;
       return { k: [d, tg.map(p => p.join(',')).join('|'), ob.map(r => [r.x, r.y, r.w, r.h].join(',')).join('|')], ask, tg, ob, state: st, answer: st.indexOf(ask === 'can' ? 'clear' : 'blocked') };
     }
+    if ((o.tries || 0) < 4) return this.gen(G, Object.assign({}, o, { tries: (o.tries || 0) + 1 }));
     return { k: [d, 'x'], ask: 'can', tg: [[80, 30], [80, 80]], ob: [{ x: 40, y: 64, w: 8, h: 26 }], state: ['clear', 'blocked'], answer: 0 };
   },
+  audit(q) { const s = q.tg.map(p => (q.ob.some(r => this.hits(this.B, p, r, -1.5)) ? 'blocked' : q.ob.some(r => this.hits(this.B, p, r, 3)) ? 'unclear' : 'clear')), good = s.map((x, i) => (x === (q.ask === 'can' ? 'clear' : 'blocked') ? i : -1)).filter(i => i >= 0); return { n: q.tg.length, pos: null, err: !s.includes('unclear') && good.length === 1 && good[0] === q.answer ? null : 'right ones ' + good + ' ' + s }; },
   geo() { return K.L() ? { x: 60, y: 110, w: 904, h: 520 } : { x: 30, y: 230, w: 644, h: 640 }; },
   toPx(p) { const g = this.geo(); return [g.x + p[0] / 100 * g.w, g.y + p[1] / 100 * g.h]; },
   decor(G) { const L = K.L(), a = G.actors.hawkeye, b = this.toPx(this.B); W2X.hideAll(G, this.chars); if (a) showActor(a, b[0] - 6, b[1] + (L ? 104 : 96), L ? 200 : 180); },
@@ -2259,19 +3009,38 @@ const MArrows = {
     K.say(st, q.ask === 'can' ? '哪个靶子射得到？' : '哪个射不到？');
   },
   onGesture(st, name, p) { const id = p.id || ''; if (name !== 'tap' || !/^t\d$/.test(id) || st.picked) return false; st.picked = true; Session.submit(st, Number(id.slice(1))); return 'ok'; },
-  async reveal(st) {
-    const q = st.q, i = q.answer, b = this.toPx(this.B), p = this.toPx(q.tg[i]);
-    let end = p;
-    if (q.ask === 'cant') { let lo = 0, hi = 1; for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2, pt = [this.B[0] + (q.tg[i][0] - this.B[0]) * m, this.B[1] + (q.tg[i][1] - this.B[1]) * m]; if (q.ob.some(r => this.hits(this.B, pt, r, 0))) hi = m; else lo = m; } end = this.toPx([this.B[0] + (q.tg[i][0] - this.B[0]) * lo, this.B[1] + (q.tg[i][1] - this.B[1]) * lo]); }
+  /* an arrow flies straight at target i; it stops at the first wall in the way. Returns that wall (or -1) */
+  async shoot(st, i) {
+    const q = st.q, b = this.toPx(this.B), p = this.toPx(q.tg[i]);
+    let lo = 0, hi = 1, wall = -1;
+    if (q.ob.some(r => this.hits(this.B, q.tg[i], r, 0))) { for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2, pt = [this.B[0] + (q.tg[i][0] - this.B[0]) * m, this.B[1] + (q.tg[i][1] - this.B[1]) * m]; if (q.ob.some(r => this.hits(this.B, pt, r, 0))) hi = m; else lo = m; } const pt = [this.B[0] + (q.tg[i][0] - this.B[0]) * hi, this.B[1] + (q.tg[i][1] - this.B[1]) * hi]; wall = q.ob.findIndex(r => this.hits(this.B, pt, r, 0.5)); } else lo = 1;
+    const end = lo >= 1 ? p : this.toPx([this.B[0] + (q.tg[i][0] - this.B[0]) * lo, this.B[1] + (q.tg[i][1] - this.B[1]) * lo]);
     const ang = Math.atan2(end[1] - b[1], end[0] - b[0]) * 180 / Math.PI, ar = W2X.thing(st, 90, 20, 8, '');
     ar.innerHTML = '<svg viewBox="0 0 90 20" width="100%" height="100%"><path d="M4 10H76" stroke="#2B2118" stroke-width="5"/><path d="M70 2L88 10L70 18Z" fill="#9AA3AF" stroke="#2B2118" stroke-width="3"/><path d="M4 10L14 2M4 10L14 18" stroke="#E8414B" stroke-width="4"/></svg>';
     place(ar, b[0] - 80, b[1] - 10, 90, 20); ar.style.transformOrigin = '80px 10px';
     Sfx.whoosh(0.3);
     await st.scope.anim(ar, [{ transform: 'translate(0,0) rotate(' + ang + 'deg)' }, { transform: 'translate(' + (end[0] - b[0]) + 'px,' + (end[1] - b[1]) + 'px) rotate(' + ang + 'deg)' }], { duration: 520, easing: 'linear', fill: 'forwards' });
-    if (q.ask === 'can') { K.wiggle(st, st.tgEls[i]); Fx.burst(p[0], p[1], { n: 14, dist: 60 }); } else K.wiggle(st, st.obEls[0]);
+    if (wall < 0) { K.wiggle(st, st.tgEls[i]); Fx.burst(p[0], p[1], { n: 14, dist: 60 }); } else K.wiggle(st, st.obEls[wall]);
+    return wall;
+  },
+  async reveal(st) {
+    const q = st.q; await this.shoot(st, q.answer); if (!Session.alive(st)) return;
     Sfx.reveal(); this.cheerAll(st); st.summary = q.ask === 'can' ? '射中啦！' : '被挡住啦！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
   },
   async feedback(st, ans) { if (st.tgEls[ans]) K.wiggle(st, st.tgEls[ans]); W3X.say(st.q.ask === 'can' ? '有东西挡住啦' : '它射得到哦'); await st.scope.wait(600); },
+  /* after a wrong answer: an arrow at his target - stopped by a wall (blue), or it hits (blue); then at the right one (gold):
+     it hits (can) / the wall that stops it (cant) */
+  async explain(st, ans) {
+    const q = st.q, my = st;
+    W3X.mine(st, st.tgEls[ans], 2);
+    const w1 = await this.shoot(st, ans); if (!Session.alive(my)) return;
+    if (w1 >= 0) W3X.ringAt(st, box(st.obEls[w1]), W3X.BLUE, 8);
+    await st.scope.wait(T(1000)); if (!Session.alive(my)) return;
+    const w2 = await this.shoot(st, q.answer); if (!Session.alive(my)) return;
+    W3X.gold(st, st.tgEls[q.answer], 2, 0); if (w2 >= 0) W3X.ringAt(st, box(st.obEls[w2]), W3X.GOLD, 8);
+    Sfx.reveal(); W3X.tell(q.ask === 'can' ? '射中啦！' : '被挡住啦！');
+    await W3X.beat(st, 1500);
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.tg.length : st.q.answer; return { g: 'tap', p: { id: 't' + i } }; },
   workEls(st) { return st.tgEls || []; },
   snap(st) { return { ask: st.q.ask }; },
@@ -2281,8 +3050,10 @@ const MArrows = {
 const MGears = {
   kind0: 'gears', verb: '转！', intro: '齿轮转起来！', praise: ['转得一点不差！'],
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng, n = [0, 3, 4, 5, 5, 6][d], ask = d === 4 ? 'opp' : d === 5 ? bagPick(G, 'ge5', ['same', 'opp']) : 'same';
-    for (let t = 0; t < 600; t++) {
+    /* five yellow gears to choose from (client: five options): the right one, the ones turning the other way, and two
+       loose gears that touch nothing (they do not turn); every other gear is grey */
+    const d = Math.min(5, o.level), rng = o.rng, n = [0, 4, 4, 5, 5, 6][d], ask = d === 4 ? 'opp' : d === 5 ? bagPick(G, 'ge5', ['same', 'opp']) : 'same';
+    for (let t = 0; t < 900; t++) {
       const gs = [{ x: 12, y: rng.int(26, 44), r: 8, p: -1 }];
       const ok = (c, ex) => c.x >= c.r + 1 && c.x <= 100 - c.r - 1 && c.y >= c.r + 1 && c.y <= 70 - c.r - 1 && gs.every((g2, j) => ex.includes(j) || Math.hypot(g2.x - c.x, g2.y - c.y) >= g2.r + c.r + 2.6);
       let fail = false;
@@ -2292,17 +3063,16 @@ const MGears = {
         if (!placed) fail = true;
       }
       if (fail) continue;
-      let loose = null;
-      for (let k = 0; k < 200 && !loose; k++) { const r = rng.pick([6.5, 8]), a = rng() * Math.PI * 2, base = gs[rng.int(1, gs.length - 1)], dd = base.r + r + rng.int(3, 5), c = { x: base.x + dd * Math.cos(a), y: base.y + dd * Math.sin(a), r, p: null }; if (ok(c, [])) loose = c; }
-      if (!loose) continue;
-      gs.push(loose);
+      let lost = false;
+      for (let m = 0; m < 2 && !lost; m++) { let loose = null; for (let k = 0; k < 200 && !loose; k++) { const r = rng.pick([6.5, 8]), a = rng() * Math.PI * 2, base = gs[rng.int(1, gs.length - 1)], dd = base.r + r + rng.int(3, 5), c = { x: base.x + dd * Math.cos(a), y: base.y + dd * Math.sin(a), r, p: null }; if (ok(c, [])) loose = c; } if (loose) gs.push(loose); else lost = true; }
+      if (lost) continue;
       const depth = gs.map(g2 => { let k = 0, x = g2; while (x.p != null && x.p >= 0) { k++; x = gs[x.p]; } return x.p === -1 ? k : null; });
-      const same = gs.map((_, i) => i).filter(i => i > 0 && depth[i] != null && depth[i] % 2 === 0), opp = gs.map((_, i) => i).filter(i => depth[i] != null && depth[i] % 2 === 1);
+      const same = gs.map((_, i) => i).filter(i => i > 0 && depth[i] != null && depth[i] % 2 === 0), opp = gs.map((_, i) => i).filter(i => depth[i] != null && depth[i] % 2 === 1), still = gs.map((_, i) => i).filter(i => depth[i] == null);
       if (!same.length || !opp.length) continue;
-      const right = ask === 'same' ? rng.pick(same) : rng.pick(opp), wrongs = ask === 'same' ? opp : same.filter(i => i > 0);
-      if (!wrongs.length) continue;
-      const cands = rng.shuffle([right, rng.pick(wrongs), gs.length - 1].concat(d === 5 && wrongs.length > 1 ? [rng.pick(wrongs.filter(w => w !== right))] : []).filter((x, i, a) => a.indexOf(x) === i));
-      if (cands.length < 3) continue;
+      const right = ask === 'same' ? rng.pick(same) : rng.pick(opp), turnWrong = ask === 'same' ? opp : same.filter(i => i > 0);
+      const wrong = rng.shuffle(turnWrong).slice(0, 2).concat(still); while (wrong.length < 4 && turnWrong.length > wrong.length - still.length) { const x = turnWrong.find(w => !wrong.includes(w)); if (x == null) break; wrong.push(x); }
+      if (wrong.length < 4) continue;
+      const cands = rng.shuffle([right].concat(wrong.slice(0, 4)));
       const cw = rng() < 0.5;
       return { k: [d, ask, gs.map(g2 => [g2.x.toFixed(0), g2.y.toFixed(0), g2.r].join(',')).join('|')], ask, gs: gs.map(g2 => ({ x: Math.round(g2.x * 10) / 10, y: Math.round(g2.y * 10) / 10, r: g2.r })), depth, cands, cw, answer: right };
     }
@@ -2327,7 +3097,7 @@ const MGears = {
   },
   async present(st) {
     const q = st.q, g = this.geo();
-    st.gearEls = q.gs.map((c, i) => { const cand = q.cands.includes(i), e = W2X.thing(st, 10, 10, i === 0 ? 5 : 4, ''); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' }); e.appendChild(this.gearSvg(c.r, i === 0 ? '#E8414B' : cand ? '#FFC93C' : '#B8C2CC', g.s)); if (cand) K.reg(st, 'g' + i, e, {}); return e; });
+    st.gearEls = q.gs.map((c, i) => { const cand = q.cands.includes(i), e = W2X.thing(st, 10, 10, i === 0 ? 5 : 4, ''); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', clipPath: 'circle(50%)' }); e.appendChild(this.gearSvg(c.r, i === 0 ? '#E8414B' : cand ? '#FFC93C' : '#B8C2CC', g.s)); if (cand) K.reg(st, 'g' + i, e, {}); return e; });
     st.arrow = W2X.thing(st, 10, 10, 6, ''); st.arrow.innerHTML = '<svg viewBox="0 0 100 100" width="100%" height="100%" style="transform:scaleX(' + (q.cw ? 1 : -1) + ')"><path d="M50 6A44 44 0 0 1 92 40" fill="none" stroke="#E8414B" stroke-width="6" stroke-linecap="round"/><path d="M84 30L94 44L100 28Z" fill="#E8414B" stroke="#2B2118" stroke-width="2"/></svg>';
     this.place(st);
     st.gearEls.forEach((e, i) => K.pop(st, e, 50 * i));
@@ -2335,9 +3105,30 @@ const MGears = {
     K.say(st, q.ask === 'same' ? '哪个转得和它一样？' : '哪个转得和它相反？');
   },
   onGesture(st, name, p) { const m = /^g(\d+)$/.exec(p.id || ''); if (name !== 'tap' || !m || st.picked) return false; st.picked = true; Session.submit(st, Number(m[1])); return 'ok'; },
+  audit(q) { const good = q.cands.filter(i => q.depth[i] != null && i > 0 && (q.ask === 'same' ? q.depth[i] % 2 === 0 : q.depth[i] % 2 === 1)); return { n: q.cands.length, pos: null, err: good.length === 1 && good[0] === q.answer ? null : 'right ones ' + good }; },
+  /* every gear that is driven turns (its way, at its speed) */
+  spin(st) { const q = st.q; st.gearEls.forEach((e, i) => { const dp = q.depth[i]; if (dp == null) return; const dir = ((dp % 2 === 0) === q.cw) ? 1 : -1, sp = 8 / q.gs[i].r; st.scope.anim(e.firstChild, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(' + (dir * 360 * sp) + 'deg)' }], { duration: 2400, easing: 'linear' }); }); },
+  /* an arrow round gear i the way it turns */
+  turnArrow(st, i, color) {
+    const q = st.q, g = this.geo(), c = q.gs[i], dp = q.depth[i]; if (dp == null) return null;
+    const cw = (dp % 2 === 0) === q.cw, e = W2X.thing(st, 10, 10, 7, '');
+    e.innerHTML = '<svg viewBox="0 0 100 100" width="100%" height="100%" style="transform:scaleX(' + (cw ? 1 : -1) + ')"><path d="M50 6A44 44 0 0 1 92 40" fill="none" stroke="' + color + '" stroke-width="7" stroke-linecap="round"/><path d="M84 30L94 44L100 28Z" fill="' + color + '" stroke="#2B2118" stroke-width="2"/></svg>';
+    place(e, g.x + c.x * g.s - c.r * g.s - 30, g.y + c.y * g.s - c.r * g.s - 30, c.r * g.s * 2 + 60, c.r * g.s * 2 + 60); K.pop(st, e); return e;
+  },
+  /* after a wrong answer: the gears turn; his gear (blue) with an arrow the way it really turns (or it stands still); the
+     right gear (gold) with its arrow - the same way as the red one (or the other way) */
+  async explain(st, ans) {
+    const q = st.q, my = st;
+    this.spin(st);
+    if (st.gearEls[ans]) { W3X.ringAt(st, box(st.gearEls[ans]), W3X.BLUE, -6); this.turnArrow(st, ans, W3X.BLUE); }
+    await st.scope.wait(T(1600)); if (!Session.alive(my)) return;
+    W3X.ringAt(st, box(st.gearEls[q.answer]), W3X.GOLD, -6); this.turnArrow(st, q.answer, W3X.GOLD); this.spin(st);
+    Sfx.reveal(); W3X.tell(q.ask === 'same' ? '它们转得一样！' : '它们转得相反！');
+    await W3X.beat(st, 1800);
+  },
   async reveal(st) {
     const q = st.q;
-    st.gearEls.forEach((e, i) => { const dp = q.depth[i]; if (dp == null) return; const dir = ((dp % 2 === 0) === q.cw) ? 1 : -1, sp = 8 / q.gs[i].r; st.scope.anim(e.firstChild, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(' + (dir * 360 * sp) + 'deg)' }], { duration: 2400, easing: 'linear' }); });
+    this.spin(st);
     K.ring(st, [box(st.gearEls[q.answer])], 2, '#5CC46E');
     Sfx.reveal(); this.cheerAll(st); st.summary = q.ask === 'same' ? '它们转得一样！' : '它们转得相反！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(2000);
   },
@@ -2416,4 +3207,4 @@ w3Game(MSorter,   { id: 'T1', world: 'avengers3', bg: 'avengers_factory', chars:
 w3Game(MSuits,    { id: 'T2', world: 'avengers3', bg: 'avengers_armory', chars: ['ironman'], host: 'ironman', iconSrc: IC3.suits, boost: -3 });   /* from 2 x 2 suits; 3 x 3 at L4 (R9-3) */
 w3Game(MArrows,   { id: 'T3', world: 'avengers3', bg: 'avengers_field', chars: ['hawkeye'], host: 'hawkeye', iconSrc: IC3.arrows });
 w3Game(MGears,    { id: 'T4', world: 'avengers3', bg: 'avengers_garage', chars: ['ironman', 'hulk'], host: 'ironman', iconSrc: IC3.gears, boost: 0 });
-W3.w3in = true;              /* W3.loaded is set by assets/js/v2games.js, which comes right after */
+W3.w3in = true;

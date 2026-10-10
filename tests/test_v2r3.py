@@ -114,12 +114,15 @@ with sync_playwright() as p, serve() as base:
                 info = pg.evaluate("""() => { const st = Session.st, q = st.q, out = [];
                   (st.cards || []).forEach((e, i) => { const r = e.getBoundingClientRect(); if (Math.min(r.width, r.height) < 88) out.push('small' + i); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); if (!(h === e || (h && e.contains(h)))) out.push('covered' + i); if (r.right > innerWidth || r.bottom > innerHeight) out.push('off' + i); });
                   return { out, mode: q.mode, ans: q.answer }; }""")
-                modes.setdefault(lv, set()).add(info['mode'] + ':' + str(info['ans'] in ('eq', 'ne') and info['ans'] or 'n'))
+                # "the same or not" asks two doors at once (one question, two small ones - 2026-10-10): its answer is both signs
+                for a in (str(info['ans']).split(',') if info['mode'] == 'judge' else ['n']): modes.setdefault(lv, set()).add(info['mode'] + ':' + a)
                 if info['out']: bad.append((ori, lv, seed, info['out']))
                 if seed == 1: pg.screenshot(path=os.path.join(SHOTS, 'Z1_L%d_%s.png' % (lv, ori)))
                 gen0 = pg.evaluate("Session.st.gen")
-                tgt = pg.evaluate("() => { const st = Session.st, nx = st.game.next(st, 'right'); const e = nx && st.map[nx.p.id]; if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }")
-                if tgt: pg.mouse.click(tgt[0], tgt[1]); pg.wait_for_timeout(250)
+                for _ in range(3):                  # two doors: a click for each
+                    tgt = pg.evaluate("(g) => { const st = Session.st; if (!st || st.gen !== g || st.submitted) return null; const nx = st.game.next(st, 'right'); const e = nx && st.map[nx.p.id]; if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }", gen0)
+                    if not tgt: break
+                    pg.mouse.click(tgt[0], tgt[1]); pg.wait_for_timeout(250)
                 if not pg.evaluate("(g) => !Session.st || Session.st.gen !== g || Session.st.submitted", gen0): bad.append((ori, lv, seed, 'click did not submit'))
                 pg.evaluate("gesture('home')"); pg.wait_for_timeout(200)
         if pg.errors: bad.append((ori, 'errors', pg.errors[:2]))

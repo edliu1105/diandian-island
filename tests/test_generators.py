@@ -5,7 +5,7 @@ Per game (24), per level 1..MAXLV[world], per kind of kinds(level), SEEDS seeds 
   * gen() never throws, is deterministic for a seed, returns a JSON-able q with a key (q.k) and a defined answer
     (documented exceptions: H3 - the answer exists only after the child's own split, every split 1..N-1 is simulated;
      A1 L1-2 - the dispatch is judged "a,b" by evaluate(); P2 - judged "everyone exactly one pair");
-  * cards: exactly 3 distinct integers 0..20 containing the answer, and the game's OWN evaluate() accepts the right
+  * cards: exactly 5 distinct integers 0..20 containing the answer (client 2026-10-10: five options), and the game's OWN evaluate() accepts the right
     submission and rejects every other card / a neighbouring wrong submission (exactly one right answer);
   * explicit per-game invariants (level ranges from DESIGN.md section 4 and the generator; solvability with the supply
     the question gives) - see INV below, one commented function per game;
@@ -48,12 +48,14 @@ JS_LIB = r"""
   const safeKey = (game, q) => { try { return game.key(q); } catch (e) { return '?key-throws'; } };
   /* the fake session a generator needs: bags + rng (bagPick / numOptions / placeOptions), ws, level */
   const mkG = (g, lv, seed) => ({ world: GAMES[g].world, id: g, game: GAMES[g], rng: RNG(seed), bags: {}, ws: { level: lv, floor: 1, g: {}, win: [], hist: [], log: [], lastKey: '' }, level: lv, round: 0 });
-  /* what numOptions(G, ans, lo, hi) promises: three consecutive distinct integers inside [lo, hi] containing ans */
+  /* what numOptions(G, ans, lo, hi) promises: five consecutive distinct integers inside [lo, hi] containing ans (a range
+     narrower than five numbers is widened upwards) */
   function numOpt(E, opts, ans, lo, hi, tag) {
-    const bad = () => E.push([tag || 'num-options', 'cards ' + J(opts) + ' must be 3 consecutive integers in [' + lo + ',' + hi + '] containing ' + ans]);
-    if (!Array.isArray(opts) || opts.length !== 3) return bad();
+    if (hi - lo < 4) hi = lo + 4;
+    const bad = () => E.push([tag || 'num-options', 'cards ' + J(opts) + ' must be 5 consecutive integers in [' + lo + ',' + hi + '] containing ' + ans]);
+    if (!Array.isArray(opts) || opts.length !== 5) return bad();
     const s = opts.slice().sort((a, b) => a - b);
-    if (!(s.every(v => inR(v, lo, hi)) && s[1] === s[0] + 1 && s[2] === s[1] + 1 && opts.includes(ans))) bad();
+    if (!(s.every(v => inR(v, lo, hi)) && s.every((v, i) => !i || v === s[i - 1] + 1) && opts.includes(ans))) bad();
   }
   const L = (tab, lv) => tab[lv];
 
@@ -67,7 +69,7 @@ JS_LIB = r"""
       if (!inR(q.n, r[0], r[1])) E.push(['n-range', 'n=' + q.n + ' not in ' + J(r)]);
       if (q.answer !== q.n) E.push(['answer', 'answer ' + q.answer + ' != n ' + q.n]);
       if (!pts01(q.pts, q.n)) E.push(['splats', (q.pts || []).length + ' splat points for n=' + q.n + ' (or outside the sheet)']);
-      if (lv === 1) { if (!sameSet(q.opts, [1, 2, 3])) E.push(['cards', 'L1 cards must be {1,2,3}: ' + J(q.opts)]); }
+      if (lv === 1) { if (!sameSet(q.opts, [1, 2, 3, 4, 5])) E.push(['cards', 'L1 cards must be {1..5}: ' + J(q.opts)]); }
       else numOpt(E, q.opts, q.n, 1, lv === 2 ? 7 : 9);
       if (lv >= 3) {
         const c = q.chunks;
@@ -103,7 +105,7 @@ JS_LIB = r"""
       if (!(Array.isArray(q.toys) && q.toys.length === q.n && uniq(q.toys) && q.toys.every(t => TOYS.includes(t)))) E.push(['toys', J(q.toys)]);
       if (!pts01(q.pts, q.n) || !pts01(q.pts2, q.n)) E.push(['cells', 'toy cells ' + (q.pts || []).length + '/' + (q.pts2 || []).length + ' for n=' + q.n]);
       if (!sameSet(q.order, Array.from({ length: q.n }, (_, i) => i))) E.push(['order', J(q.order)]);
-      numOpt(E, q.opts, q.n, 1, lv === 1 ? 5 : 9);          /* rank-dealt options (Session.genQ) */
+      numOpt(E, q.opts, q.n, 1, lv === 1 ? 7 : 9);          /* rank-dealt options (Session.genQ) */
     },
     /* P4 candles - Give-N. DESIGN: L1 'match' N 1-3, L2 'giveN' 2-5, L3 4-6; "the box always holds N+3 or more".
        Solvable: add() stops at min(supply, 10) candles -> N fits and >= 3 spare (never "just take them all"). */
@@ -188,13 +190,13 @@ JS_LIB = r"""
         if (!(q.d + 1 <= 5)) E.push(['unsolvable', 'the jar pours at most 5, d=' + q.d]);
       } else {
         if (J(q.bags) !== J(q.opts)) E.push(['bags', 'bags ' + J(q.bags) + ' != opts ' + J(q.opts)]);
-        if (!(Array.isArray(q.opts) && q.opts.length === 3 && uniq(q.opts) && q.opts.every(v => inR(v, 0, 3)) && q.opts.includes(q.d))) E.push(['bags-range', 'bags ' + J(q.opts) + ' must be 3 distinct of 0..3 containing d=' + q.d]);
+        if (!(Array.isArray(q.opts) && q.opts.length === 5 && uniq(q.opts) && q.opts.every(v => inR(v, 0, 4)) && q.opts.includes(q.d))) E.push(['bags-range', 'bags ' + J(q.opts) + ' must be 5 distinct of 0..4 containing d=' + q.d]);
       }
     },
     /* H1 ordinal. DESIGN: L1 3 gourds k 1-3 root left; L2 4-5 k 2-4 root left; L3 5-6 k 2-5 root random;
        L4 7 k 3-7 root random; target k <= n. */
     H1(q, lv, kind, E) {
-      const nr = L({ 1: [3, 3], 2: [4, 5], 3: [5, 6], 4: [7, 7] }, lv), kr = L({ 1: [1, 3], 2: [2, 4], 3: [2, 5], 4: [3, 7] }, lv);
+      const nr = L({ 1: [5, 5], 2: [5, 5], 3: [5, 6], 4: [7, 7] }, lv), kr = L({ 1: [1, 3], 2: [2, 4], 3: [2, 5], 4: [3, 7] }, lv);   /* >= 5 gourds (client 2026-10-10) */
       if (!inR(q.n, nr[0], nr[1])) E.push(['n-range', 'n=' + q.n + ' not in ' + J(nr)]);
       if (!inR(q.target, kr[0], kr[1]) || q.target > q.n) E.push(['target', 'k=' + q.target + ' not in ' + J(kr) + ' or > n=' + q.n]);
       if (q.answer !== q.target) E.push(['answer', 'answer ' + q.answer + ' != k ' + q.target]);
@@ -203,7 +205,7 @@ JS_LIB = r"""
     /* H2 "the k-th" vs "k of them". DESIGN: L1 3-4 brothers k 1-3; L2 5, k 2-4; L3 6-7, k 2-5; L4 7, ordinal k 4-7,
        cardinal k 2-3; k <= n. 'ord' answer = the brother standing k-th, 'card' answer = k. */
     H2(q, lv, kind, E) {
-      const nr = L({ 1: [3, 4], 2: [5, 5], 3: [6, 7], 4: [7, 7] }, lv);
+      const nr = L({ 1: [5, 5], 2: [5, 5], 3: [6, 7], 4: [7, 7] }, lv);       /* >= 5 brothers (client 2026-10-10) */
       const kr = L(kind === 'ord' ? { 1: [1, 3], 2: [2, 4], 3: [2, 5], 4: [4, 7] } : { 1: [1, 3], 2: [2, 4], 3: [2, 5], 4: [2, 3] }, lv);
       if (!inR(q.n, nr[0], nr[1])) E.push(['n-range', 'n=' + q.n + ' not in ' + J(nr)]);
       if (!inR(q.target, kr[0], kr[1]) || q.target > q.n) E.push(['target', 'k=' + q.target + ' not in ' + J(kr) + ' or > n=' + q.n]);
@@ -298,7 +300,7 @@ JS_LIB = r"""
         if (!inR(q.N, 8, 10)) E.push(['N-range', 'L4 target ' + q.N + ' not in 8..10']);
         if (q.answer !== q.d) E.push(['answer', 'answer ' + q.answer + ' != d ' + q.d]);
         if (J(q.bars) !== J(q.opts)) E.push(['bars', 'bars ' + J(q.bars) + ' != opts ' + J(q.opts)]);
-        if (!(Array.isArray(q.opts) && q.opts.length === 3 && uniq(q.opts) && q.opts.includes(q.d))) E.push(['bars', J(q.opts)]);
+        if (!(Array.isArray(q.opts) && q.opts.length === 5 && uniq(q.opts) && q.opts.includes(q.d))) E.push(['bars', J(q.opts)]);
         else if (!q.opts.every(v => inR(v, 1, 6)) || !inR(q.d, 1, 4)) E.push(['bar-length', 'bars ' + J(q.opts) + ' (k=' + q.k0 + ', d=' + q.d + ') outside 1..6 or the right piece outside 1..4']);
       }
     },
@@ -317,7 +319,7 @@ JS_LIB = r"""
       if (q.cap !== cap) E.push(['cap', 'cap ' + q.cap + ' != ' + cap]);
       if (!inR(q.a, ar[0], ar[1])) E.push(['a-range', 'a=' + q.a + ' not in ' + J(ar)]);
       if (q.need !== q.cap - q.a || !inR(q.need, 1, 5) || q.answer !== q.need) E.push(['need', 'need ' + q.need + ' answer ' + q.answer + ' for cap ' + q.cap + ' a ' + q.a]);
-      if (!(Array.isArray(q.opts) && q.opts.length === 3 && uniq(q.opts) && q.opts.every(v => inR(v, 0, 7)) && q.opts.includes(q.need) && inR(q.need, 1, 5))) E.push(['branches', 'branches ' + J(q.opts) + ' must be 3 distinct of 0..7 incl. need 1..5 ' + q.need]);
+      if (!(Array.isArray(q.opts) && q.opts.length === 5 && uniq(q.opts) && q.opts.every(v => inR(v, 0, 7)) && q.opts.includes(q.need) && inR(q.need, 1, 5))) E.push(['branches', 'branches ' + J(q.opts) + ' must be 5 distinct of 0..7 incl. need 1..5 ' + q.need]);
       const h = q.holes;
       if (!(Array.isArray(h) && h.length === q.a && uniq(h) && h.every(x => inR(x, 0, q.cap - 1)))) E.push(['holes', J(h) + ' for a=' + q.a]);
       else if (lv !== 3 && !h.every((x, i) => x === i)) E.push(['holes', 'L' + lv + ' fills the top row first: ' + J(h)]);
@@ -374,7 +376,7 @@ JS_LIB = r"""
       }
       if (q.need !== 10 - q.a || q.answer !== q.need || q.T !== q.a + q.b) E.push(['need', 'need ' + q.need + ' answer ' + q.answer + ' T ' + q.T + ' for a ' + q.a + ' b ' + q.b]);
       if (!(q.need <= q.b)) E.push(['unsolvable', 'need ' + q.need + ' > bar ' + q.b]);
-      if (!(Array.isArray(q.opts) && q.opts.length === 3 && uniq(q.opts) && q.opts.every(v => inR(v, 1, 9)) && q.opts.includes(q.need))) E.push(['pieces', J(q.opts) + ' for need ' + q.need]);
+      if (!(Array.isArray(q.opts) && q.opts.length === 5 && uniq(q.opts) && q.opts.every(v => inR(v, 1, 9)) && q.opts.includes(q.need))) E.push(['pieces', J(q.opts) + ' for need ' + q.need]);
       else if (q.opts.some(v => v > q.b)) E.push(['piece-longer-than-bar', 'piece ' + Math.max.apply(null, q.opts) + ' > bar b=' + q.b + ' (a=' + q.a + ', need ' + q.need + ', pieces ' + J(q.opts) + ')']);
       if (q.T === 10) W.push(['T=10', 'a ' + q.a + ' + b ' + q.b + ' = 10: nothing left for gauge 2, reveal says "十和零，十！"']);
     },
@@ -417,10 +419,10 @@ JS_LIB = r"""
     if ('kind' in q && q.kind !== kind) E.push(['kind', 'q.kind ' + J(q.kind) + ' != asked ' + kind]);
     const open = g === 'H3' || (g === 'A1' && lv <= 2);
     if (!open && (q.answer === undefined || q.answer === null || (typeof q.answer === 'number' && !Number.isInteger(q.answer)))) E.push(['answer-defined', 'answer ' + J(q.answer)]);
-    /* cards: exactly 3 distinct integers 0..20 (UI.dots draws up to 20) containing the answer */
+    /* cards: exactly 5 distinct integers 0..20 (UI.dots draws up to 20) containing the answer */
     if (q.opts != null) {
       const o = q.opts;
-      if (!Array.isArray(o) || o.length !== 3) E.push(['cards-3', 'opts ' + J(o)]);
+      if (!Array.isArray(o) || o.length !== 5) E.push(['cards-5', 'opts ' + J(o)]);
       else {
         if (!uniq(o)) E.push(['cards-distinct', 'opts ' + J(o)]);
         if (!o.every(v => inR(v, 0, 22))) E.push(['cards-int', 'opts ' + J(o) + ' must be integers 0..22']);
@@ -478,7 +480,7 @@ JS_LIB = r"""
     /* pass 2 (balance): sessions exactly like Session.newQ - kind from the kind bag, bags live for the whole session,
        a question with the previous key is regenerated (up to 30 times, then accepted) */
     if (cfg.sessSeeds > 0) {
-      const S = { nq: 0, nOpt: 0, pos: [0, 0, 0], rank: [0, 0, 0], sem: {}, semN: 0, side: [0, 0], misl: [0, 0], retries: 0, repeats: 0 };
+      const S = { nq: 0, nOpt: 0, pos: [0, 0, 0, 0, 0], rank: [0, 0, 0, 0, 0], sem: {}, semN: 0, side: [0, 0], misl: [0, 0], retries: 0, repeats: 0 };
       for (let s = 1; s <= cfg.sessSeeds; s++) {
         const seed = mix(100000 + s), G = mkG(g, lv, seed), ks = game.kinds(lv, G);
         for (let i = 0; i < cfg.sessLen; i++) {
@@ -491,7 +493,7 @@ JS_LIB = r"""
           G.ws.lastKey = key;
           r.sfp = fnv(r.sfp, key);
           S.nq++;
-          if (Array.isArray(q.opts) && q.opts.length === 3 && q.opts.includes(q.answer)) {
+          if (Array.isArray(q.opts) && q.opts.length === 5 && q.opts.includes(q.answer)) {
             S.nOpt++;
             S.pos[q.opts.indexOf(q.answer)]++;
             S.rank[q.opts.slice().sort((a, b) => a - b).indexOf(q.answer)]++;
@@ -536,14 +538,15 @@ JS_LIB = r"""
 
   /* ---------------------------------------------------------------- registry facts */
   function meta() {
-    const ids = Object.keys(GAMES).sort(), req = {};
+    const W1 = g => GAMES[g] && ORDER.includes(GAMES[g].world);           /* this gate is about the 24 games of the first sea */
+    const ids = Object.keys(GAMES).filter(W1).sort(), req = {};
     ids.forEach(g => {
       const game = GAMES[g], per = {}, all = new Set();
       for (let lv = 1; lv <= MAXLV[game.world]; lv++) { const ks = game.kinds(lv, mkG(g, lv, 1)); per[lv] = ks; (Array.isArray(ks) ? ks : []).forEach(k => all.add(k)); }
       req[g] = { world: game.world, kind0: game.kind0, required: REQUIRED[g] || null, per, missing: (REQUIRED[g] || []).filter(k => !all.has(k)) };
     });
     const worlds = {}; ORDER.forEach(w => { worlds[w] = { games: WORLDS[w].games, maxLv: MAXLV[w] }; });
-    return { ids, req, worlds, requiredIds: Object.keys(REQUIRED).sort() };
+    return { ids, req, worlds, requiredIds: Object.keys(REQUIRED).filter(W1).sort() };
   }
 
   /* ---------------------------------------------------------------- static voice lines */
@@ -576,8 +579,8 @@ JS_LIB = r"""
       out.push({ name, g, lv, kind, expect, got: ['(no applicable seed)'], ok: false, clean: true });
     };
     T('a splat is missing', 'P1', 2, 'sub', q => { q.pts.pop(); }, ['splats']);
-    T('two equal cards', 'P1', 2, 'sub', q => { q.opts = [q.n, q.n, q.n + 1]; }, ['cards-distinct']);
-    T('only 2 cards', 'P3', 2, 'card', q => { q.opts = q.opts.filter(v => v !== q.n).slice(0, 1).concat([q.n]); }, ['cards-3']);
+    T('two equal cards', 'P1', 2, 'sub', q => { q.opts = q.opts.map((v, i) => (i === 1 ? q.opts[0] : v)); }, ['cards-distinct']);
+    T('only 2 cards', 'P3', 2, 'card', q => { q.opts = q.opts.filter(v => v !== q.n).slice(0, 1).concat([q.n]); }, ['cards-5']);
     T('no spare pair of boots', 'P2', 1, 'pair', q => { q.rack = q.n; q.colors = q.colors.slice(0, q.n); }, ['rack', 'supply']);
     T('candle box holds exactly N', 'P4', 3, 'giveN', q => { q.supply = q.N; }, ['supply', 'spare', 'unsolvable']);
     T("'same' with unequal plates", 'B1', 2, 'same', q => { q.nb = q.nl + 1; q.posB = q.posA.concat([[0.5, 0.5]]); }, ['same-unequal']);
@@ -596,7 +599,7 @@ JS_LIB = r"""
     T('elevator ends at 0', 'A3', 2, 'minus', q => { q.n0 = 1; q.answer = 0; }, ['result', 'k-range']);
     T('A4 total 12', 'A4', 4, 'on', q => { q.m = 5; q.answer = q.k0 + 5; }, ['range', 'answer']);
     T('staff target beyond k+6', 'X1', 3, 'target', q => { q.k0 = 3; q.d = 8; q.N = q.answer = 11; }, ['unsolvable', 'd-range']);
-    T('growth bar of 7', 'X1', 4, 'target', q => { q.opts = q.bars = [q.d, 7, 8]; }, ['bar-length']);
+    T('growth bar of 7', 'X1', 4, 'target', q => { q.opts = q.bars = q.opts.map(v => (v === q.d ? v : v + 10)); }, ['bar-length']);
     T('landing past the last cloud', 'X2', 1, 'line', q => { q.m = 5; q.answer = q.a + 5; }, ['landing', 'range']);
     T('no branch fills the basket', 'X3', 2, 'ten', q => { q.opts = [q.need + 1, q.need + 2, q.need + 3]; }, ['branches', 'cards-answer']);
     T('ten-frame below L3', 'X4', 1, 'hidden', q => { q.N = 10; }, ['N-range']);
@@ -685,12 +688,12 @@ def report_level(log, r, tag, recap):
         return
     if S['nOpt']:
         n = S['nOpt']
-        pv = [judge(c, n, 0.20, 0.47) for c in S['pos']]
-        emit_share(log, worst([v for v, _ in pv]), '%s right-card POSITION 0/1/2 = %s over %d card questions (bound 20-47%%)'
+        pv = [judge(c, n, 0.12, 0.30) for c in S['pos']]
+        emit_share(log, worst([v for v, _ in pv]), '%s right-card POSITION 0/1/2/3/4 = %s over %d card questions (bound 12-30%%: five places)'
              % (head, ' / '.join(pct(c, n) for c in S['pos']), n), recap)
-        rv = [judge(c, n, 0.15, 0.50) for c in S['rank']]
-        emit_share(log, worst([v for v, _ in rv]), '%s right-card RANK min/mid/max = %s over %d card questions (bound 15-50%%; DESIGN 1.4: '
-             '"always the middle card" may win only ~1/3)' % (head, ' / '.join(pct(c, n) for c in S['rank']), n), recap)
+        rv = [judge(c, n, 0.0, 0.50) for c in S['rank']]
+        emit_share(log, worst([v for v, _ in rv]), '%s right-card RANK among the five = %s over %d card questions (bound <= 50%%; "always the '
+             'middle / biggest card" may not win - small answer ranges keep some ranks empty)' % (head, ' / '.join(pct(c, n) for c in S['rank']), n), recap)
     if g in ('B1', 'B3') and S['semN']:
         n = S['semN']
         cats = ['bluey', 'bingo', 'same']

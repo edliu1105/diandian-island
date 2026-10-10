@@ -233,6 +233,8 @@ html.nosound #avatar .ear{background:#FFE08A;width:46px;height:46px;right:-18px;
 .spark{width:14px;height:14px;border-radius:50%}
 svg.lines{left:0;top:0;overflow:visible;pointer-events:none}
 .ringo{border:5px dashed var(--ink);border-radius:999px;pointer-events:none}
+.ringo.xchose{border:6px dashed #3D8BFF;border-radius:30px;box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+.ringo.xgold{border:7px solid #FFC93C;border-radius:30px;box-shadow:0 0 0 3px #2B2118,0 0 24px 6px rgba(255,214,90,.9)}
 
 /* ---------- parent ---------- */
 #parent{background:rgba(43,33,24,.55);z-index:100}
@@ -1073,6 +1075,8 @@ const Voice = {
      simply stops there (same contract as Scope) */
   say(text, opt) {
     opt = opt || {};
+    /* a tap skipped the explanation after a wrong answer: the rest of it is not said (the engine's own line still is) */
+    try { const S = Session.st; if (S && S.explaining && S.ff && opt.tag !== 'again' && !opt.prot && S === speechOwner()) { slog('narr', text, opt.tag, 'skipped'); return Promise.resolve('skipped'); } } catch (e) {}
     const owner = opt.owner !== undefined ? opt.owner : speechOwner();
     if (Bank.has(text)) Bank.load(text);                  /* decoded while the queue still talks */
     return new Promise(res0 => {
@@ -1555,7 +1559,8 @@ class Actor {
     const dx = x - this.x, dy = y - this.y;
     const kf = arc ? [{ transform: 'translate(0,0)' }, { transform: 'translate(' + dx / 2 + 'px,' + (dy / 2 - arc) + 'px) rotate(' + (dx > 0 ? 6 : -6) + 'deg)' }, { transform: 'translate(' + dx + 'px,' + dy + 'px)' }]
       : [{ transform: 'translate(0,0)' }, { transform: 'translate(' + dx + 'px,' + dy + 'px)' }];
-    await this.scope.anim(this.root, kf, { duration: dur == null ? 500 : dur, easing: arc ? EASE.glide : EASE.out });
+    let skip = false; try { skip = !!(Session.st && Session.st.ff); } catch (e) {}          /* a tap skipped the reveal / explanation: no slow walks */
+    await this.scope.anim(this.root, kf, { duration: skip ? 0 : (dur == null ? 500 : dur), easing: arc ? EASE.glide : EASE.out });
     if (this.dead) return;
     this.root.getAnimations().forEach(a => { try { a.cancel(); } catch (e) {} });
     this.at(x, y);
@@ -1963,35 +1968,35 @@ function bagPick(G, name, items) {
   if (!b.length) b.push(...G.rng.shuffle(items));
   return b.shift();
 }
-/* three numeric options for answer cards; rank of the correct value balanced by the size bag */
-/* The RANK of the correct value among the three (smallest / middle / largest) is dealt from a bag, restricted to the
-   ranks this value allows inside [lo, hi]; a rank that does not fit stays in the bag for a later question. So "always
-   the smallest / middle / largest card" is right about one time in three over any stretch - also at the range ends. */
+/* FIVE numeric options for answer cards (client 2026-10-10: five options, so tapping at random does not pass).
+   The options are five neighbouring numbers inside [lo, hi]. The RANK of the correct value among them (0 = smallest ...
+   4 = largest) is dealt from a bag, restricted to the ranks this value allows inside [lo, hi]; a rank that does not fit
+   stays in the bag for a later question. So "always the smallest / middle / largest card" is right about one time in
+   five over any stretch - also at the range ends. A range narrower than five numbers is widened upwards (never below lo). */
+const RANKS = [0, 1, 2, 3, 4];
 function numOptions(G, n, lo, hi) {
   lo = lo == null ? 1 : lo; hi = hi == null ? 20 : hi;
-  const ok = { min: n + 2 <= hi, mid: n - 1 >= lo && n + 1 <= hi, max: n - 2 >= lo };
-  if (G.wantRank) {
+  if (hi - lo < 4) hi = lo + 4;
+  if (n < lo || n > hi) { lo = Math.min(lo, n); hi = Math.max(hi, n); if (hi - lo < 4) hi = lo + 4; }
+  const ok = r => n - r >= lo && n - r + 4 <= hi;               /* rank r: the set is n-r ... n-r+4 */
+  let r;
+  if (G.wantRank != null) {
     /* Session.genQ dealt this question's rank; if this answer cannot take it, the question is drawn again */
-    let r = G.wantRank;
-    if (!ok[r]) { G.rankMiss = true; const f = ['min', 'mid', 'max'].filter(x => ok[x]); r = f.length ? f[Math.floor(G.rng() * f.length)] : 'mid'; }
-    const set = r === 'min' ? [n, n + 1, n + 2] : r === 'mid' ? [n - 1, n, n + 1] : [n - 2, n - 1, n];
-    return placeOptions(G, set, n);
+    r = G.wantRank;
+    if (!ok(r)) { G.rankMiss = true; const f = RANKS.filter(ok); r = f.length ? f[Math.floor(G.rng() * f.length)] : 2; }
+  } else {
+    const b = G.bags.rank5 || (G.bags.rank5 = []);
+    if (!b.length) b.push(...G.rng.shuffle(RANKS));
+    const i = b.findIndex(ok);
+    if (i >= 0) { r = b[i]; b.splice(i, 1); }
+    else { const fresh = G.rng.shuffle(RANKS), j = fresh.findIndex(ok); r = j >= 0 ? fresh.splice(j, 1)[0] : 2; b.push(...fresh); }
   }
-  const b = G.bags.rank || (G.bags.rank = []);
-  if (!b.length) b.push(...G.rng.shuffle(['min', 'mid', 'max']));
-  let i = b.findIndex(r => ok[r]), r;
-  if (i >= 0) { r = b[i]; b.splice(i, 1); }
-  else {
-    const fresh = G.rng.shuffle(['min', 'mid', 'max']), j = fresh.findIndex(x => ok[x]);
-    r = j >= 0 ? fresh.splice(j, 1)[0] : 'mid';
-    b.push(...fresh);
-  }
-  const set = r === 'min' ? [n, n + 1, n + 2] : r === 'mid' ? [n - 1, n, n + 1] : [n - 2, n - 1, n];
+  const set = RANKS.map(k => n - r + k);
   return placeOptions(G, set, n);
 }
-/* positions balanced by the position bag */
+/* positions balanced by the position bag (one bag per number of options: every place once per round of the bag) */
 function placeOptions(G, vals, correct) {
-  const pos = bagPick(G, 'pos', [0, 1, 2]);
+  const n = vals.length, pos = bagPick(G, n === 3 ? 'pos' : 'pos' + n, Array.from({ length: n }, (_, i) => i));
   const others = G.rng.shuffle(vals.filter(v => v !== correct));
   const out = [];
   let k = 0;
@@ -2164,12 +2169,13 @@ const Session = {
     window.__qn = st.gen;
     return st;
   },
-  /* one question from the generator: never the previous one again, and the rank of its answer among the three options
-     (smallest / middle / largest) is the one the rank bag dealt - drawn again until the answer can take that rank */
+  /* one question from the generator: never the previous one again, and the rank of its answer among the five numeric
+     options (0 smallest ... 4 largest) is the one the rank bag dealt - drawn again (a dozen times at most) until the
+     answer can take that rank */
   genQ(G, level, kind) {
     const g = G.game, ws = G.ws;
-    const want = G.wantRank = bagPick(G, 'rank', ['min', 'mid', 'max']);
-    let q = null, keep = null, met = false, again = null;
+    const want = G.wantRank = bagPick(G, 'rank5', RANKS);         /* the answer's rank among the five numeric options */
+    let q = null, keep = null, met = false, again = null, misses = 0;
     const seen = G.seenKeys || (G.seenKeys = new Set());
     for (let i = 0; i < 60; i++) {
       G.rankMiss = false;
@@ -2179,8 +2185,12 @@ const Session = {
       if (seen.has(k)) { if (!again) again = q; continue; }       /* asked already in this session (R9-7): another one if there is one */
       if (!G.rankMiss) { keep = q; met = true; break; }
       if (!keep) keep = q;
+      if (++misses >= 12) break;                  /* this level's answers rarely take that rank: no endless redrawing (it eats the other bags) */
     }
-    if (!met) G.bags.rank.unshift(want);          /* could not be dealt now: it comes first next time (long-run balance) */
+    /* could not be dealt now: it comes first next time (long-run balance) - but a rank missed twice in a row is let go
+       (a small answer range cannot take it at all: e.g. 1-3 among 1..5 is never the largest) */
+    if (!met) { G.rankMissN = (G.rankMissN || 0) + 1; if (G.rankMissN <= 2) G.bags.rank5.unshift(want); else G.rankMissN = 0; }
+    else G.rankMissN = 0;
     G.wantRank = null; G.rankMiss = false;
     const out = keep || again || q;
     seen.add(g.key(out));
@@ -2275,7 +2285,13 @@ const Session = {
       }
       G.streak = 0;
       st.phase = 'correcting';
-      await g.feedback(st, ans);                 /* says what is wrong (never "you are wrong", never the answer) */
+      await g.feedback(st, ans);                 /* says what is wrong (never "you are wrong") */
+      if (!this.alive(my)) return 'dead';
+      /* the client (2026-10-10): after a wrong answer the child SEES why - the one he chose and the right one, and why it
+         is right. The question is not asked again (the next one is new), so showing it does not help anyone guess. A game's
+         own explain(st, ans) if it has one, else its reveal (no cheering: st.explaining). */
+      st.phase = 'explain'; st.explaining = true;
+      if (g.explain) await g.explain(st, ans); else await g.reveal(st);
       if (!this.alive(my)) return 'dead';
       Voice.say(AGAIN[(G.again = (G.again || 0) + 1) % AGAIN.length], { tag: 'again' });
       await st.scope.guard(Voice.afterSay(200));
@@ -2406,7 +2422,7 @@ const Session = {
     if (G.finishing) { if (!G.ffDone) { G.ffDone = true; Voice.hush('ff'); G.scope.fastForward(); } return; }
     const st = this.st;
     if (!st || st.scope.dead) return;
-    if (!['reveal', 'praise', 'correcting', 'pairing'].includes(st.phase) && !st.demo) return;
+    if (!['reveal', 'praise', 'correcting', 'pairing', 'explain'].includes(st.phase) && !st.demo) return;     /* the explanation after a wrong answer: a tap skips it */
     if (st.ff) return;
     st.ff = true;
     Voice.hush('ff', 'summary');
@@ -3679,18 +3695,41 @@ const K = {
   },
   /* bindings made for a question are undone when it ends (persistent scene pieces never keep a stale id) */
   reg(st, id, e, spec) { st.map = st.map || {}; st.map[id] = e; if (spec) { Input.bind(e, Object.assign({ id }, spec)); (st.bound || (st.bound = [])).push(e); } return e; },
-  /* answer cards: 3 options, dots laid out differently from the scene */
+  /* where n answer cards go (client 2026-10-10: five options). One row around (cx, cy) when it fits in `maxW` (the stage
+     less a margin); else the cards get smaller (not below `minSize`, >= 88 px on every iPad) and the gap narrower (>= 20);
+     else two rows (3 + 2), the block grown 'up', 'down' or (default) both ways from cy. A row never leaves the stage.
+     opt: cx, cy, size, gap, maxW, minSize, rows (force 1 / 2), grow, h (card height when not square) */
+  cardGeo(n, opt) {
+    opt = opt || {};
+    const W = Stage.W, H = Stage.H, margin = 14, maxW = Math.min(opt.maxW || W - 2 * margin, W - 2 * margin), minS = opt.minSize || 100;
+    let size = opt.size || 136, gap = opt.gap || 34, rows = opt.rows || 1;
+    const rowW = (k, s, g) => k * s + (k - 1) * g;
+    const fit = k => { if (rowW(k, size, gap) <= maxW) return true; gap = Math.min(gap, Math.max(20, Math.round(size * 0.18))); const s = Math.floor((maxW - (k - 1) * gap) / k); if (s >= minS) { size = Math.min(size, s); return true; } return false; };
+    if (rows === 1 && !fit(n)) rows = n > 1 ? 2 : 1;
+    const per = rows === 1 ? n : Math.ceil(n / rows);
+    if (rows > 1) fit(per);
+    const hh = opt.h ? opt.h * size / (opt.size || 136) : size, rgap = Math.max(20, Math.min(gap, 28));
+    const blockH = rows * hh + (rows - 1) * rgap;
+    const cx = opt.cx != null ? opt.cx : W / 2, cy0 = opt.cy != null ? opt.cy : H - hh / 2 - 24;
+    const top = opt.grow === 'up' ? cy0 + hh / 2 - blockH : opt.grow === 'down' ? cy0 - hh / 2 : cy0 - blockH / 2;
+    const pos = [];
+    for (let r = 0, i = 0; r < rows; r++) {
+      const k = Math.min(per, n - i), w = rowW(k, size, gap);
+      const x0 = clamp(cx - w / 2, margin, W - margin - w);
+      for (let j = 0; j < k; j++, i++) pos.push({ x: Math.round(x0 + j * (size + gap)), y: Math.round(clamp(top + r * (hh + rgap), margin, H - margin - hh)) });
+    }
+    return { size, h: hh, gap, rows, pos };
+  },
+  /* answer cards: dots laid out differently from the scene */
   cards(st, vals, opt) {
     opt = opt || {};
-    const L = this.L(), W = Stage.W, H = Stage.H;
-    const size = opt.size || 136, gap = opt.gap || 34;
-    const total = vals.length * size + (vals.length - 1) * gap;
-    const cx = opt.cx != null ? opt.cx : W / 2, cy = opt.cy != null ? opt.cy : H - size / 2 - 24;
+    const g = this.cardGeo(vals.length, opt), size = g.size;
+    st.cardOpt = Object.assign({}, opt);                     /* what was asked for: a rotation fits it again */
     const cards = vals.map((v, i) => {
       const c = UI.card(v, size, { layout: opt.layout, dotsOnly: opt.dotsOnly, numOnly: opt.numOnly });
       Stage.el.appendChild(c);
       c.style.position = 'absolute';
-      place(c, Math.round(cx - total / 2 + i * (size + gap)), Math.round(cy - size / 2), size, size);
+      place(c, g.pos[i].x, g.pos[i].y, size, size); c._kc = true;
       this.reg(st, 'card' + i, c, {});
       st.els.push(c);
       st.scope.anim(c, [{ transform: 'scale(0) rotate(-8deg)' }, { transform: 'scale(1)' }], { duration: 320, delay: 60 * i, easing: EASE.pop, fill: 'backwards' });
@@ -3699,13 +3738,23 @@ const K = {
     st.cards = cards; st.opts = vals;
     return cards;
   },
+  /* re-places the cards (rotation, a game's own spot): the size / rows chosen when they were made are kept unless the
+     new orientation needs a new geometry (then the cards are resized) */
   cardsPlace(st, opt) {
-    if (!st.cards) return;
+    if (!st.cards || !st.cards.length) return;
     opt = opt || {};
-    const size = parseFloat(st.cards[0].style.width), gap = opt.gap || 34, n = st.cards.length;
-    const total = n * size + (n - 1) * gap;
-    const cx = opt.cx != null ? opt.cx : Stage.W / 2, cy = opt.cy != null ? opt.cy : Stage.H - size / 2 - 24;
-    st.cards.forEach((c, i) => place(c, Math.round(cx - total / 2 + i * (size + gap)), Math.round(cy - size / 2)));
+    const base = Object.assign({}, st.cardOpt || { size: parseFloat(st.cards[0].style.width) || 136 }, opt);
+    const c0 = st.cards[0], w0 = parseFloat(c0.style.width) || 136, h0 = parseFloat(c0.style.height) || w0;
+    if (Math.abs(h0 - w0) > 1) base.h = (base.size || 136) * h0 / w0;          /* a card that is not square keeps its shape */
+    const g = this.cardGeo(st.cards.length, base);
+    st.cards.forEach((c, i) => {
+      const w = parseFloat(c.style.width) || g.size, h = parseFloat(c.style.height) || w;
+      if (Math.abs(w - g.size) > 0.5) {                     /* a new orientation needs another size: number cards are redrawn */
+        c.style.width = g.size + 'px'; c.style.height = (h * g.size / w) + 'px';
+        if (c._kc) { const o = st.cardOpt || {}, nc = UI.card(c._n, g.size, { layout: o.layout, dotsOnly: o.dotsOnly, numOnly: o.numOnly }); c.innerHTML = ''; while (nc.firstChild) c.appendChild(nc.firstChild); c._dots = nc._dots; c._layout = nc._layout; }
+      }
+      place(c, g.pos[i].x, g.pos[i].y);
+    });
   },
   cardIndex(id) { return /^card\d$/.test(id || '') ? Number(id.slice(4)) : -1; },
   /* generic next() for card questions: right / wrong / pos:k / min / mid / max */
@@ -3714,8 +3763,8 @@ const K = {
     const vals = st.opts, ans = st.q.answer;
     let i = vals.indexOf(ans);
     if (strat === 'wrong') i = vals.findIndex(v => v !== ans);
-    else if (/^pos:\d$/.test(strat)) i = Number(strat.slice(4));
-    else if (strat === 'min' || strat === 'max' || strat === 'mid') { const s = vals.slice().sort((a, b) => a - b); const v = strat === 'min' ? s[0] : strat === 'max' ? s[2] : s[1]; i = vals.indexOf(v); }
+    else if (/^pos:\d$/.test(strat)) i = Math.min(vals.length - 1, Number(strat.slice(4)));
+    else if (strat === 'min' || strat === 'max' || strat === 'mid') { const s = vals.slice().sort((a, b) => a - b); const v = strat === 'min' ? s[0] : strat === 'max' ? s[s.length - 1] : s[(s.length - 1) >> 1]; i = vals.indexOf(v); }
     else if (strat && strat.startsWith('rand')) i = Math.floor(Math.random() * vals.length);
     return { g: 'tap', p: { id: 'card' + i } };
   },
@@ -3763,6 +3812,7 @@ const K = {
         else if (q && q.node) { q.node.style.position = 'relative'; it.appendChild(q.node); }
       });
     });
+    Two.pips(st, t);
     st.els.push(t);
     st.scope.anim(t, [{ transform: 'translateX(-50%) translateY(-30px)', opacity: 0 }, { transform: 'translateX(-50%) translateY(0)', opacity: 1 }], { duration: 300, easing: EASE.pop });
     return t;
@@ -3885,6 +3935,99 @@ const K = {
   say(st, text, tag) { st.prompt = text; return Voice.say(text, { tag: tag || 'prompt' }); },
 };
 
+/* ================================================================ EXPLAIN after a wrong answer (client 2026-10-10)
+   Session.runQ: feedback (what is wrong, named) -> g.explain(st, ans) -> a NEW question. Every explain shows
+   1. the one the child chose and why it is not it: a BLUE dashed ring (never red, never a cross), counted / compared;
+   2. the right one: a GOLD ring, and why (the game's own demonstration, without praise or cheering).
+   About 2-5 s; a tap skips it (phase 'explain' is fast-forwardable). Lines <= 8 characters (raw/js/w4/w12explain.voice.txt).
+   window.__xlog keeps what was marked (tests: every wrong answer ends with the gold mark on the right option). */
+const EX = {
+  log(st, what, e) { const L = window.__xlog || (window.__xlog = []), id = (e && e.dataset && e.dataset.gid) || (e && Object.keys(st.map || {}).find(k => st.map[k] === e)) || ''; L.push({ q: st.gen, g: st.G.id, lv: st.level, kind: st.kind, what, id }); if (L.length > 400) L.splice(0, 100); },
+  rect(e) { if (!e) return null; if (e.x != null && e.w != null && !e.nodeType) return e; const b = e._box ? e._box() : box(e); return { x: b.x, y: b.y, w: b.w, h: b.h }; },
+  ring(st, els, cls, pad) {
+    const rs = [].concat(els).filter(Boolean).map(e => this.rect(e)).filter(r => r && r.w > 0);
+    if (!rs.length) return null;
+    const r = K.ring(st, rs, pad == null ? 10 : pad);
+    if (r) { r.classList.add(cls); const b = { w: parseFloat(r.style.width) || 100, h: parseFloat(r.style.height) || 100 }; r.style.borderRadius = Math.round(Math.min(b.w, b.h) * 0.22) + 'px'; }
+    return r;
+  },
+  say(st, text) { if (!text || st.ff || !Session.alive(st)) return Promise.resolve(); return st.scope.guard(Voice.say(text, { tag: 'explain' })); },
+  wait(st, ms) { return st.scope.wait(ms); },
+  /* step 1: the chosen one, ringed blue (+ a short line: what it is) */
+  async chose(st, els, line, ms) { const list = [].concat(els).filter(Boolean); list.forEach(x => this.ring(st, x, 'xchose')); this.log(st, 'chose', list[0]); list.forEach(x => x.nodeType && K.wiggle(st, x)); if (line) await this.say(st, line); await this.wait(st, ms == null ? 350 : ms); },
+  /* step 2: the right one, ringed gold (it also glows) */
+  async gold(st, els, line, ms, sep) {
+    const list = [].concat(els).filter(Boolean), e = list[0];
+    if (sep) list.forEach(x => this.ring(st, x, 'xgold', 10)); else this.ring(st, list, 'xgold', 12);
+    this.log(st, 'gold', e);
+    list.forEach(x => { if (x.classList && (x.classList.contains('card') || x.dataset.gid)) x.classList.add('hi'); });
+    if (line) await this.say(st, line); await this.wait(st, ms == null ? 650 : ms);
+  },
+  num(n) { return '你选的是' + (CN[n] != null ? CN[n] : n); },
+  /* the card the child tapped / the right card (card games) */
+  card(st, v) { const i = (st.opts || []).findIndex(x => x === v || JSON.stringify(x) === JSON.stringify(v)); return st.cards && i >= 0 ? st.cards[i] : null; },
+  rightCard(st) { return this.card(st, st.q.answer); },
+  /* the usual explain of a counting card game: "你选的是四" (blue) -> the game's own correction (counts it) -> gold card */
+  async cards(st, ans, demo) {
+    const c = this.card(st, ans);
+    await this.chose(st, c, typeof ans === 'number' ? this.num(ans) : null);
+    if (!Session.alive(st)) return;
+    if (demo) await demo(); else if (st.game.correct) await st.game.correct(st);
+    if (!Session.alive(st)) return;
+    await this.gold(st, this.rightCard(st), '对的是这个！');
+  },
+};
+
+/* ================================================================ ONE QUESTION, TWO ASKS (client 2026-10-10)
+   A question with only 2-3 possible answers (more / less / same, where, which way ...) cannot get five sensible options:
+   it asks two of them in one question. Both right = the question is right (a star); a wrong first ask ends it at once
+   (it is explained). Random tapping passes 1/4 - 1/9 instead of 1/2 - 1/3.
+   gen() puts the second ask in q.q2; the game hands every answer to Two.answer(st, v) instead of Session.submit. A game
+   with twoNext(st, v) moves on in place (C2: the same columns, the other question); others present q2 afresh. */
+const Two = {
+  KEEP: new Set(['gen', 'id', 'G', 'game', 'q', 'kind', 'level', 'phase', 'hinted', 'guided', 'demo', 'retest', 'probe', 'evidence', 'again', 'err', 'scope', 'els', 'map', 'ops', 'childOps', 'assists',
+    'submitted', 'idleFrom', 'hintLv', 'nextAuto', 'budget', 'ff', 'childTook', 'answerP', 'answerRes', 'answerRej', 'prompt', 'lead', 'hintTimer', 'glanceAt', 'cheers', 'assistT', 'autoDue',
+    'noEvidence', 'evKind', 'sub1', 'sub2', 'twoBusy', 'lastAt', 'rv', 'sup', 'supProbe', 'pass', 'missQ', 'bound']),
+  pips(st, t) {           /* two small dots on the task card: which of the two asks this is */
+    if (!st.q || !(st.q.q2 || st.sub2)) return;
+    const d = el('div', 'twopips', t); Object.assign(d.style, { display: 'flex', gap: '6px', marginLeft: '6px', alignItems: 'center' });
+    [0, 1].forEach(i => { const p = el('span', '', d); Object.assign(p.style, { width: '18px', height: '18px', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118', background: (st.sub2 ? i === 0 : false) ? '#5CC46E' : (st.sub2 ? i === 1 : i === 0) ? '#FFC93C' : '#fff' }); });
+  },
+  answer(st, v) {
+    if (!st || st.submitted || st.twoBusy) return;
+    const q = st.q;
+    if (!q.q2 || st.sub2 || !st.game.evaluate(st, v)) { Session.submit(st, v); return; }
+    st.twoBusy = true; st.sub2 = true; st.sub1 = v;
+    this.next(st, v).catch(e => Session.crash(e));
+  },
+  async next(st, v) {
+    const my = st, g = st.game;
+    st.phase = 'show';
+    Sfx.place();
+    await st.scope.wait(450);
+    if (!Session.alive(my)) return;
+    Voice.say('还有一个！', { tag: 'two' });
+    if (g.twoNext) { await g.twoNext(st, v); }
+    else {
+      try { g.cleanup(st); } catch (e) { console.error('cleanup error', e); }
+      (st.bound || []).forEach(e => { if (!e._spec) return; Input.unbind(e); if (e._actorId) Input.bind(e, { id: 'char:' + e._actorId }); });
+      st.els.forEach(e => e.remove());
+      Object.keys(st).forEach(k => { if (!Two.KEEP.has(k)) delete st[k]; });       /* the game's own state of the first ask goes */
+      st.els = []; st.map = {}; st.bound = [];
+      st.q = Object.assign({}, st.q.q2, { q1: { answer: st.q.answer } });
+      st.phase = 'setup';
+      await st.scope.wait(250);
+      if (!Session.alive(my)) return;
+      await g.present(st);
+      if (!Session.alive(my)) return;
+    }
+    if (st.phase === 'setup' || st.phase === 'show') st.phase = 'ready';
+    st.twoBusy = false;
+    st.idleFrom = Clock.t();
+    Hints.reset && Hints.reset(st);
+  },
+};
+
 
 /* ================================================================ WORLD 1 · PEPPA (L1-L3) */
 const SPLAT_PATHS = [
@@ -3907,7 +4050,7 @@ defGame({
   gen(G, o) {
     const rng = o.rng, lv = o.level;
     let n, chunks = null, flash, opts, layout;
-    if (lv === 1) { n = bagPick(G, 'p1n1', [1, 2, 3]); flash = 1000; opts = placeOptions(G, [1, 2, 3], n); layout = rng.pick(['scatter', 'line']); }
+    if (lv === 1) { n = bagPick(G, 'p1n1', [1, 2, 3]); flash = 1000; opts = placeOptions(G, [1, 2, 3, 4, 5], n); layout = rng.pick(['scatter', 'line']); }
     else if (lv === 2) { n = bagPick(G, 'p1n2', [2, 3, 4]); flash = 900; opts = numOptions(G, n, 1, 7); layout = rng.pick(['scatter', 'line']); }
     else { n = bagPick(G, 'p1n3', [4, 5, 6]); chunks = rng.pick({ 4: [[2, 2], [3, 1]], 5: [[3, 2], [2, 3], [4, 1]], 6: [[3, 3], [4, 2], [2, 4]] }[n]); flash = 900; opts = numOptions(G, n, 1, 9); layout = 'two'; }
     /* splat positions in a nominal 380x280 sheet, then normalised */
@@ -3934,7 +4077,7 @@ defGame({
     G.jumper = 'peppa';
   },
   spots() {
-    return K.L() ? { jump: [690, 612], puddle: [830, 640], mum: [520, 540], sp: [[950, 470], [-400, -400]], cards: { cx: 286, cy: 548 } }
+    return K.L() ? { jump: [760, 612], puddle: [880, 640], mum: [520, 540], sp: [[950, 470], [-400, -400]], cards: { cx: 330, cy: 640, size: 108, gap: 20 } }   /* five cards on the floor, left of the jumper */
       : { jump: [230, 978], puddle: [420, 968], mum: [612, 540], sp: [[620, 1000], [-400, -400]], cards: { cx: 322, cy: 626 } };   /* the jumper's head stays clear of the cards */
   },
   layout(G) {
@@ -4053,6 +4196,8 @@ defGame({
     st.cards[st.opts.indexOf(q.n)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.n) + '个！', { tag: 'fix' });
   },
+  /* explain: the card he chose ("你选的是四"), the splats shown again in their groups and counted, the right card gold */
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { const E = st.G.els; E.splats.innerHTML = ''; E.splats.style.visibility = ''; E.sheet.style.transform = ''; const J = st.G.actors[st.G.jumper]; if (J) Input.bind(J.root, { id: 'char:' + J.id }); },
   next(st, strat) {
     if (st.phase === 'act') return { g: 'tap', p: { id: 'jumper' } };
@@ -4218,6 +4363,12 @@ defGame({
     }
     await Voice.say('每人一双！', { tag: 'fix' });
   },
+  /* explain: (feedback flashed who has none, took back the extra pairs) every pig gets one pair, tied by a line, gold */
+  async explain(st) {
+    await this.correct(st);
+    if (!Session.alive(st)) return;
+    await EX.gold(st, st.q.who.map((_, i) => this.recEl(st, i)).concat(st.boots.filter(b => b.owner >= 0).map(b => b.el)));
+  },
   next(st, strat) {
     const c = this.counts(st);
     const bk = /^build:(\d+)$/.exec(strat || ''), K0 = bk ? Number(bk[1]) : null;
@@ -4247,7 +4398,7 @@ defGame({
     const toys = rng.shuffle(TOYS).slice(0, n);
     const pts = K.cells(rng, n, 3, 2, 0.16);
     const pts2 = K.cells(rng, n, 3, 2, 0.16);
-    const opts = lv === 1 ? numOptions(G, n, 1, 5) : numOptions(G, n, 1, 9);
+    const opts = lv === 1 ? numOptions(G, n, 1, 7) : numOptions(G, n, 1, 9);       /* L1: 1-7, so "always the middle card" does not win */
     return { k: [n, toys.join(), o.kind], n, answer: n, toys, pts, pts2, opts, order: rng.shuffle(toys.map((_, i) => i)) };
   },
   floor() { return K.L() ? { x: 150, y: 190, w: 420, h: 290 } : { x: 90, y: 250, w: 524, h: 290 }; },
@@ -4264,7 +4415,7 @@ defGame({
     G.actors.peppa.size(160).at(L ? 860 : -400, L ? 700 : -400);
   },
   relayoutQ(st) { (st.toys || []).forEach((t, i) => { if (!t.inBox || st.out) this.putToy(st, t, i); }); K.cardsPlace(st, this.cardSpot()); },
-  cardSpot() { return K.L() ? { cx: 430, cy: 604 } : { cx: 352, cy: 920 }; },
+  cardSpot() { return K.L() ? { cx: 490, cy: 620, size: 104, gap: 20 } : { cx: 352, cy: 920 }; },     /* five cards between Mummy Pig and Peppa */
   TOY: 96,
   putToy(st, t, i) { const f = this.floor(), [u, v] = (st.out ? st.q.pts2 : st.q.pts)[i], s = this.TOY; place(t.el, Math.round(f.x + u * f.w - s / 2), Math.round(f.y + v * f.h - s / 2)); },
   async present(st) {
@@ -4363,6 +4514,7 @@ defGame({
     st.cards[st.opts.indexOf(q.n)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.n) + '个！', { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   next(st, strat) {
     const t = (st.toys || []).find(x => !x.inBox);
     if (t && !st.asked) return { g: 'tap', p: { id: t.id } };
@@ -4522,6 +4674,12 @@ defGame({
     for (let i = 0; i < N; i++) { if (!Session.alive(my)) return; K.hop(st, st.candles[i].el, 16); await Count.beat(st.scope, 420, i + 1); }
     await Voice.say(CNQ(N) + '根蜡烛！', { tag: 'fix' });
   },
+  /* explain: (feedback sent the extra candles back / showed the empty places) the missing ones go in, all are counted, gold */
+  async explain(st) {
+    await this.correct(st);
+    if (!Session.alive(st)) return;
+    await EX.gold(st, st.candles.map(c => c.el));
+  },
   cleanup(st) { (st.candles || []).forEach(c => c.el.remove()); },
   next(st, strat) {
     const bk = /^build:(\d+)$/.exec(strat || ''), K0 = bk ? Number(bk[1]) : null;
@@ -4605,7 +4763,14 @@ defGame({
   id: 'B1', world: 'bluey', verb: '比！', bg: 'bluey_yard', props: ['plate', 'cookie', 'strawberry', 'watermelon', 'cherry'], chars: ['bluey', 'bingo', 'bandit', 'chilli'], host: 'bluey', icon: 'strawberry',
   intro: '谁的多？比一比！', kind0: 'more', praise: ['比得真准！'],
   kinds(level) { return level === 1 ? ['more', 'more', 'same'] : ['more', 'less', 'same']; },
+  /* one question, two asks (client 2026-10-10: only three possible answers): two comparisons, new plates each time,
+     both right = right (random tapping 1/9) */
   gen(G, o) {
+    const q = this.gen1(G, o), k2 = bagPick(G, 'b1k2_' + o.level, this.kinds(o.level));
+    q.q2 = this.gen1(G, Object.assign({}, o, { kind: k2 }));
+    return q;
+  },
+  gen1(G, o) {
     const rng = o.rng, lv = o.level, kind = o.kind;
     const who = kind === 'same' ? 'same' : bagPick(G, 'b1who' + lv, ['bluey', 'bingo']);
     let hi, lo;
@@ -4621,7 +4786,7 @@ defGame({
     const spread = lv >= 3 ? (rng.chance(0.5) ? 'bluey' : 'bingo') : '';
     const answer = kind === 'same' ? 'same' : (ask === 'more' ? who : (who === 'bingo' ? 'bluey' : 'bingo'));
     const posA = K.cells(rng, nl, 4, 2, 0.35), posB = K.cells(rng, nb, 4, 2, 0.35);
-    return { k: [nl, nb, ask, itemL, itemB], nl, nb, ask, answer, who, itemL, itemB, blueyLeft, spread, posA, posB };
+    return { k: [nl, nb, ask, itemL, itemB], kind, nl, nb, ask, answer, who, itemL, itemB, blueyLeft, spread, posA, posB };
   },
   build(G) {
     ['bluey', 'bingo'].forEach(id => K.actor(G, id, 230));
@@ -4679,14 +4844,14 @@ defGame({
     [...st.items.bluey, ...st.items.bingo].forEach((e, i) => K.pop(st, e, 40 * i));
     ['bluey', 'bingo'].forEach(sis => { const pl = G.els.plates[this.sideOf(st, sis)]; K.reg(st, sis, pl, {}); });
     K.reg(st, 'same', G.els.same, {});
-    const lines = { more: '谁的多？', less: '谁的少？', same: q.ask === 'less' ? '谁的少？' : '谁的多？' };
-    K.task(st, [[{ node: goalIcon(st.kind) }]]);
+    const lines = { more: '谁的多？', less: '谁的少？', same: q.ask === 'less' ? '谁的少？' : '谁的多？' }, kind = q.kind || st.kind;
+    K.task(st, [[{ node: goalIcon(kind) }]]);
     G.actors.chilli.hop();
-    K.say(st, lines[st.kind]);
+    K.say(st, lines[kind]);
   },
   onGesture(st, name, p) {
     if (name !== 'tap') return false;
-    if (p.id === 'bluey' || p.id === 'bingo' || p.id === 'same') { Session.submit(st, p.id); return 'ok'; }
+    if (p.id === 'bluey' || p.id === 'bingo' || p.id === 'same') { Two.answer(st, p.id); return 'ok'; }
     return false;
   },
   line(st) {
@@ -4717,6 +4882,16 @@ defGame({
     K.flash(st, extra);
     if (extra.length) await Voice.say('多了' + CNQ(extra.length) + '个', { tag: 'fix' });
     await Voice.say(this.line(st), { tag: 'fix' });
+  },
+  /* explain: the plate / button he chose (blue), the two rows paired one for one - the one left over shows who has more -
+     and the right plate (or "the same" button) gold */
+  async explain(st, ans) {
+    const G = st.G, q = st.q, el0 = a => a === 'same' ? G.els.same : G.els.plates[this.sideOf(st, a)];
+    await this.correct(st);                                    /* the plates move together: the rings come after, where they are */
+    if (!Session.alive(st)) return;
+    if (q.answer === 'same' || ans === 'same') { G.els.same.getAnimations().forEach(a => a.cancel()); G.els.same.style.opacity = 1; }
+    await EX.chose(st, el0(ans));
+    await EX.gold(st, el0(q.answer));
   },
   next(st, strat) {
     const q = st.q, all = ['bluey', 'bingo', 'same'];
@@ -4774,13 +4949,14 @@ defGame({
     if (st && st.things) this.placeAll(st);
   },
   relayoutQ(st) { this.layout(st.G); K.cardsPlace && null; },
+  stackSpot() { return K.L() ? { cx: 512, cy: 612, size: 118, h: 140, gap: 24 } : { cx: 352, cy: 750, size: 116, h: 136, gap: 20 }; },    /* five stacks of coins (client 2026-10-10) */
   xs(st, i) { const g = this.geo(), w = Math.min(112, (g.row.x1 - g.row.x0) / Math.max(st.q.n, 1)); return g.row.x0 + (g.row.x1 - g.row.x0) / 2 - (st.q.n - 1) * w / 2 + i * w; },
   placeAll(st) {
     const g = this.geo();
     st.things.forEach((e, i) => place(e, Math.round(this.xs(st, i) - 44), g.row.y - 44));
     (st.coins || []).forEach((c, i) => place(c, Math.round(this.xs(st, i) - 36), g.mat - 36));
     if (st.lid) place(st.lid, g.row.x0 - 40, g.row.y - 80, g.row.x1 - g.row.x0 + 80, 150);
-    if (st.stacks) st.stacks.forEach((sk, i) => place(sk, (K.L() ? 250 : 210) + i * (K.L() ? 190 : 160), K.L() ? 540 : 790, 130, 150));
+    if (st.stacks) { const cg = K.cardGeo(st.stacks.length, this.stackSpot()); st.stacks.forEach((sk, i) => place(sk, cg.pos[i].x, cg.pos[i].y, cg.size, cg.h)); }
   },
   async present(st) {
     const G = st.G, q = st.q, lv = st.level;
@@ -4828,7 +5004,7 @@ defGame({
       st.els.filter(e => e.classList && e.classList.contains('badge')).forEach(b => b.remove());
       st.stacks = st.q.stacks.map((v, i) => {
         const sk = el('div', 'card', Stage.el); sk.style.position = 'absolute'; st.els.push(sk);
-        for (let k = 0; k < v; k++) { const c = img('assets/props/coin.png', '', sk); Object.assign(c.style, { position: 'absolute', width: '70px', left: '30px', top: (96 - k * 16) + 'px' }); }
+        for (let k = 0; k < v; k++) { const c = img('assets/props/coin.png', '', sk); Object.assign(c.style, { position: 'absolute', width: '62px', left: 'calc(50% - 31px)', top: 'calc(100% - ' + (72 + k * 13) + 'px)' }); }
         K.reg(st, 'card' + i, sk, {}); return sk;
       });
       st.cards = st.stacks; st.opts = st.q.stacks;
@@ -4881,7 +5057,16 @@ defGame({
     if (st.stacks) { st.stacks.forEach(sk => sk.remove()); st.coins = []; }
     while (st.coins.length < n) { if (!Session.alive(my)) return; this.addCoin(st); await st.scope.wait(300); }
     for (let i = 0; i < n; i++) { if (!Session.alive(my)) return; const tb = box(st.things[i]), cb = box(st.coins[i]); await K.link(st, s, { x: tb.x + 44, y: tb.y + 88 }, { x: cb.x + 36, y: cb.y }, '#5CC46E'); await Count.beat(st.scope, 200, i + 1); }
-    await Voice.say(CN[n] + '样东西' + CN[n] + '个币', { tag: 'fix' });
+    await Voice.say(CNQ(n) + '样东西' + CNQ(n) + '个币', { tag: 'fix' });
+  },
+  /* explain: L1-2 the coins put right, one line per thing, gold; L3 the stack he chose (blue), the things counted, the
+     right stack gold */
+  async explain(st, ans) {
+    if (!st.stacks) { await this.correct(st); if (Session.alive(st)) await EX.gold(st, st.coins); return; }
+    await EX.chose(st, EX.card(st, ans), EX.num(ans));
+    await EX.say(st, '一样东西一个币');
+    for (let i = 0; i < st.things.length; i++) { if (!Session.alive(st)) return; K.hop(st, st.things[i], 18); K.badge(st, st.things[i], i + 1, 0, 0, 44); await Count.beat(st.scope, 380, i + 1); }
+    await EX.gold(st, EX.rightCard(st), '对的是这个！');
   },
   next(st, strat) {
     const n = st.q.n;
@@ -4912,7 +5097,14 @@ defGame({
   id: 'B3', world: 'bluey', verb: '拉！', bg: 'bluey_playroom', props: [], chars: ['bluey', 'bingo', 'bandit', 'chilli'], host: 'bandit', icon: 'ui_star',
   intro: '这样公平吗？', kind0: 'same', praise: ['没被爸爸骗到！'],
   kinds() { return ['same', 'add', 'remove']; },
+  /* one question, two asks (client 2026-10-10: only three possible answers): after the first right answer the rows are
+     set up again and Dad plays his trick once more - both right = right */
   gen(G, o) {
+    const q = this.gen1(G, o);
+    q.q2 = this.gen1(G, Object.assign({}, o, { kind: bagPick(G, 'b3k2', this.kinds()) }));
+    return q;
+  },
+  gen1(G, o) {
     const rng = o.rng, lv = o.level, kind = o.kind;
     const n = lv === 1 ? rng.int(3, 4) : lv === 2 ? rng.int(4, 5) : rng.int(5, 6);
     /* which row changes: chosen so the stretched (bottom, Bingo) row looks longer against the real number in >= half the cases */
@@ -5005,10 +5197,19 @@ defGame({
       const e = st.bg[st.pairI]; if (e) K.wiggle(st, e);
       return false;
     }
-    if (name === 'tap' && ['bluey', 'bingo', 'same'].includes(p.id)) { Session.submit(st, p.id); return 'ok'; }
+    if (name === 'tap' && ['bluey', 'bingo', 'same'].includes(p.id)) { Two.answer(st, p.id); return 'ok'; }
     return false;
   },
   line(st) { const q = st.q; if (q.kind === 'same') return '没加没拿，一样多！'; return q.kind === 'add' ? '爸爸加了一块！' : '爸爸拿走一块！'; },
+  /* explain: what he chose (blue); the stretched row goes back, every block paired with one across - the block left over
+     (or none) is what Dad added / took ("爸爸加了一块！"); the right row / "the same" button gold */
+  async explain(st, ans) {
+    const G = st.G, el0 = a => a === 'same' ? G.els.same : a === 'bluey' ? G.els.rowB : G.els.rowG;
+    await EX.chose(st, el0(ans));
+    await this.reveal(st);
+    if (!Session.alive(st)) return;
+    await EX.gold(st, el0(st.q.answer));
+  },
   async reveal(st) {
     const my = st, g = this.geo(), q = st.q;
     st.summary = this.line(st);
@@ -5078,7 +5279,7 @@ defGame({
     const a = lv === 1 ? rng.int(Math.max(2, d), 3) : lv === 2 ? rng.int(Math.max(3, d + 1), 5) : rng.int(Math.max(4, d + 1), 7);
     const b = a - d;
     let bags = null;
-    if (lv >= 3) bags = numOptions(G, d, 0, 3);
+    if (lv >= 3) bags = numOptions(G, d, 0, 4);              /* five bags, 0-4 cookies (client 2026-10-10) */
     return { k: [a, b], a, b, d, answer: d, bags, opts: bags };
   },
   geo() { return K.L() ? { pb: { x: 70, y: 262 }, pg: { x: 560, y: 262 }, jar: { x: 410, y: 500 }, bluey: [220, 300], bingo: [710, 300], chilli: [960, 470], bandit: [80, 690], bags: { x: 300, y: 530, dx: 160 } } : { pb: { x: 30, y: 420 }, pg: { x: 370, y: 420 }, jar: { x: 330, y: 700 }, bluey: [180, 452], bingo: [520, 452], chilli: [240, 1010], bandit: [90, 1010], bags: { x: 110, y: 676, dx: 180 } }; },
@@ -5103,7 +5304,7 @@ defGame({
     const ps = [];
     st.cb.forEach((e, i) => { const s = this.spot(st, 'b', i); if (instant) place(e, s.x, s.y); else ps.push(K.flyTo(st, e, s.x, s.y, 300)); });
     st.cg.forEach((e, i) => { const s = this.spot(st, 'g', i); if (instant) place(e, s.x, s.y); else ps.push(K.flyTo(st, e, s.x, s.y, 300)); });
-    if (st.bagEls) { const b = this.geo().bags; st.bagEls.forEach((bg, i) => place(bg, b.x + i * b.dx, b.y, 120, 130)); }
+    if (st.bagEls) { const cg = K.cardGeo(st.bagEls.length, K.L() ? { cx: 512, cy: 615, size: 116, h: 126, gap: 22 } : { cx: 352, cy: 742, size: 116, h: 126, gap: 20 }); st.bagEls.forEach((bg, i) => place(bg, cg.pos[i].x, cg.pos[i].y, cg.size, cg.h)); }
     return Promise.all(ps);
   },
   cookie() { const e = K.item(Stage.el, 'assets/props/cookie.png', 54, 54); e.style.zIndex = 5; return e; },
@@ -5118,7 +5319,7 @@ defGame({
     if (st.level >= 3) {
       st.bagEls = q.bags.map((v, i) => {
         const bg = K.item(Stage.el, 'assets/props/bag.png', 120, 130); bg.style.zIndex = 6; st.els.push(bg);
-        for (let k = 0; k < v; k++) { const c = img('assets/props/cookie.png', '', bg); Object.assign(c.style, { position: 'absolute', width: '44px', height: '44px', left: (12 + (k % 2) * 40) + 'px', top: (6 + Math.floor(k / 2) * 30) + 'px' }); }
+        for (let k = 0; k < v; k++) { const c = img('assets/props/cookie.png', '', bg); Object.assign(c.style, { position: 'absolute', width: '44px', height: '44px', left: 'calc(50% - ' + (k % 2 ? 2 : 42) + 'px)', top: (6 + Math.floor(k / 2) * 30) + 'px' }); }
         K.reg(st, 'card' + i, bg, {}); K.pop(st, bg, 100 * i); return bg;
       });
       st.cards = st.bagEls; st.opts = q.bags;
@@ -5183,6 +5384,18 @@ defGame({
       await K.flyTo(st, e, t.x, pg.y + pg.h / 2 - t.h / 2, 360, 60); e.style.width = e.style.height = t.w + 'px'; Count.say(st.cg.length); Sfx.place();
     }
   },
+  /* explain: L1-2 the plates paired one for one, the missing ones poured in, gold; L3 the bag he chose (blue), the
+     plates paired - the cookies left over are how many Bingo needs - and the right bag gold */
+  async explain(st, ans) {
+    const q = st.q;
+    if (!st.bagEls) { await this.correct(st); if (Session.alive(st)) await EX.gold(st, [st.G.els.pb, st.G.els.pg]); return; }
+    await EX.chose(st, EX.card(st, ans), EX.num(ans));
+    const extra = await stackCompare(st, st.G.els.pb, st.cb, st.G.els.pg, st.cg, [st.G.els.jar]);
+    if (!Session.alive(st)) return;
+    K.flash(st, extra);
+    await EX.say(st, q.d ? '还差' + CNQ(q.d) + '个' : '本来就一样多！');
+    await EX.gold(st, EX.rightCard(st), '对的是这个！');
+  },
   next(st, strat) {
     const q = st.q;
     if (st.level >= 3) return K.cardNext(st, strat);
@@ -5211,7 +5424,7 @@ defGame({
   intro: '葫芦熟啦！', kind0: 'ord', praise: ['找得真准！'],
   gen(G, o) {
     const rng = o.rng, lv = o.level;
-    const n = lv === 1 ? 3 : lv === 2 ? rng.int(4, 5) : lv === 3 ? rng.int(5, 6) : 7;
+    const n = lv <= 2 ? 5 : lv === 3 ? rng.int(5, 6) : 7;            /* >= 5 gourds to pick from (client 2026-10-10) */
     const lo = lv === 1 ? 1 : lv === 2 ? 2 : lv === 3 ? 2 : 3, hi = lv === 1 ? 3 : lv === 2 ? 4 : lv === 3 ? 5 : 7;
     const k = bagPick(G, 'h1k' + lv, Array.from({ length: Math.min(hi, n) - lo + 1 }, (_, i) => lo + i));
     const rootLeft = lv <= 2 ? true : rng.chance(0.5);
@@ -5308,13 +5521,20 @@ defGame({
     for (let i = 0; i < k; i++) {
       if (!Session.alive(my)) return;
       const c = center(st.gourds[i]);
-      await Hand.go(st.scope, c.x, c.y, 380);
+      await Hand.go(st.scope, c.x, c.y, st.explaining ? 240 : 380);
       st.gourds[i].classList.add('glow'); Count.say(i + 1, 'o');
-      await st.scope.wait(300);
+      await st.scope.wait(st.explaining ? 260 : 300);
     }
     Hand.hide(st.scope);
     K.hop(st, st.gourds[k - 1], 30);
     await Voice.say('这是第' + CN[k] + '个', { tag: 'fix' });
+  },
+  /* explain: the gourd he picked (blue, its own flag: "这是第四个"), then the hand counts from the root to the right
+     one ("从根开始数！") - gold */
+  async explain(st, ans) {
+    await EX.chose(st, st.gourds[ans - 1], '这是第' + CN[ans] + '个');
+    await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.gourds[st.q.target - 1]);
   },
   cleanup(st) { BRO.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) {
@@ -5339,7 +5559,7 @@ defGame({
   kinds() { return ['ord', 'card']; },
   gen(G, o) {
     const rng = o.rng, lv = o.level, kind = o.kind;
-    const n = lv === 1 ? rng.int(3, 4) : lv === 2 ? 5 : lv === 3 ? rng.int(6, 7) : 7;
+    const n = lv <= 2 ? 5 : lv === 3 ? rng.int(6, 7) : 7;            /* >= 5 brothers in the line (client 2026-10-10) */
     let k;
     if (kind === 'ord') k = lv === 1 ? rng.int(1, 3) : lv === 2 ? rng.int(2, 4) : lv === 3 ? rng.int(2, 5) : rng.int(4, 7);
     else k = lv === 1 ? rng.int(1, 3) : lv === 2 ? rng.int(2, 4) : lv === 3 ? rng.int(2, 5) : rng.int(2, 3);
@@ -5440,6 +5660,16 @@ defGame({
       await Voice.say(CNQ(k) + '个娃！', { tag: 'fix' });
     }
   },
+  /* explain: (the ones he put up wiggled) all step down, then "the third" = count places, ONE steps up; "three" = three
+     step up - the right ones gold */
+  async explain(st) {
+    const on = st.bros.filter(b => b.on).map(b => b.a.root);
+    if (on.length) await EX.chose(st, on);
+    await this.correct(st);
+    if (!Session.alive(st)) return;
+    await st.scope.wait(300);
+    await EX.gold(st, st.bros.filter(b => b.on).map(b => b.a.root));
+  },
   cleanup(st) { (st.bros || []).forEach(b => { Input.bind(b.a.root, { id: 'char:' + b.a.id }); }); BRO.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) {
     const q = st.q, k = q.target, on = st.bros.map(b => b.on);
@@ -5491,7 +5721,7 @@ defGame({
     return K.L() ? { cave: { x: 730, y: 230, w: 260, h: 300 }, rows: { x0: 200, dx: 150, y: [520, 690] }, bh: 140, grandpa: [80, 360] }
       : { cave: { x: 440, y: 230, w: 260, h: 300 }, rows: { x0: 64, dx: 150, y: [850, 1010] }, bh: 128, grandpa: [70, 440] };
   },
-  cardSpot() { return K.L() ? { cx: 460, cy: 180 } : { cx: 300, cy: 630 }; },
+  cardSpot() { return K.L() ? { cx: 490, cy: 172, size: 116, gap: 22 } : { cx: 300, cy: 630 }; },     /* five cards: between Grandpa and the cave */
   build(G) {
     BRO.forEach(id => { const a = K.actor(G, id, 140); hideActor(a); });
     K.actor(G, 'grandpa', 210);
@@ -5668,6 +5898,7 @@ defGame({
     st.cards[st.opts.indexOf(st.inCave)].classList.add('hi');
     await Voice.say('洞里有' + CNQ(st.inCave) + '个', { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { (st.bros || []).forEach(b => { b.a.root.style.visibility = ''; b.a.root.style.zIndex = ''; }); BRO.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) {
     if (st.phase === 'act') {
@@ -5713,7 +5944,7 @@ defGame({
     if (st && st.cards) K.cardsPlace(st, this.cardSpot());
   },
   relayoutQ(st) { this.layout(st.G); },
-  cardSpot() { return K.L() ? { cx: 512, cy: 600 } : { cx: 360, cy: 716 }; },
+  cardSpot() { return K.L() ? { cx: 520, cy: 622, size: 116, gap: 22 } : { cx: 360, cy: 716 }; },
   placeGems(st, pts, instant) {
     const a = this.area(), vis = st.gems.filter(g => !g._gone);
     return Promise.all(vis.map((g, i) => { const [u, v] = pts[i] || [0.5, 0.5]; const x = a.x + u * a.w - 40, y = a.y + v * a.h - 40; if (instant) { place(g, x, y); return null; } return K.flyTo(st, g, x, y, 380); }));
@@ -5829,6 +6060,7 @@ defGame({
     st.cards[st.opts.indexOf(q.took)].classList.add('hi');
     await Voice.say('拿了' + CNQ(q.took) + '个', { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { hideActor(st.G.actors.gourd6); st.G.actors.scorpion.body.style.transform = ''; },
   onCharTap(st, id) { if (id === 'scorpion') { st.G.actors.scorpion.body.style.transform = ''; Voice.sayNow('谁？谁在那儿？', { tag: 'egg' }); return false; } return false; },
   next(st, strat) {
@@ -6019,6 +6251,23 @@ defGame({
     this.bond(st);
     await st.scope.wait(600);
   },
+  /* explain: L1-2 every pup goes to its mission counted, the part-whole bar, both teams gold; L3-4 the card he chose
+     (blue), the fire team out, the rest counted ("洪水要三只"), the right card gold */
+  async explain(st, ans) {
+    if (st.level >= 3) {                 /* the pups stay where they wait (the cards are right above them): fire team ringed, the rest counted */
+      await EX.cards(st, ans, async () => {
+        const q = st.q, fire = st.pups.slice(0, q.a), rest = st.pups.slice(q.a);
+        await EX.say(st, '剩下的数一数');
+        K.ring(st, fire.map(p => p.a.root._box()), 6, '#FF9A6C');
+        await st.scope.wait(400);
+        for (let i = 0; i < rest.length; i++) { if (!Session.alive(st)) return; rest[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
+        await EX.say(st, '洪水要' + CNQ(q.b) + '只');
+      });
+      return;
+    }
+    await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.pups.map(p => p.a.root));
+  },
   cleanup(st) { (st.pups || []).forEach(p => Input.bind(p.a.root, { id: 'char:' + p.a.id })); PUPS.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) {
     const q = st.q;
@@ -6081,7 +6330,7 @@ defGame({
     if (st && st.cards) K.cardsPlace(st, this.cardSpot());
   },
   relayoutQ(st) { this.layout(st.G); },
-  cardSpot() { return K.L() ? { cx: 512, cy: 632 } : { cx: 352, cy: 776 }; },
+  cardSpot() { return K.L() ? { cx: 455, cy: 640, size: 106, gap: 20 } : { cx: 352, cy: 776 }; },      /* five cards between Ryder and Rocky */
   parked() { const g = this.geo(); return { pa: { x: Math.max(8, g.pen.x - 170), y: g.pen.y + 120 }, pb: { x: Math.min(Stage.W - 218, g.pen.x + g.pen.w - 40), y: g.pen.y + 120 } }; },
   /* each driver stands in front of the outer half of its own vehicle */
   driverXY(v, right) { return { x: right ? v.x + 155 : v.x + 55, y: v.y + 180 }; },     /* a clear gap under the riders on the roof */
@@ -6200,6 +6449,7 @@ defGame({
     st.cards[st.opts.indexOf(q.n)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.n) + '只', { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { const G = st.G; G.els.vB.firstChild.style.transform = ''; },
   next(st, strat) {
     if (st.phase === 'act') return { g: 'tap', p: { id: 'whistle' } };
@@ -6236,7 +6486,7 @@ defGame({
     const ans = kind === 'plus' ? k + d : k - d;
     return { k: [kind, k, d], kind, n0: k, d, answer: ans, opts: numOptions(G, ans, 0, 12), who: rng.shuffle(PUPS).slice(0, 2) };
   },
-  geo() { return K.L() ? { el: { x: 420, y: 250, w: 220, h: 280 }, ruler: { x: 700, y: 170, h: 400 }, wait: [300, 560], ryder: [900, 700], out: [200, 540] } : { el: { x: 242, y: 330, w: 220, h: 280 }, ruler: { x: 520, y: 260, h: 400 }, wait: [150, 700], ryder: [640, 1010], out: [220, 720] }; },
+  geo() { return K.L() ? { el: { x: 420, y: 250, w: 220, h: 280 }, ruler: { x: 700, y: 170, h: 400 }, wait: [300, 560], ryder: [900, 700], out: [200, 540] } : { el: { x: 242, y: 330, w: 220, h: 280 }, ruler: { x: 520, y: 260, h: 400 }, wait: [150, 700], ryder: [650, 1010], out: [220, 700] }; },
   build(G) {
     PUPS.forEach(id => { const a = K.actor(G, id, 140); hideActor(a); });
     K.actor(G, 'ryder', 200);
@@ -6261,7 +6511,7 @@ defGame({
     if (st && st.cards) K.cardsPlace(st, this.cardSpot());
   },
   relayoutQ(st) { this.layout(st.G); },
-  cardSpot() { return K.L() ? { cx: 512, cy: 620 } : { cx: 330, cy: 860 }; },
+  cardSpot() { return K.L() ? { cx: 440, cy: 640, size: 108, gap: 20 } : { cx: 324, cy: 766, size: 108, gap: 20 }; },      /* five cards clear of the ruler, the pups and Ryder */
   setDisp(G, v) { const d = G.els.lift._disp; d.innerHTML = ''; if (v === '?') d.innerHTML = ICONS.q.replace('<svg', '<svg width="40" height="40"'); else d.appendChild(UI.qty(v, 38, { plain: true, ink: '#FFD34D' })); },
   async present(st) {
     const G = st.G, q = st.q, g = this.geo();
@@ -6349,6 +6599,7 @@ defGame({
     st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
     await Voice.say(this.line(st), { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { (st.waiter || []).forEach(a => { a._in = false; }); PUPS.forEach(id => hideActor(st.G.actors[id])); st.hi = 0; },
   next(st, strat) {
     if (st.phase === 'act') { if (st.busyMove) return null; if (st.q.kind === 'plus') { const i = st.waiter.findIndex(a => !a._in); return i >= 0 ? { g: 'tap', p: { id: 'pup' + i } } : null; } return { g: 'tap', p: { id: 'lift' } }; }
@@ -6392,7 +6643,7 @@ defGame({
     if (st && st.cards) K.cardsPlace(st, this.cardSpot());
   },
   relayoutQ(st) { this.layout(st.G); },
-  cardSpot() { return K.L() ? { cx: 380, cy: 360 } : { cx: 352, cy: 766 }; },
+  cardSpot() { return K.L() ? { cx: 320, cy: 370, size: 108, gap: 20 } : { cx: 352, cy: 766 }; },      /* five cards left of the basket */
   placeKit(st, kt, i) { const g = this.geo(); place(kt.el, g.roof.x + 20 + i * 112, g.roof.y); },
   placeGroup(st) { if (!st.grp) return; const g = this.geo(); place(st.grp, g.roof.x, g.roof.y - 14, st.q.m * 112 + 20, 118); },
   setTag(G, v) { const t = G.els.tag; t.innerHTML = ''; if (v === '?') t.innerHTML = ICONS.q.replace('<svg', '<svg width="54" height="54"'); else t.appendChild(UI.qty(v, 44, { plain: true })); },
@@ -6480,6 +6731,7 @@ defGame({
     st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.answer) + '只', { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   next(st, strat) {
     if (!st.cards) { if (st.level >= 4) return { g: 'tap', p: { id: 'group' } }; const kt = st.kits.find(k => !k.up); return kt ? { g: 'tap', p: { id: kt.id } } : null; }
     return K.cardNext(st, strat);
@@ -6544,9 +6796,11 @@ defGame({
     const tipAt = L ? { x: g.x0 + Math.max(total * u, 70) + 24, y: g.y0 - 48 } : { x: g.x0 - 48, y: g.y0 - Math.max(total * u, 0) - 118 };
     place(st.G.els.tip, tipAt.x, tipAt.y, 96, 96);
   },
+  /* five growth pieces (client 2026-10-10): one row on the floor (landscape), two rows under the task card (portrait) */
   placeBars(st) {
-    const g = this.geo();
-    st.barEls.forEach((b, i) => { const L = K.L(); place(b, g.bars.x + (L ? i * 196 : 0), g.bars.y + (L ? 0 : i * 118), 176, 96); });
+    if (K.L()) { const cg = K.cardGeo(st.barEls.length, { cx: 560, cy: 615, size: 150, h: 90, gap: 22 }); st.barEls.forEach((b, i) => place(b, cg.pos[i].x, cg.pos[i].y, cg.size, cg.h)); return; }
+    /* portrait: three left of the staff, two right of it (the staff grows up the middle to ten) */
+    st.barEls.forEach((b, i) => place(b, i < 3 ? 30 : 524, 214 + (i < 3 ? i : i - 3) * 104, 150, 88));
   },
   async present(st) {
     const G = st.G, q = st.q, g = this.geo();
@@ -6556,7 +6810,7 @@ defGame({
     const tk = [[{ node: (() => { const s = el('span'); s.innerHTML = ICONS.staff; s.firstChild.setAttribute('width', 48); s.firstChild.setAttribute('height', 48); return s; })() }, { qty: q.k0, both: true }], ['arrowR'], [{ qty: q.N, both: true }]];
     if (st.level >= 4) {
       G.els.tip.style.display = 'none';
-      st.barEls = q.bars.map((v, i) => { const b = el('div', 'card', Stage.el); b.style.position = 'absolute'; b.style.flexDirection = 'row'; st.els.push(b); for (let j = 0; j < v; j++) { const c = el('div', '', b); Object.assign(c.style, { width: '26px', height: '40px', margin: '0 2px', borderRadius: '8px', background: '#FFE08A', boxShadow: '0 0 0 3px #2B2118' }); } K.reg(st, 'card' + i, b, {}); K.pop(st, b, 80 * i); return b; });
+      st.barEls = q.bars.map((v, i) => { const b = el('div', 'card', Stage.el); b.style.position = 'absolute'; b.style.flexDirection = 'row'; st.els.push(b); for (let j = 0; j < v; j++) { const c = el('div', '', b); Object.assign(c.style, { width: '17px', height: '40px', margin: '0 2px', borderRadius: '6px', background: '#FFE08A', boxShadow: '0 0 0 3px #2B2118' }); } K.reg(st, 'card' + i, b, {}); K.pop(st, b, 80 * i); return b; });
       st.cards = st.barEls; st.opts = q.bars;
       this.placeBars(st);
       K.task(st, tk.slice(0, 1).concat([['q'], [{ qty: q.N, both: true }]]));
@@ -6622,12 +6876,19 @@ defGame({
     for (let i = q.k0; i < q.N; i++) { if (!Session.alive(my)) return; st.len = i + 1; this.draw(st); await Count.beat(st.scope, 520, i + 1); }
     await Voice.say('变到' + CN[q.N] + '节', { tag: 'fix' });
   },
+  /* explain: (L4: the piece he chose, blue) the staff from its k on, one segment at a time, counted on to the target;
+     the right length / piece gold */
+  async explain(st, ans) {
+    if (st.barEls) { await EX.cards(st, ans); return; }
+    await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.G.els.staff);
+  },
   cleanup(st) { st.G.els.staff.innerHTML = ''; st.G.els.tip.style.display = ''; },
   next(st, strat) {
     const q = st.q;
     if (st.level >= 4) return K.cardNext(st, strat);
     const bk = /^build:(\d+)$/.exec(strat || ''), K0 = bk ? Number(bk[1]) : null;
-    const want = bk ? Math.max(K0, 1) : strat === 'wrong' ? q.N + 1 : q.N;
+    const want = bk ? clamp(K0, q.k0, Math.min(10, q.k0 + 6)) : strat === 'wrong' ? q.N + 1 : q.N;      /* a habit 'build K' stays inside what the staff can be */
     if (st.len < want) return { g: 'tap', p: { id: 'tip' } };
     if (st.len > want) return { g: 'tap', p: { id: 'staff' } };
     return { g: 'tap', p: { id: 'done' } };
@@ -6743,6 +7004,13 @@ defGame({
     st.clouds[q.a + q.m - 1].classList.add('glow');
     await Voice.say('到' + CN[q.a + q.m] + '！', { tag: 'fix' });
   },
+  /* explain: the cloud he picked (blue, "你选的是七"), Wukong back on his cloud flips the right number of times, counted
+     on - the cloud he lands on is gold */
+  async explain(st, ans) {
+    await EX.chose(st, st.clouds[ans - 1], EX.num(ans));
+    await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.clouds[st.q.a + st.q.m - 1]);
+  },
   cleanup(st) { st.clouds && st.clouds.forEach(c => { c.style.opacity = ''; }); st.G.actors.wukong.root.style.pointerEvents = ''; Input.bind(st.G.actors.wukong.root, { id: 'char:wukong' }); },
   next(st, strat) {
     const q = st.q;
@@ -6783,7 +7051,7 @@ defGame({
     const holes = lv === 3 ? rng.shuffle(Array.from({ length: 10 }, (_, i) => i)).slice(0, a).sort((x, y) => x - y) : Array.from({ length: a }, (_, i) => i);
     return { k: [cap, a, lv], cap, a, need, answer: need, opts, holes, loose: lv >= 4 };
   },
-  geo() { return K.L() ? { basket: { x: 60, y: 220, w: 360, h: 300 }, frame: { x: 88, y: 330 }, br: { x: 500, y: 150, dx: 0, dy: 140, w: 260, h: 120 }, bajie: [900, 704], wukong: [110, 704], others: [[560, 704, 'shaseng'], [900, 430, 'tangseng']], ch: 160 } : { basket: { x: 172, y: 520, w: 360, h: 300 }, frame: { x: 200, y: 630 }, br: { x: 50, y: 210, dx: 212, dy: 0, w: 170, h: 150 }, bajie: [600, 1010], wukong: [110, 1010], others: [[300, 1010, 'shaseng'], [-400, -400, 'tangseng']], ch: 170 }; },
+  geo() { return K.L() ? { basket: { x: 60, y: 220, w: 360, h: 300 }, frame: { x: 88, y: 330 }, br: { x: 500, y: 150, dx: 0, dy: 140, w: 260, h: 120 }, bajie: [900, 704], wukong: [110, 704], others: [[560, 704, 'shaseng'], [-400, -400, 'tangseng']], ch: 160 } : { basket: { x: 172, y: 520, w: 360, h: 300 }, frame: { x: 200, y: 630 }, br: { x: 50, y: 210, dx: 212, dy: 0, w: 170, h: 150 }, bajie: [600, 1010], wukong: [110, 1010], others: [[300, 1010, 'shaseng'], [-400, -400, 'tangseng']], ch: 170 }; },
   build(G) {
     ['bajie', 'wukong', 'shaseng', 'tangseng'].forEach(id => K.actor(G, id, 180));
     G.els.basket = K.item(Stage.el, 'assets/props/basket.png', 360, 300); G.els.basket.style.zIndex = 2;
@@ -6806,9 +7074,11 @@ defGame({
       place(p.el, x, y);
     });
   },
+  /* five branches (client 2026-10-10): two columns right of the basket (landscape), two rows above it (portrait) */
   placeBranches(st) {
-    const g = this.geo(), L = K.L();
-    (st.branches || []).forEach((b, i) => place(b.el, g.br.x + i * g.br.dx, g.br.y + i * g.br.dy, g.br.w, g.br.h));
+    const g = this.geo(), L = K.L(), B = st.branches || [];
+    if (L) B.forEach((b, i) => place(b.el, i < 3 ? 470 : 750, i < 3 ? 104 + i * 140 : 174 + (i - 3) * 140, g.br.w, g.br.h));
+    else { const cg = K.cardGeo(B.length, { cx: 352, cy: 360, size: g.br.w, h: g.br.h, gap: 20, rows: 2 }); B.forEach((b, i) => place(b.el, cg.pos[i].x, cg.pos[i].y, g.br.w, g.br.h)); }
   },
   peach(size) { const e = K.item(Stage.el, 'assets/props/peach.png', size || 54, size || 54); e.style.zIndex = 6; return e; },
   async present(st) {
@@ -6872,7 +7142,7 @@ defGame({
   },
   async feedback(st, ans) {
     const q = st.q, my = st;
-    const added = await this.pour(st, ans);
+    const added = st.added = await this.pour(st, ans);
     if (!Session.alive(my)) return;
     if (ans < q.need) { const used = new Set(st.peaches.map(p => p.hole)); const empt = []; for (let i = 0; i < q.cap; i++) if (!used.has(i)) { const h = this.holeXY(st, i); const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%' }); place(d, h.x - 26, h.y - 26); st.els.push(d); empt.push(d); } K.flash(st, empt); }
     else { const bj = st.G.actors.bajie.root._box(); const extra = added.slice(q.need); await Promise.all(extra.map(e => K.flyTo(st, e, bj.x + bj.w / 2 - 27, bj.y + bj.h * 0.35, 520, 90))); extra.forEach(e => { e.style.visibility = 'hidden'; }); st.G.actors.bajie.react('belly'); }
@@ -6887,6 +7157,18 @@ defGame({
     for (let i = 0; i < q.cap; i++) { if (used.has(i)) continue; if (!Session.alive(my)) return; c++; const h = this.holeXY(st, i); const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118' }); place(d, h.x - 26, h.y - 26); st.els.push(d); await Count.beat(st.scope, 420, c); }
     st.branches[st.opts.indexOf(q.need)].el.classList.add('glow');
     await Voice.say('还差' + CNQ(q.need) + '个', { tag: 'fix' });
+  },
+  /* explain: the branch he chose (blue); its peaches leave the basket again, the empty places are counted ("还差三个"),
+     the right branch gold */
+  async explain(st, ans) {
+    const b = st.branches[st.opts.indexOf(ans)];
+    await EX.chose(st, b && b.el, EX.num(ans));
+    (st.added || []).forEach(e => { st.scope.anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' }); });
+    st.peaches = st.peaches.filter(p => !(st.added || []).includes(p.el));
+    if (b) b.pe.forEach(pe => { pe.style.visibility = ''; });
+    await st.scope.wait(300);
+    await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.branches[st.opts.indexOf(st.q.need)].el, '对的是这个！');
   },
   next(st, strat) { return K.cardNext(st, strat); },
   workEls(st) { return (st.branches || []).map(b => b.el); },
@@ -6928,7 +7210,7 @@ defGame({
     if (st && st.cards) K.cardsPlace(st, this.cardSpot());
   },
   relayoutQ(st) { this.layout(st.G); },
-  cardSpot() { return K.L() ? { cx: 470, cy: 180 } : { cx: 320, cy: 820 }; },
+  cardSpot() { return K.L() ? { cx: 316, cy: 650, size: 100, gap: 20 } : { cx: 290, cy: 786, size: 100, gap: 20 }; },      /* five cards below the clones */
   placeClones(st, instant) {
     /* R4-V02: until the hiding every clone keeps its cell of the WHOLE; after it the rest takes the rest's layout */
     const g = this.geo(), all = !st.hidDone, vis = all ? st.clones : st.clones.filter(c => !c.hidden);
@@ -7031,6 +7313,7 @@ defGame({
     st.cards[st.opts.indexOf(q.h)].classList.add('hi');
     await Voice.say('还差' + CNQ(q.h) + '只', { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { const c = st.G.els.curtain; c.getAnimations().forEach(a => a.cancel()); c.style.transform = ''; c.style.opacity = ''; Input.bind(st.G.actors.wukong.root, { id: 'char:wukong' }); Input.unbind(c); },
   next(st, strat) { if (st.phase === 'act') return st.hideWait ? { g: 'tap', p: { id: 'curtain' } } : (st.clones.length ? null : { g: 'tap', p: { id: 'blow' } }); return st.cards ? K.cardNext(st, strat) : null; },
   workEls(st) { return st.phase === 'act' ? [st.hideWait ? st.G.els.curtain : st.G.actors.wukong.root] : (st.cards || []); },
@@ -7075,7 +7358,7 @@ defGame({
     if (st && st.cards) K.cardsPlace(st, this.cardSpot());
   },
   relayoutQ(st) { this.layout(st.G); },
-  cardSpot() { return K.L() ? { cx: 560, cy: 110 + 60 } : { cx: 352, cy: 884 }; },          /* portrait: on the floor below the line */
+  cardSpot() { return K.L() ? { cx: 560, cy: 640, size: 112, gap: 20 } : { cx: 352, cy: 884 }; },          /* on the floor below the line of heroes */
   slotX(st, i) { const g = this.geo(), n = st.q.b; return g.line.x0 + (g.line.x1 - g.line.x0) * (n === 1 ? 0.5 : i / (n - 1)); },
   setDisp(G, v) { const d = G.els.disp; d.innerHTML = ''; if (v === '?') d.innerHTML = ICONS.q.replace('<svg', '<svg width="56" height="56"'); else d.appendChild(UI.qty(v, 48, { plain: true, ink: '#FFD34D' })); },
   async present(st) {
@@ -7153,6 +7436,7 @@ defGame({
     st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
     await Voice.say('一共' + CNQ(q.answer) + '位', { tag: 'fix' });
   },
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { HEROES.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) { if (!st.cards) return st.out.length < st.q.b ? { g: 'tap', p: { id: 'portal' } } : null; return K.cardNext(st, strat); },
   workEls(st) { return st.cards || [st.G.els.portal]; },
@@ -7190,7 +7474,7 @@ defGame({
     let supply;
     if (lv <= 2) supply = { crates: 1, singles: lv === 1 ? 3 : 6, packs: [] };
     else supply = { crates: lv >= 4 ? 2 : 1, singles: 0, packs: [1, 2, 3, 4, 5] };
-    return { k: [kind, T], kind, T, crates, ones, answer: T, supply, opts: kind === 'name' ? numOptions(G, T, 8, 22) : null };
+    return { k: [kind, T], kind, T, crates, ones, answer: T, supply, opts: kind === 'name' ? numOptions(G, T, 8, 20) : null };
   },
   geo() { return K.L() ? { plat: { x: 560, y: 520, w: 330, h: 110 }, shelf: { x: 24, y: 150, w: 430 }, hulk: [725, 560], hh: 250, captain: [-400, -400], widow: [-400, -400], thor: [948, 520], th: 160 }
       : { plat: { x: 187, y: 760, w: 330, h: 110 }, shelf: { x: 24, y: 220, w: 660 }, hulk: [352, 800], hh: 240, captain: [620, 760], widow: [100, 1010], thor: [-400, -400], th: 160 }; },
@@ -7206,7 +7490,7 @@ defGame({
     if (st && st.cards) K.cardsPlace(st, this.cardSpot());
   },
   relayoutQ(st) { this.layout(st.G); },
-  cardSpot() { return K.L() ? { cx: 725, cy: 190 } : { cx: 352, cy: 400 }; },
+  cardSpot() { return K.L() ? { cx: 600, cy: 190, size: 120, gap: 22 } : { cx: 352, cy: 400 }; },
   /* every supply piece keeps its own shelf place: rows filled left to right, 24 px apart */
   shelfXY(st, it) {
     const g = this.geo(); let x = 0, y = 0, rowH = 0;
@@ -7307,6 +7591,17 @@ defGame({
     if (st.cards) st.cards[st.opts.indexOf(q.T)].classList.add('hi');
     await Voice.say(this.line(st), { tag: 'fix' });
   },
+  /* explain: name - the card he chose (blue), a crate opened into ten and the loose ones counted on, the right card
+     gold; build - the same count, then the platform holds the right pieces (gold) */
+  async explain(st, ans) {
+    if (st.q.kind === 'name') { await EX.cards(st, ans); return; }
+    await this.correct(st);
+    if (!Session.alive(st)) return;
+    st.items.forEach(x => { x.on = false; });
+    for (let left = st.q.T, k = 0; left > 0 && k < 20; k++) { const c = st.items.filter(x => !x.on && x.el._val <= left).sort((a, b) => b.el._val - a.el._val)[0]; if (!c) break; c.on = true; left -= c.el._val; }
+    await this.arrange(st);
+    if (Session.alive(st)) await EX.gold(st, st.items.filter(x => x.on).map(x => x.el));
+  },
   next(st, strat) {
     const q = st.q;
     if (q.kind === 'name') return K.cardNext(st, strat);
@@ -7351,6 +7646,7 @@ defGame({
     const rng = o.rng, lv = o.level;
     let a, b;
     if (lv === 1) { a = rng.int(7, 9); b = rng.int(Math.max(3, 11 - a), Math.max(3, 12 - a)); } else if (lv === 2) { a = rng.int(6, 9); b = rng.int(Math.max(3, 11 - a), Math.max(4, 12 - a)); } else if (lv === 3) { a = rng.int(6, 9); b = rng.int(Math.max(4, 11 - a), 6); } else { a = rng.int(5, 9); b = rng.int(Math.max(6, 11 - a), 9); }
+    b = Math.max(b, 5);                                 /* five pieces are cut from the bar: it has at least five cells (client 2026-10-10) */
     const need = 10 - a;
     if (o.kind === 'sum10') return { k: [a, b, 'sum'], a, b, need, T: a + b, answer: a + b, opts: numOptions(G, a + b, 10, 20) };
     const opts = numOptions(G, need, 1, b);             /* three pieces cut from the bar (<= b); the right one fills gauge 1 exactly */
@@ -7368,17 +7664,20 @@ defGame({
     if (st && st.g1) { place(st.g1, g.g1.x, g.g1.y); place(st.g2, g.g2.x, g.g2.y); place(st.core, g.core.x, g.core.y); this.placePieces(st); }
   },
   relayoutQ(st) { this.layout(st.G); },
+  /* five pieces (client 2026-10-10) in centred rows as wide as there is room for */
   placePieces(st) {
-    const g = this.geo(), P = st.pieces || [], ws = P.map(p => parseFloat(p.style.width) || 120);
-    if (g.pieces.row) { const tot = ws.reduce((s, w) => s + w, 0) + 24 * (P.length - 1); let x = g.pieces.cx - tot / 2; P.forEach((p, i) => { place(p, Math.round(x), g.pieces.y, ws[i], 96); x += ws[i] + 24; }); }
-    else P.forEach((p, i) => place(p, Math.round(g.pieces.cx - ws[i] / 2), g.pieces.y + i * 118, ws[i], 96));
+    const P = st.pieces || [], ws = P.map(p => parseFloat(p.style.width) || 120), L = K.L(), maxW = L ? 760 : 670, cx = L ? 484 : 352, y0 = L ? 400 : 580, gap = 22, h = 92;
+    const rows = []; let row = [], w = 0;
+    P.forEach((p, i) => { if (row.length && w + gap + ws[i] > maxW) { rows.push(row); row = []; w = 0; } w += (row.length ? gap : 0) + ws[i]; row.push(i); });
+    if (row.length) rows.push(row);
+    rows.forEach((r, k) => { const tot = r.reduce((s, i) => s + ws[i], 0) + gap * (r.length - 1); let x = cx - tot / 2; r.forEach(i => { place(P[i], Math.round(x), y0 + k * (h + 20), ws[i], h); x += ws[i] + gap; }); });
   },
   async present(st) {
     const G = st.G, q = st.q, g = this.geo();
     st.g1 = gaugeEl(q.a); st.g2 = gaugeEl(0); st.core = coreEl(q.b);
     [st.g1, st.g2, st.core].forEach(e => { Stage.el.appendChild(e); st.els.push(e); e.style.position = 'absolute'; });
     if (st.kind === 'sum10') return this.presentSum(st);
-    st.pieces = q.opts.map((v, i) => { const c = el('div', 'card', Stage.el); c.style.position = 'absolute'; st.els.push(c); const inner = coreEl(v, '#FFD34D'); inner.style.position = 'relative'; inner.style.transform = 'scale(.7)'; c.appendChild(inner); c.style.width = Math.max(96, Math.round(v * 42 * 0.7 + 50)) + 'px'; K.reg(st, 'card' + i, c, {}); return c; });
+    st.pieces = q.opts.map((v, i) => { const c = el('div', 'card', Stage.el); c.style.position = 'absolute'; st.els.push(c); const inner = coreEl(v, '#FFD34D'); inner.style.position = 'relative'; inner.style.transform = 'scale(.6)'; c.appendChild(inner); c.style.width = Math.max(96, Math.round(v * 42 * 0.6 + 44)) + 'px'; c.style.height = '92px'; K.reg(st, 'card' + i, c, {}); return c; });
     st.cards = st.pieces; st.opts = q.opts;
     this.layout(G);
     [st.g1, st.g2, st.core].forEach((e, i) => K.pop(st, e, 80 * i));
@@ -7425,7 +7724,7 @@ defGame({
     st.phase = 'ready';
     return 'ok';
   },
-  cardSpot() { return K.L() ? { cx: 512, cy: 470 } : { cx: 352, cy: 700 }; },
+  cardSpot() { return K.L() ? { cx: 480, cy: 455, size: 112, gap: 20 } : { cx: 352, cy: 700 }; },
   onGesture(st, name, p) {
     if (st.kind === 'sum10' && st.phase === 'act') {
       if (p.id === 'core' && (name === 'tap' || name === 'drop')) return this.pour(st, name === 'drop' ? p.to : (st.poured === 0 ? 'g1' : 'g2'));
@@ -7482,8 +7781,8 @@ defGame({
     if (st.kind === 'sum10') {
       /* the full gauge is ten at one look, then count on through the second gauge */
       st.scope.anim(st.g1, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 400, fill: 'none' });
-      Voice.say('满格是十', { tag: 'fix' }); await st.scope.wait(900);
-      for (let k = 0; k < q.T - 10; k++) { if (!Session.alive(my)) return; const c = st.g2._cells[k]; if (c) st.scope.anim(c, [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 300, fill: 'none' }); await Count.beat(st.scope, 480, 11 + k); }
+      Voice.say('满格是十', { tag: 'fix' }); await st.scope.wait(st.explaining ? 600 : 900);
+      for (let k = 0; k < q.T - 10; k++) { if (!Session.alive(my)) return; const c = st.g2._cells[k]; if (c) st.scope.anim(c, [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 300, fill: 'none' }); await Count.beat(st.scope, st.explaining ? 380 : 480, 11 + k); }
       st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
       await Voice.say('一共' + CNQ(q.T) + '格', { tag: 'fix' });
       return;
@@ -7493,6 +7792,9 @@ defGame({
     st.pieces[st.opts.indexOf(q.need)].classList.add('hi');
     await Voice.say('还差' + CNQ(q.need) + '格', { tag: 'fix' });
   },
+  /* explain: the piece / card he chose (blue); split10: the empty cells of the first gauge counted ("还差两格");
+     sum10: the full gauge is ten, then counted on; the right one gold */
+  async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { st.G.actors.spiderman.body.style.transform = ''; },
   next(st, strat) {
     if (st.kind === 'sum10' && st.phase === 'act') return st.pouring ? null : { g: 'tap', p: { id: 'core' } };
@@ -7560,7 +7862,7 @@ defGame({
     for (let k = 0; k < ones; k++) out.push({ x: 130 - (row - 1) * dx / 2 + k * dx, top: tens ? 44 : 20 });
     return out;
   },
-  placeTargets(st) { const g = this.geo(st); st.targets.forEach((t, i) => place(t, g.targets.x + i * g.targets.dx, g.targets.y, 124, 124)); if (st.quiver) place(st.quiver, g.quiver.x, g.quiver.y); },
+  placeTargets(st) { const cg = K.cardGeo(st.targets.length, K.L() ? { cx: 600, cy: 560, size: 120, gap: 22 } : { cx: 352, cy: 750, size: 116, gap: 20 }); st.targets.forEach((t, i) => place(t, cg.pos[i].x, cg.pos[i].y, cg.size, cg.size)); if (st.quiver) place(st.quiver, this.geo(st).quiver.x, this.geo(st).quiver.y); },     /* five targets (client 2026-10-10) */
   pileXY(st, s) {
     const g = this.geo(st); let x = 0, y = 0, rowH = 0;
     for (const o of st.src) {
@@ -7708,6 +8010,13 @@ defGame({
     }
     await Voice.say(CN[q.n] + '，就是' + CNQ(q.n) + '个', { tag: 'fix' });
   },
+  /* explain: q2n - the target he chose (blue, "你选的是七"), the numeral beside its dots, the right target gold;
+     n2q - the numeral beside its dots, the right crystals into the bowl, gold */
+  async explain(st, ans) {
+    if (st.q.kind === 'q2n') { await EX.cards(st, ans); return; }
+    await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.src.filter(s => s.in).map(s => s.el).concat([st.G.els.bowl]));
+  },
   next(st, strat) {
     const q = st.q;
     if (q.kind === 'q2n') return K.cardNext(st, strat);
@@ -7784,7 +8093,10 @@ const W2P = {
     const s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="' + color + '" opacity=".35"/><circle cx="40" cy="40" r="25" fill="' + color + '" stroke="#2B2118" stroke-width="5"/><circle cx="32" cy="31" r="7" fill="#fff" opacity=".75"/></svg>';
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(s);
   },
-  src(k) { return k.startsWith('orb:') ? this.orb(k.slice(4)) : 'assets/props/' + k + '.png'; },
+  /* 'umbrella#120': the umbrella picture with its colour turned (hue-rotate 120deg) - more umbrellas of the same kind
+     for the five options of Q1 without new picture files */
+  src(k) { k = String(k).split('#')[0]; return k.startsWith('orb:') ? this.orb(k.slice(4)) : 'assets/props/' + k + '.png'; },
+  tint(im, k) { const t = String(k).split('#')[1]; if (t && im && im.style) im.style.filter = 'hue-rotate(' + t + 'deg) saturate(1.15)'; return im; },
   mini(srcs, q) {           /* a row of tiny pictures (and a "?") for the task card */
     const d = el('span', ''); d.style.display = 'flex'; d.style.gap = '3px'; d.style.alignItems = 'center';
     srcs.forEach(s => { const i = img(s, '', d); i.style.height = '34px'; i.style.width = '34px'; i.style.objectFit = 'contain'; });
@@ -7839,12 +8151,12 @@ const W2P = {
 };
 /* answer cards that are pictures (not numbers) */
 function w2PicCards(st, keys, opt) {
-  const size = 136, gap = 34, total = keys.length * size + (keys.length - 1) * gap;
-  const cx = opt.cx, cy = opt.cy;
+  const g = K.cardGeo(keys.length, Object.assign({ size: 136, gap: 34 }, opt)), size = g.size;
+  st.cardOpt = Object.assign({ size: 136, gap: 34 }, opt);
   st.cards = keys.map((k, i) => {
     const c = el('div', 'card', Stage.el); c.style.position = 'absolute';
-    const im = img(W2P.src(k), '', c); Object.assign(im.style, { width: '76%', height: '76%', objectFit: 'contain' });
-    place(c, Math.round(cx - total / 2 + i * (size + gap)), Math.round(cy - size / 2), size, size);
+    const im = img(W2P.src(k), '', c); Object.assign(im.style, { width: '76%', height: '76%', objectFit: 'contain' }); W2P.tint(im, k);
+    place(c, g.pos[i].x, g.pos[i].y, size, size);
     K.reg(st, 'card' + i, c, {}); st.els.push(c);
     st.scope.anim(c, [{ transform: 'scale(0) rotate(-8deg)' }, { transform: 'scale(1)' }], { duration: 320, delay: 60 * i, easing: EASE.pop, fill: 'backwards' });
     return c;
@@ -7868,10 +8180,10 @@ const W2Base = {
   layout(G) { this.decor(G); const st = Session.st && Session.st.G === G ? Session.st : null; if (st && st.q) this.place(st); },
   relayoutQ(st) { this.layout(st.G); },
   place() {},
-  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 800 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 612, size: 120, gap: 22 } : { cx: 352, cy: 800 }; },     /* five cards between the two watchers */
   workEls(st) { return st.cards || []; },
   snap(st) { return { opts: st.opts || null }; },
-  cheerAll(st) { this.chars.slice(0, 2).forEach(id => { const a = st.G.actors[id]; if (a && a.x > 0) a.cheer(); }); },
+  cheerAll(st) { if (st.explaining) return; this.chars.slice(0, 2).forEach(id => { const a = st.G.actors[id]; if (a && a.x > 0) a.cheer(); }); },
 };
 
 /* ================================================================ RULE 1 · 分 share fairly (division by dealing) */
@@ -7974,6 +8286,8 @@ const MShare = {
     st.plates.forEach(pl => K.badge(st, pl, q.per, 0, -20, 50));
     await Voice.say('每人' + CNQ(q.per) + '个', { tag: 'fix' });
   },
+  /* explain: the card he chose (blue, "你选的是四"), one plate counted, every plate gets its number, the right card gold */
+  async explain(st, ans) { await EX.cards(st, ans); },
   next(st, strat) {
     if (st.cards) return K.cardNext(st, strat);
     if (!st.pile.length) return null;
@@ -8001,7 +8315,8 @@ const MPattern = {
     const m = Math.min(8, unit.length * 2 + rng.int(0, unit.length - 1));
     const seq = Array.from({ length: m }, (_, i) => map[unit[i % unit.length]]);
     const answer = map[unit[m % unit.length]];
-    return { k: [unit, m, keys.join()], unit, seq, answer, opts: rng.shuffle(keys) };
+    const more = (this.more || []).filter(k => !keys.includes(k)).slice(0, Math.max(0, 5 - keys.length));    /* five options (client 2026-10-10) */
+    return { k: [unit, m, keys.join()], unit, seq, answer, opts: placeOptions(G, keys.concat(more), answer) };
   },
   geo(st) {
     const L = K.L(), n = st.q.seq.length + 1;
@@ -8009,7 +8324,7 @@ const MPattern = {
     const x0 = (L ? 512 : 352) - (n - 1) * step / 2, y = L ? 300 : 440;
     return { step, sz, x0, y, n };
   },
-  cardSpot() { return K.L() ? { cx: 512, cy: 560 } : { cx: 352, cy: 760 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 560, size: 120, gap: 22 } : { cx: 352, cy: 760 }; },
   slotXY(st, i) { const g = this.geo(st); return { x: g.x0 + i * g.step - g.sz / 2, y: g.y - g.sz / 2 }; },
   place(st) {
     const g = this.geo(st);
@@ -8019,7 +8334,7 @@ const MPattern = {
   },
   pic(st, v) {
     if (st.q.num) { const d = el('div', 'item'); d.appendChild(UI.dots(v, 60, { layout: v <= 6 ? 'dice' : 'frame' })); return d; }
-    return K.item(Stage.el, W2P.src(v), 64, 64);
+    const e = K.item(Stage.el, W2P.src(v), 64, 64); W2P.tint(e.firstChild, v); return e;
   },
   async present(st) {
     const q = st.q;
@@ -8055,11 +8370,22 @@ const MPattern = {
     const q = st.q, my = st;
     Voice.say('一组一组看！', { tag: 'fix' });
     const u = q.num ? 1 : q.unit.length;
-    for (let i = 0; i < st.slots.length - 1; i++) { if (!Session.alive(my)) return; K.hop(st, st.slots[i], 16); Sfx.mar(Sfx.SCALE[i % u * 2], 0, 0.35, 0.35); await st.scope.wait(q.num ? 420 : 330); }
+    for (let i = 0; i < st.slots.length - 1; i++) { if (!Session.alive(my)) return; K.hop(st, st.slots[i], 16); Sfx.mar(Sfx.SCALE[i % u * 2], 0, 0.35, 0.35); await st.scope.wait((q.num ? 420 : 330) * (st.explaining ? 0.7 : 1)); }
     if (!Session.alive(my)) return;
     const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi');
     K.hop(st, st.blank, 20);
     await st.scope.wait(600);
+  },
+  /* explain: the card he chose (blue); the row hops group by group ("一组一组看！"), the right picture fills the gap, the
+     right card gold */
+  async explain(st, ans) {
+    await EX.cards(st, ans, async () => {
+      await this.correct(st);
+      if (!Session.alive(st)) return;
+      const g = this.geo(st), e = this.pic(st, st.q.answer); Stage.el.appendChild(e); e.style.position = 'absolute'; e.style.zIndex = 6; st.els.push(e);
+      const b = box(st.blank); place(e, b.x, b.y, g.sz, g.sz); st.blank.style.visibility = 'hidden'; K.pop(st, e);
+      await st.scope.wait(300);
+    });
   },
   next(st, strat) { return K.cardNext(st, strat); },
 };
@@ -8174,6 +8500,14 @@ const MBalance = {
     if (!Session.alive(my)) return;
     await Voice.say('一样重啦', { tag: 'fix' });
   },
+  /* explain: (feedback: the heavy pan flashed, "放多啦" / "还不一样重") grapes taken off / put on one at a time until the
+     beam is level - "一样重啦" - the right pan gold */
+  async explain(st) {
+    await this.correct(st);
+    if (!Session.alive(st)) return;
+    await st.scope.wait(300);
+    await EX.gold(st, [st.panR].concat(st.right));
+  },
   next(st, strat) {
     const q = st.q;
     if (q.guess) return K.cardNext(st, strat);
@@ -8203,7 +8537,7 @@ const MSeq = {
     return { k: [s, step, k], vals, gap: k, step, answer, opts: numOptions(G, answer, 1, 20) };
   },
   geo(st) { const L = K.L(), n = st.q.vals.length; const sz = L ? 104 : 90, x0 = L ? 140 : 70, x1 = L ? 884 : 634; return { sz, x0, step: (x1 - x0) / (n - 1), y: L ? 330 : 470 }; },
-  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 800 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 612, size: 120, gap: 22 } : { cx: 352, cy: 800 }; },
   tileXY(st, i) { const g = this.geo(st); return { x: g.x0 + i * g.step - g.sz / 2, y: g.y - g.sz / 2 + (i % 2 ? 26 : -12) }; },
   place(st) {
     const g = this.geo(st);
@@ -8233,9 +8567,9 @@ const MSeq = {
     for (let i = 0; i <= upto; i++) {
       if (!Session.alive(my)) return;
       const p = this.tileXY(st, i);
-      if (i) { st.at = i; await a.moveTo(p.x + g.sz / 2, p.y + 6, 300, 40); }
+      if (i && !st.explaining) { st.at = i; await a.moveTo(p.x + g.sz / 2, p.y + 6, 300, 40); }       /* the explanation counts the tiles where they are */
       K.hop(st, st.tiles[i], 10);
-      await Count.beat(st.scope, 360, st.q.vals[i]);
+      await Count.beat(st.scope, st.explaining ? 240 : 360, st.q.vals[i]);
     }
   },
   async reveal(st) {
@@ -8261,6 +8595,16 @@ const MSeq = {
     const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi');
     await Count.beat(st.scope, 600, q.answer);
   },
+  /* explain: the card he chose (blue, "你选的是七"); walked from the start, counting, to the gap - the missing number fills
+     it - the right card gold */
+  async explain(st, ans) {
+    await EX.cards(st, ans, async () => {
+      await this.correct(st);
+      if (!Session.alive(st)) return;
+      const q = st.q, t = st.tiles[q.gap], nt = W2P.tile(q.answer, 100, this.tileColor, false); Stage.el.appendChild(nt); nt.style.position = 'absolute'; nt.style.zIndex = 5; st.els.push(nt);
+      const b = box(t); place(nt, b.x, b.y, b.w, b.h); t.style.visibility = 'hidden'; K.pop(st, nt);
+    });
+  },
   next(st, strat) { return K.cardNext(st, strat); },
   workEls(st) { return (st.cards || []).concat(st.tiles ? [st.tiles[st.q.gap]] : []); },
 };
@@ -8278,7 +8622,7 @@ const MDouble = {
     return { k: [n, extra, left.join()], n, extra, left, more, total, answer: total, opts: numOptions(G, total, 2, 13) };
   },
   geo() { const L = K.L(); return L ? { x: 182, y: 104, w: 660, h: 330, cell: 100 } : { x: 42, y: 236, w: 620, h: 360, cell: 96 }; },
-  cardSpot() { return K.L() ? { cx: 512, cy: 600 } : { cx: 352, cy: 790 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 600, size: 120, gap: 22 } : { cx: 352, cy: 790 }; },
   cellXY(c, right) {
     const g = this.geo(), col = c % 3, row = Math.floor(c / 3), half = g.w / 2;
     const cx = g.x + half / 2 + (col - 1) * g.cell * 1.02, cy = g.y + g.h / 2 + (row - 0.5) * g.cell * 1.25;
@@ -8342,6 +8686,15 @@ const MDouble = {
     for (let i = 0; i < all.length; i++) { if (!Session.alive(my)) return; K.hop(st, all[i], 16); await Count.beat(st.scope, 420, i + 1); }
     const k = st.opts.indexOf(st.q.total); if (st.cards[k]) st.cards[k].classList.add('hi');
   },
+  /* explain: the card he chose (blue), both sides counted one by one (quick ticks), the total said, the right card gold */
+  async explain(st, ans) {
+    await EX.cards(st, ans, async () => {
+      const all = st.L.map(o => o.e).concat(st.R.map(o => o.e));
+      await EX.say(st, '一个一个数！');
+      for (let i = 0; i < all.length; i++) { if (!Session.alive(st)) return; K.hop(st, all[i], 14); K.badge(st, all[i], i + 1, 0, -10, 34); Sfx.count(i + 1); await st.scope.wait(210); }
+      await Count.beat(st.scope, 300, st.q.total);
+    });
+  },
   next(st, strat) {
     if (st.cards) return K.cardNext(st, strat);
     const i = st.R.findIndex(o => !o.e); return i >= 0 ? { g: 'tap', p: { id: 'g' + i } } : null;
@@ -8361,8 +8714,8 @@ const MSort = {
     for (let t = 0; t < 200; t++) {
       counts = Array.from({ length: kk }, () => rng.int(d === 4 ? 2 : 1, d === 4 ? 7 : 5));
       const mx = Math.max(...counts), mn = Math.min(...counts);
-      if (ask === 'most' && counts.filter(c => c === mx).length === 1 && mx - [...counts].sort((a, b) => b - a)[1] >= (d === 1 ? 2 : 1)) break;
-      if (ask === 'least' && counts.filter(c => c === mn).length === 1) break;
+      if (ask === 'most' && counts.filter(c => c === mx).length === 1 && counts.filter(c => c === mn).length === 1 && mx - [...counts].sort((a, b) => b - a)[1] >= (d === 1 ? 2 : 1)) break;
+      if (ask === 'least' && counts.filter(c => c === mn).length === 1 && counts.filter(c => c === mx).length === 1) break;
       if (ask === 'diff' && mx !== mn && mx - mn <= 4) break;
       if (ask === 'total' && counts.reduce((a, b) => a + b, 0) <= 13 && counts.reduce((a, b) => a + b, 0) >= 6) break;
     }
@@ -8370,7 +8723,20 @@ const MSort = {
     const total = counts.reduce((a, b) => a + b, 0), mx = Math.max(...counts), mn = Math.min(...counts);
     const answer = ask === 'most' ? counts.indexOf(mx) : ask === 'least' ? counts.indexOf(mn) : ask === 'diff' ? mx - mn : total;
     const list = rng.shuffle(counts.flatMap((c, i) => Array(c).fill(i)));
-    return { k: [counts.join(), ask], kinds, counts, ask, list, answer, opts: ask === 'diff' ? numOptions(G, answer, 0, 6) : ask === 'total' ? numOptions(G, answer, 4, 15) : null };
+    const q = { k: [counts.join(), ask], kinds, counts, ask, list, answer, opts: ask === 'diff' ? numOptions(G, answer, 0, 6) : ask === 'total' ? numOptions(G, answer, 4, 15) : null };
+    /* one question, two asks (client 2026-10-10: only 2-3 columns to pick from): "which most?" then "which least?" (or the
+       other way round) about the same columns - both right = right */
+    if (ask === 'most' || ask === 'least') { const a2 = ask === 'most' ? 'least' : 'most'; q.q2 = Object.assign({}, q, { ask: a2, answer: a2 === 'most' ? counts.indexOf(mx) : counts.indexOf(mn), q2: null }); }
+    return q;
+  },
+  /* the second ask: the same columns, the other question */
+  async twoNext(st) {
+    st.heads.forEach(h => h.classList.remove('hi'));
+    st.q = Object.assign({}, st.q.q2, { q1: { answer: st.q.answer } });
+    st.els.filter(e => e.classList && e.classList.contains('task')).forEach(t => { t.querySelectorAll('.twopips').forEach(x => x.remove()); Two.pips(st, t); });
+    await st.scope.wait(250);
+    K.say(st, st.q.ask === 'most' ? '哪个最多？' : '哪个最少？');
+    st.phase = 'ready';
   },
   geo(st) {
     const L = K.L(), kk = st.q.kinds.length;
@@ -8382,7 +8748,7 @@ const MSort = {
     const L = K.L();
     this.chars.forEach((id, i) => { const a = G.actors[id]; if (L) { if (i === 0) showActor(a, 962, 698, 160); else hideActor(a); } else if (i === 0) showActor(a, 72, 1016, 150); else if (i === 1) showActor(a, 634, 1016, 145); else hideActor(a); });
   },
-  cardSpot(st) { const a = this.geo(st).area; return { cx: a.x + a.w / 2, cy: a.y + a.h / 2 }; },
+  cardSpot(st) { const a = this.geo(st).area; return K.L() ? { cx: a.x + a.w / 2, cy: a.y + a.h / 2, size: 120, gap: 20, maxW: a.w + 20, rows: 2 } : { cx: a.x + a.w / 2, cy: a.y + a.h / 2 }; },     /* the empty heap */
   stackXY(st, c, k) { const g = this.geo(st); return { x: g.cx(c) - 28, y: g.hy - 62 - k * 50 }; },
   place(st) {
     const g = this.geo(st);
@@ -8423,7 +8789,7 @@ const MSort = {
   onGesture(st, name, p) {
     const id = p.id || '';
     if (/^it\d+$/.test(id) && name === 'tap') return this.file(st, Number(id.slice(2)));
-    if (/^col\d$/.test(id) && name === 'tap' && st.asked && !st.q.opts) { Session.submit(st, Number(id.slice(3))); return 'ok'; }
+    if (/^col\d$/.test(id) && name === 'tap' && st.asked && !st.q.opts) { Two.answer(st, Number(id.slice(3))); return 'ok'; }
     const i = K.cardIndex(id); if (name === 'tap' && i >= 0 && st.cards) { Session.submit(st, st.opts[i]); return 'ok'; }
     return false;
   },
@@ -8459,6 +8825,16 @@ const MSort = {
       await st.scope.wait(250);
     }
     if (q.opts) { const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi'); } else st.heads[q.answer].classList.add('hi');
+  },
+  /* explain: the card / column he chose (blue); every column counted, its number on top; the right card / column gold */
+  async explain(st, ans) {
+    const q = st.q;
+    /* every column at once: its things hop together and its number comes up (counting each one would take too long) */
+    const quick = async () => { await EX.say(st, '每列数一数！'); for (let c = 0; c < q.kinds.length; c++) { if (!Session.alive(st)) return; const els = this.colEls(st, c); els.forEach(e => K.hop(st, e, 12)); K.badge(st, els[els.length - 1] || st.heads[c], q.counts[c], 0, -18, 46); Sfx.count(q.counts[c]); await st.scope.wait(480); } };
+    if (st.q.opts) { await EX.cards(st, ans, quick); return; }
+    await EX.chose(st, st.heads[ans]);
+    await quick();
+    if (Session.alive(st)) await EX.gold(st, [st.heads[st.q.answer]].concat(this.colEls(st, st.q.answer)), st.q.ask === 'most' ? '这一列最多！' : '这一列最少！');
   },
   next(st, strat) {
     const i = st.items.findIndex(o => o.col == null);
@@ -8546,6 +8922,15 @@ const MMeasure = {
     while (st.blocks.length < q.len) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(360); }
     for (let k = 0; k < st.blocks.length; k++) { if (!Session.alive(my)) return; K.hop(st, st.blocks[k], 12); await Count.beat(st.scope, 330, k + 1); }
   },
+  /* explain: (feedback: the blocks too many flashed / the gap left) blocks taken off / laid on to the end, counted, gold */
+  async explain(st) {
+    const q = st.q, my = st;
+    await EX.say(st, '从头摆到尾！');
+    while (st.blocks.length > q.len) { if (!Session.alive(my)) return; this.remove(st); await st.scope.wait(160); }
+    while (st.blocks.length < q.len) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(200); }
+    for (let k = 0; k < st.blocks.length; k++) { if (!Session.alive(my)) return; K.hop(st, st.blocks[k], 12); Sfx.count(k + 1); await st.scope.wait(150); }
+    if (Session.alive(st)) await EX.gold(st, [st.obj].concat(st.blocks), CNQ(q.len) + '块长！');
+  },
   next(st, strat) {
     const want = strat === 'wrong' ? st.q.len + 1 : st.q.len, n = st.blocks.length;
     if (n < want) return { g: 'tap', p: { id: 'box' } };
@@ -8571,12 +8956,13 @@ const W2X = {
   thing(st, w, h, z, cls) { const d = el('div', cls || 'item', Stage.el); d.style.position = 'absolute'; d.style.zIndex = z || 5; place(d, 0, 0, w, h); st.els.push(d); return d; },
   /* answer cards that hold drawings (or pictures); vals are the answers they stand for */
   cards(st, nodes, vals, opt) {
-    const size = opt.size || 136, gap = opt.gap || 30, n = nodes.length, total = n * size + (n - 1) * gap;
+    const o = Object.assign({ size: 136, gap: 30 }, opt), g = K.cardGeo(nodes.length, o), size = g.size;
+    st.cardOpt = o;
     st.cards = nodes.map((nd, i) => {
       const c = el('div', 'card', Stage.el); c.style.position = 'absolute';
       const h = el('div', '', c); Object.assign(h.style, { width: '84%', height: '84%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' });
       h.appendChild(nd);
-      place(c, Math.round(opt.cx - total / 2 + i * (size + gap)), Math.round(opt.cy - size / 2), size, size);
+      place(c, g.pos[i].x, g.pos[i].y, size, size);
       K.reg(st, 'card' + i, c, {}); st.els.push(c);
       st.scope.anim(c, [{ transform: 'scale(0) rotate(-8deg)' }, { transform: 'scale(1)' }], { duration: 320, delay: 60 * i, easing: EASE.pop, fill: 'backwards' });
       return c;
@@ -8628,7 +9014,11 @@ const MPlace = {
     const d = Math.min(5, o.level);
     const sets = [null, ['on', 'under'], ['on', 'under', 'in'], ['on', 'under', 'in', 'beside'], ['on', 'under', 'left', 'right'], ['on', 'under', 'in', 'mid', 'left']];
     const spots = sets[d], answer = bagPick(G, 'pl' + d, spots);
-    return { k: [answer, d], spots, answer, box: spots.includes('in') || spots.includes('mid') };
+    const q = { k: [answer, d], spots, answer, box: spots.includes('in') || spots.includes('mid') };
+    /* one question, two asks (client 2026-10-10: two to four places): two places in one question, another place the
+       second time - both right = right */
+    if (spots.length < 5) { const a2 = o.rng.pick(spots.filter(x => x !== answer)); q.q2 = Object.assign({}, q, { k: [a2, d, 2], answer: a2 }); }
+    return q;
   },
   geo(st) {
     const L = K.L(), mid = st.q.spots.includes('mid');
@@ -8670,8 +9060,17 @@ const MPlace = {
     if (name !== 'tap' || !id.startsWith('sp_') || st.at) return false;
     const k = id.slice(3); st.at = k;
     const s = this.spotXY(st, k); K.flyTo(st, st.dino, s.x - 42, s.y - 42, 380, 70); Sfx.place();
-    Session.submit(st, k);
+    Two.answer(st, k);
     return 'ok';
+  },
+  /* explain: where the dinosaur is now (blue: "这是下面哦" was said); it flies to the right place - gold, "在桌子上面！" */
+  async explain(st, ans) {
+    const o = st.spots.find(x => x.k === ans);
+    await EX.chose(st, o && o.e);
+    const k = st.q.answer, r = st.spots.find(x => x.k === k), sp = this.spotXY(st, k);
+    st.at = k; await K.flyTo(st, st.dino, sp.x - 42, sp.y - 42, 420, 70);
+    if (!Session.alive(st)) return;
+    await EX.gold(st, r.e, '在' + (k === 'in' ? '盒子' : k === 'mid' ? '两个' : '桌子') + PLACE_WORD[k] + '！');
   },
   async reveal(st) {
     const k = st.q.answer, o = st.spots.find(x => x.k === k);
@@ -8742,6 +9141,15 @@ const MSeriate = {
     await st.scope.wait(1100);
   },
   async feedback(st, ans) { const i = Number(String(ans).slice(1)); if (st.pd[i]) K.wiggle(st, st.pd[i]); W2X.say(st.q.down ? '还有更大的！' : '还有更小的！'); await st.scope.wait(500); },
+  async explain(st, ans) {
+    const i = Number(String(ans).slice(1)), q = st.q;
+    if (st.pd[i]) await EX.chose(st, st.pd[i]);
+    const idx = q.order.map((r, j) => [r, j]).sort((a, b) => q.down ? b[0] - a[0] : a[0] - b[0]).map(x => x[1]);
+    for (let k = 0; k < idx.length; k++) { if (!Session.alive(st)) return; EX.ring(st, st.pd[idx[k]], 'xgold', 4); K.hop(st, st.pd[idx[k]], 12); Sfx.mar(Sfx.SCALE[k * 2 % 10], 0, 0.5, 0.4); await st.scope.wait(340); }
+    EX.log(st, 'gold', st.pd[idx[0]]);
+    await EX.say(st, q.down ? '从大到小！' : '从小到大！');
+    await st.scope.wait(400);
+  },
   next(st, strat) {
     if (st.over) return null;
     const left = st.pd.map((_, i) => i).filter(i => !st.seen.includes(i)), want = this.want(st);
@@ -8823,6 +9231,21 @@ const MTwins = {
     await st.scope.wait(1400);
   },
   async feedback(st, ans) { const [a, b] = String(ans).split('-').map(Number); [a, b].forEach(i => st.kites[i] && K.wiggle(st, st.kites[i])); W2X.say(this.diff(st.q.list[a], st.q.list[b])); await st.scope.wait(600); },
+  /* the part of a kite that differs, in stage px (the kite: 96 wide, centred in its 124 x 180 card) */
+  partRect(e, what) {
+    const b = box(e), k = 96 / 120, x0 = b.x + (b.w - 96) / 2, y0 = b.y + (b.h - 136) / 2;
+    if (what === '图案不一样') return { x: x0 + 40 * k, y: y0 + 42 * k, w: 40 * k, h: 40 * k };
+    if (what === '尾巴不一样') return { x: x0 + 36 * k, y: y0 + 128 * k, w: 48 * k, h: 42 * k };
+    return { x: b.x + 6, y: b.y + 6, w: b.w - 12, h: b.h * 0.72 };
+  },
+  async explain(st, ans) {
+    const [a, b] = String(ans).split('-').map(Number), q = st.q, d = this.diff(q.list[a], q.list[b]);
+    await EX.chose(st, [st.kites[a], st.kites[b]]);
+    if (st.kites[a] && st.kites[b]) { [a, b].forEach(i => EX.ring(st, this.partRect(st.kites[i], d), 'xchose', 2)); await st.scope.wait(700); }
+    const [x, y] = q.answer.split('-').map(Number), s2 = K.lines(st);
+    K.link(st, s2, center(st.kites[x]), center(st.kites[y]), '#FFC93C'); [x, y].forEach(i => K.hop(st, st.kites[i], 16));
+    await EX.gold(st, [st.kites[x], st.kites[y]], '一模一样！', null, true);
+  },
   next(st, strat) {
     if (st.done) return null;
     const [a, b] = st.q.answer.split('-').map(Number);
@@ -8846,7 +9269,7 @@ const MSound = {
     return { k: [n, d, bars.join()], n, times, bars, answer: n, opts: numOptions(G, n, 1, 10) };
   },
   geo() { const L = K.L(); return L ? { cx: 512, top: 190, bw: 70, gap: 14, h0: 230 } : { cx: 352, top: 330, bw: 64, gap: 12, h0: 220 }; },
-  cardSpot() { return K.L() ? { cx: 512, cy: 600 } : { cx: 352, cy: 820 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 606, size: 120, gap: 22 } : { cx: 352, cy: 820 }; },
   place(st) {
     const g = this.geo(), w = 6 * g.bw + 5 * g.gap, x0 = g.cx - w / 2;
     place(st.frame, x0 - 26, g.top + 40, w + 52, g.h0 - 30);
@@ -8872,7 +9295,7 @@ const MSound = {
     const q = st.q, my = st; st.playing = true;
     const t0 = now();
     for (let i = 0; i < q.n; i++) {
-      const at = slow ? i * 760 : q.times[i], left = at - (now() - t0);
+      const at = slow ? i * (st.explaining ? (q.n > 6 ? 430 : 560) : 760) : q.times[i], left = at - (now() - t0);
       if (left > 0) await st.scope.wait(left);
       if (!Session.alive(my)) return;
       const b = st.bars[q.bars[i]];
@@ -8896,6 +9319,10 @@ const MSound = {
     Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(900);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W2X.say('不是' + W2X.num(ans) + '下'); await st.scope.wait(400); },
+  /* explain: the card he chose (blue); the xylophone again, slowly, a dot for every note ("响了五下！"), the right card gold */
+  async explain(st, ans) {
+    await EX.cards(st, ans, async () => { (st.dots || []).forEach(d => d.remove()); st.dots = []; await this.play(st, true, true); await EX.say(st, '响了' + W2X.num(st.q.n) + '下！'); });
+  },
   next(st, strat) { return st.playing ? null : K.cardNext(st, strat); },
   workEls(st) { return st.cards || st.bars || []; },
   gestureHint(st) { if (!st.cards || st.playing) return; const c = center(st.bars[2]); Hand.busy++; Hand.tap(st.scope, c.x, c.y).then(() => { Hand.done(); Hand.hide(st.scope); }); },   /* tap the xylophone to hear it again */
@@ -8907,7 +9334,8 @@ const HID_SHAPES = {
   L: [[0, 0], [20, 0], [20, 44], [50, 44], [50, 64], [0, 64]], arrow: [[0, 20], [34, 20], [34, 0], [64, 32], [34, 64], [34, 44], [0, 44]],
   flag: [[0, 0], [54, 12], [12, 26], [12, 64], [0, 64]], trap: [[14, 0], [52, 0], [66, 46], [0, 46]],
 };
-const HID_FOILS = { tri: ['sq', 'trap'], sq: ['trap', 'house'], house: ['trap', 'flag'], L: ['flag', 'sq'], arrow: ['flag', 'house'], flag: ['arrow', 'L'], trap: ['tri', 'sq'] };
+/* drawings that do NOT hide the shape: none contains it as a closed figure (five drawings, client 2026-10-10) */
+const HID_FOILS = { tri: ['sq', 'trap', 'flag', 'L'], sq: ['trap', 'house', 'tri', 'flag'], house: ['trap', 'flag', 'tri', 'L'], L: ['flag', 'sq', 'tri', 'trap'], arrow: ['flag', 'house', 'tri', 'sq'], flag: ['arrow', 'L', 'sq', 'trap'], trap: ['tri', 'sq', 'L', 'flag'] };
 const MHidden = {
   kind0: 'hidden', verb: '找！', intro: '它藏在哪幅画里？', praise: ['藏不住啦！'],
   gen(G, o) {
@@ -8916,7 +9344,7 @@ const MHidden = {
     const t = bagPick(G, 'hd' + d, pool), clutter = [0, 3, 4, 5, 6, 7][d];
     const figs = [{ shape: t }].concat(HID_FOILS[t].map(f => ({ shape: f, flip: d >= 4 && rng() < 0.5 })));
     figs.forEach(f => { f.dx = rng.int(14, 46); f.dy = rng.int(14, 40); f.cl = Array.from({ length: clutter }, () => [rng.int(10, 150), rng.int(10, 150), rng.int(16, 46), rng.int(0, 1)]); });
-    const order = rng.shuffle([0, 1, 2]);
+    const pos = bagPick(G, 'hdpos', [0, 1, 2, 3, 4]), rest = rng.shuffle([1, 2, 3, 4]), order = [0, 1, 2, 3, 4].map(i => (i === pos ? 0 : rest.pop()));
     return { k: [t, d, order.join()], t, figs: order.map(i => figs[i]), answer: order.indexOf(0) };
   },
   fig(f, size, show) {
@@ -8926,11 +9354,11 @@ const MHidden = {
     svg('polygon', { points: W2X.pts(p), fill: show ? 'rgba(255,201,60,.75)' : 'none', stroke: ink, 'stroke-width': 3.5, 'stroke-linejoin': 'round' }, s);
     return s;
   },
-  geo() { return K.L() ? { y: 400, size: 230, gap: 40 } : { y: 560, size: 196, gap: 22 }; },
+  geo() { return K.L() ? { y: 410, size: 176, gap: 22 } : { y: 590, size: 196, gap: 22 }; },
   decor(G) { W2X.hideAll(G, this.chars); const L = K.L(), a = G.actors[this.chars[0]]; if (a) showActor(a, L ? 940 : 634, L ? 230 : 1016, L ? 150 : 140); },
   place(st) {
-    const g = this.geo(), w = 3 * g.size + 2 * g.gap, x0 = Stage.W / 2 - w / 2;
-    st.figEls.forEach((e, i) => place(e, x0 + i * (g.size + g.gap), g.y - g.size / 2, g.size, g.size));
+    const g = this.geo(), cg = K.cardGeo(st.figEls.length, { cx: Stage.W / 2, cy: g.y, size: g.size, gap: g.gap, rows: K.L() ? 1 : 2 });
+    st.figEls.forEach((e, i) => place(e, cg.pos[i].x, cg.pos[i].y, cg.size, cg.size));
   },
   async present(st) {
     const q = st.q;
@@ -8949,7 +9377,14 @@ const MHidden = {
     await st.scope.wait(1300);
   },
   async feedback(st, ans) { if (st.figEls[ans]) K.wiggle(st, st.figEls[ans]); W2X.say('这幅画里没有它'); await st.scope.wait(500); },
-  next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % 3 : st.q.answer; return { g: 'tap', p: { id: 'f' + i } }; },
+  /* explain: the drawing he chose (blue: it is not in there), the right drawing with the shape filled in gold */
+  async explain(st, ans) {
+    await EX.chose(st, st.figEls[ans]);
+    const i = st.q.answer, e = st.figEls[i]; e.innerHTML = ''; const s2 = this.fig(st.q.figs[i], '86%', true); s2.style.pointerEvents = 'none'; e.appendChild(s2);
+    K.hop(st, e, 14);
+    await EX.gold(st, e, '藏在这里！');
+  },
+  next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.figs.length : st.q.answer; return { g: 'tap', p: { id: 'f' + i } }; },
   workEls(st) { return st.figEls || []; },
 };
 
@@ -8958,9 +9393,9 @@ const MClue = {
   kind0: 'clue', verb: '找！', intro: '照着线索找机器人！', praise: ['神探就是你！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
-    const n = d === 1 ? 3 : d === 2 ? 4 : d <= 4 ? 5 : 6;
+    const n = d <= 4 ? 5 : 6;                                      /* >= 5 robots to pick from (client 2026-10-10) */
     for (let t = 0; t < 600; t++) {
-      const bots = Array.from({ length: n }, () => ({ c: rng.int(0, 3), a: rng.int(0, 1), s: d >= 5 ? rng.int(0, 1) : 1 }));
+      const bots = Array.from({ length: n }, () => ({ c: rng.int(0, d === 1 ? 5 : 3), a: rng.int(0, 1), s: d >= 5 ? rng.int(0, 1) : 1 }));
       const keys = bots.map(b => b.c + '' + b.a + b.s); if (new Set(keys).size !== n) continue;
       if (d === 1 && new Set(bots.map(b => b.c)).size !== n) continue;
       const T = rng.int(0, n - 1), B = bots[T];
@@ -9029,6 +9464,13 @@ const MClue = {
     W2X.say(!bad ? '再看看线索' : bad.k === 'c' ? '它是' + W2X.cname[b.c] + '的' : bad.k === 'a' ? (b.a ? '它有天线' : '它没有天线') : (b.s ? '它是大个子' : '它是小个子'));
     await st.scope.wait(600);
   },
+  /* explain: the robot he chose (blue - the clue it fails was said); every clue checked on the right robot, gold */
+  async explain(st, ans) {
+    await EX.chose(st, st.botEls[ans]);
+    const e = st.botEls[st.q.answer], chips = $$('.task .it', Stage.el);
+    for (let i = 0; i < st.q.clues.length; i++) { if (!Session.alive(st)) return; if (chips[i]) K.flash(st, [chips[i]]); K.hop(st, e, 14); await EX.say(st, this.words(st.q.clues[i]) + '！'); await st.scope.wait(150); }
+    await EX.gold(st, e, '就是它！');
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? st.q.bots.findIndex((_, j) => j !== st.q.answer) : st.q.answer; return { g: 'tap', p: { id: 'b' + i } }; },
   workEls(st) { return st.botEls || []; },
   gestureHint(st) { $$('.task .it').forEach(e => K.flash(st, [e])); },
@@ -9039,7 +9481,8 @@ const MShadow = {
   kind0: 'shadow', verb: '影！', intro: '这是谁的影子？', praise: ['一看就认出来！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
-    const k = d >= 4 ? 4 : 3, opts = rng.shuffle(this.pool.slice()).slice(0, k), answer = opts[rng.int(0, k - 1)];
+    const k = Math.min(5, this.pool.length), pick = rng.shuffle(this.pool.slice()).slice(0, k), answer = pick[0];
+    const opts = placeOptions(G, pick, answer);                   /* five characters, the right one's place from the bag */
     return { k: [answer, d, opts.join()], opts, answer, flip: d === 3 || d === 5, part: d >= 4 };
   },
   geo() { return K.L() ? { cx: 512, top: 110, h: 330 } : { cx: 352, top: 250, h: 330 }; },
@@ -9071,6 +9514,21 @@ const MShadow = {
     Sfx.reveal(); st.summary = '是' + CHARS[q.answer][0] + '！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1400);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W2X.say('不是' + CHARS[ans][0]); await st.scope.wait(500); },
+  async explain(st, ans) {
+    await EX.chose(st, EX.card(st, ans));
+    /* the chosen one, as a shadow too, laid over the real shadow: it does not fit */
+    const sb = box(st.sh), m = META[ans] || [300, 496], w = sb.h * m[0] / m[1], gh = W2X.thing(st, w, sb.h, 5, '');
+    place(gh, sb.x + sb.w / 2 - w / 2, sb.y, w, sb.h);
+    const im = img('assets/chars/' + ans + '.png', '', gh); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain', filter: 'brightness(0) sepia(1) hue-rotate(180deg) saturate(6)', opacity: 0.55 });
+    EX.ring(st, gh, 'xchose', 4);
+    await st.scope.wait(1100);
+    if (!Session.alive(st)) return;
+    gh.style.visibility = 'hidden'; st.els.filter(e => e.classList && e.classList.contains('xchose')).slice(-1).forEach(r => r.remove());
+    const sim = st.sh.firstChild; st.scope.anim(sim, [{ filter: 'brightness(0)', opacity: 0.82 }, { filter: 'brightness(1)', opacity: 1 }], { duration: 600, fill: 'forwards' });
+    if (st.bush) st.scope.anim(st.bush, [{ transform: 'translateY(0)' }, { transform: 'translateY(60%)', opacity: 0 }], { duration: 500, fill: 'forwards' });
+    await st.scope.wait(500);
+    await EX.gold(st, EX.rightCard(st), '是' + CHARS[st.q.answer][0] + '！');
+  },
   next(st, strat) { return st.picked ? null : K.cardNext(st, strat); },
 };
 
@@ -9078,10 +9536,10 @@ const MShadow = {
 const MOddOne = {
   kind0: 'odd', verb: '找！', intro: '哪一个不一样？', praise: ['一下就找到啦！'],
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng, n = d <= 2 ? 4 : 5;
+    const d = Math.min(5, o.level), rng = o.rng, n = 5;          /* five to pick from (client 2026-10-10) */
     const shapes = ['circle', 'tri', 'sq', 'star', 'hex', 'heart'];
     const rule = d === 1 ? 'color' : d === 2 ? 'shape' : d === 3 ? 'dots' : d === 4 ? 'dir' : 'sides';
-    const odd = rng.int(0, n - 1);
+    const odd = bagPick(G, 'oddpos', [0, 1, 2, 3, 4]);
     const baseC = rng.int(0, 5), baseS = rng.pick(shapes), baseD = rng.int(1, 3), baseDir = rng.int(0, 3), sides = rng.pick([3, 4]);
     /* what does not count comes in pairs - no second card stands out on its own (R8-3) */
     const pairs = vals => { const a = rng.shuffle(vals.slice()).slice(0, 2); return rng.shuffle(Array.from({ length: n }, (_, i) => a[i % 2])); };
@@ -9123,6 +9581,12 @@ const MOddOne = {
     st.summary = this.ruleWord(st.q.rule) + '不一样！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
   },
   async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W2X.say({ color: '颜色和大家一样', shape: '形状和大家一样', dots: '点点和大家一样多', dir: '方向和大家一样', sides: '边数和大家一样' }[st.q.rule]); await st.scope.wait(500); },
+  /* explain: the card he chose (blue) - like the others; the odd one gold ("颜色不一样！") */
+  async explain(st, ans) {
+    await EX.chose(st, st.cards[ans]);
+    const c = st.cards[st.q.answer]; K.hop(st, c, 18);
+    await EX.gold(st, c, this.ruleWord(st.q.rule) + '不一样！');
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.items.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
 };
 
@@ -9217,6 +9681,29 @@ const MCode = {
     const at = String(ans).slice(4).split(',').map(Number), q = st.q, left = this.bfs(q.C, q.R, q.obs, at, q.g);
     K.wiggle(st, st.car); W2X.say('没油了，' + (left ? '还差' + W2X.numQ(left) + '格' : '走远了')); await st.scope.wait(700);
   },
+  /* explain: where the car ran dry (blue); back to the start with full fuel, the shortest way driven cell by cell (gold
+     dots, counted) to the kitten - gold */
+  async explain(st) {
+    const q = st.q, my = st;
+    await EX.chose(st, st.car);
+    const path = this.bfs(q.C, q.R, q.obs, q.s, q.g, true) || [];
+    st.at = q.s.slice(); st.used = 0;
+    st.cans.forEach(e => { e.getAnimations().forEach(a => a.cancel()); e.style.opacity = 1; });
+    const p0 = this.cellXY(st.at); st.car.style.transform = ''; await K.flyTo(st, st.car, p0.x - 38, p0.y - 30, 320, 40);
+    await EX.say(st, '最短的路！');
+    let c = q.s.slice();
+    for (let i = 0; i < path.length; i++) {
+      if (!Session.alive(my)) return;
+      const v = DIRS[path[i]]; c = [c[0] + v[0], c[1] + v[1]];
+      const p = this.cellXY(c), dot = W2X.thing(st, 30, 30, 5, ''); Object.assign(dot.style, { borderRadius: '50%', background: '#FFC93C', boxShadow: '0 0 0 3px #2B2118' }); place(dot, p.x - 15, p.y + 14, 30, 30);
+      const can = st.cans[q.fuel - 1 - i]; if (can) st.scope.anim(can, [{ opacity: 1 }, { opacity: 0.18 }], { duration: 250, fill: 'forwards' });
+      st.car.style.transform = path[i] === 'left' ? 'scaleX(-1)' : '';
+      await K.flyTo(st, st.car, p.x - 38, p.y - 30, 220, 0); if (path[i] === 'left') st.car.style.transform = 'scaleX(-1)';
+      Sfx.count(i + 1); await st.scope.wait(80);
+    }
+    st.at = c;
+    await EX.gold(st, st.cat, '救到小猫啦！');
+  },
   next(st, strat) {
     if (st.over || st.busy) return null;
     const q = st.q;
@@ -9246,8 +9733,8 @@ const MCubes = {
   },
   /* isometric: x to the right-down, y to the left-down, z up */
   iso(c, s) { return { x: (c[0] - c[1]) * s * 0.866, y: (c[0] + c[1]) * s * 0.5 - c[2] * s }; },
-  geo() { return K.L() ? { cx: 512, cy: 380, s: 56 } : { cx: 352, cy: 560, s: 56 }; },
-  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 830 }; },
+  geo() { return K.L() ? { cx: 512, cy: 370, s: 56 } : { cx: 352, cy: 560, s: 56 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 628, size: 116, gap: 22 } : { cx: 352, cy: 830 }; },      /* five cards below the two watchers' heads */
   cubeSvg(s) {
     const w = s * 1.732, ink = W2X.ink, e = svg('svg', { viewBox: '0 0 ' + w.toFixed(1) + ' ' + (2 * s).toFixed(1), width: w, height: 2 * s });
     const T = [[w / 2, 0], [w, s / 2], [w / 2, s], [0, s / 2]], Lf = [[0, s / 2], [w / 2, s], [w / 2, 2 * s], [0, 1.5 * s]], Rf = [[w / 2, s], [w, s / 2], [w, 1.5 * s], [w / 2, 2 * s]];
@@ -9292,6 +9779,22 @@ const MCubes = {
     st.summary = '一共' + W2X.numQ(q.answer) + '块！'; Sfx.reveal(); this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1000);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W2X.say('不是' + W2X.numQ(ans) + '块'); await st.scope.wait(400); },
+  /* explain: the card he chose (blue); the pile comes apart from the top, every block - the hidden ones too - counted as it
+     comes off, laid out above the cards; the right card gold */
+  async explain(st, ans) {
+    await EX.cards(st, ans, async () => {
+      const q = st.q, my = st, L = K.L(), sc = 0.62, s0 = this.geo().s, w = s0 * 1.732 * sc;
+      const order = q.cubes.map((c, i) => [c, i]).sort((a, b) => b[0][2] - a[0][2] || (b[0][0] + b[0][1]) - (a[0][0] + a[0][1]));
+      const y = L ? 470 : 690, step = Math.min(w + 8, (Stage.W - 60) / order.length), x0 = Stage.W / 2 - (order.length - 1) * step / 2;
+      for (let k = 0; k < order.length; k++) {
+        if (!Session.alive(my)) return;
+        const o = st.cubeEls[order[k][1]]; o.out = true; o.e.style.zIndex = 30;
+        await K.flyTo(st, o.e, x0 + k * step - s0 * 1.732 / 2, y - s0, 140, 30, sc);
+        Sfx.count(k + 1); await st.scope.wait(60);
+      }
+      await EX.say(st, '一共' + W2X.numQ(q.answer) + '块！');
+    });
+  },
   next(st, strat) { return st.picked ? null : K.cardNext(st, strat); },
 };
 
@@ -9299,13 +9802,15 @@ const MCubes = {
 const MMemory = {
   kind0: 'memory', verb: '记！', intro: '记住谁出发了！', praise: ['记性真好！'],
   gen(G, o) {
-    const d = Math.min(5, o.level), rng = o.rng, pool = this.pool;
+    const d = Math.min(5, o.level), rng = o.rng, pool = this.pool, extra = this.extra || [];
     const n = d <= 2 ? 3 : d <= 4 ? 4 : 5;
-    const shown = rng.shuffle(pool.slice()).slice(0, n), rest = pool.filter(x => !shown.includes(x));
-    if (d <= 2) { const a = rng.pick(shown), opts = rng.shuffle([a].concat(rng.shuffle(rest).slice(0, 2))); return { k: [d, shown.join()], mode: 'seen', shown, answer: a, opts }; }
-    if (d <= 4) { const pos = rng.int(1, n - 1), a = shown[pos], opts = rng.shuffle([a].concat(rng.shuffle(shown.filter(x => x !== a)).slice(0, 2))); return { k: [d, shown.join(), pos], mode: 'pos', shown, pos, answer: a, opts }; }
-    const miss = rng.int(0, n - 1), a = shown[miss], opts = rng.shuffle([a].concat(rng.shuffle(shown.filter(x => x !== a)).slice(0, 1), rng.shuffle(rest).slice(0, 1)));
-    return { k: [d, shown.join(), miss], mode: 'miss', shown, miss, answer: a, opts };
+    /* five faces to pick from (client 2026-10-10): the one asked for + four that are not it */
+    const shown = rng.shuffle(pool.slice()).slice(0, n), rest = pool.filter(x => !shown.includes(x)).concat(extra);
+    const five = (a, others) => placeOptions(G, [a].concat(others.slice(0, 4)), a);
+    if (d <= 2) { const a = rng.pick(shown); return { k: [d, shown.join()], mode: 'seen', shown, answer: a, opts: five(a, rng.shuffle(rest)) }; }
+    if (d <= 4) { const pos = rng.int(1, n - 1), a = shown[pos]; return { k: [d, shown.join(), pos], mode: 'pos', shown, pos, answer: a, opts: five(a, rng.shuffle(shown.filter(x => x !== a)).concat(rng.shuffle(rest))) }; }
+    const miss = rng.int(0, n - 1), a = shown[miss];
+    return { k: [d, shown.join(), miss], mode: 'miss', shown, miss, answer: a, opts: five(a, rng.shuffle(shown.filter(x => x !== a)).slice(0, 2).concat(rng.shuffle(rest))) };
   },
   geo(st) { const L = K.L(), n = st.q.shown.length; return { y: L ? 330 : 470, step: L ? Math.min(170, 880 / n) : Math.min(132, 660 / n), size: L ? 140 : 118 }; },
   cardSpot() { return K.L() ? { cx: 512, cy: 600 } : { cx: 352, cy: 820 }; },
@@ -9347,6 +9852,18 @@ const MMemory = {
     W2X.say(at < 0 ? '刚才没有' + CHARS[ans][0] : q.mode === 'pos' ? CHARS[ans][0] + '是第' + W2X.num(at + 1) + '个' : '它还在呀');
     await st.scope.wait(600);
   },
+  /* explain: the face he chose (blue - where it was, or that it was not there, was said); all faces turn back up, the
+     right place and the right card gold */
+  async explain(st, ans) {
+    const q = st.q;
+    await EX.chose(st, EX.card(st, ans));
+    st.slots.forEach((e, i) => this.face(st, e, q.shown[i], true));
+    const at = q.shown.indexOf(ans); if (at >= 0 && st.slots[at]) EX.ring(st, st.slots[at], 'xchose', 6);
+    await st.scope.wait(500);
+    const k = q.mode === 'seen' ? q.shown.indexOf(q.answer) : q.mode === 'pos' ? q.pos : q.miss;
+    if (st.slots[k]) { EX.ring(st, st.slots[k], 'xgold', 6); K.hop(st, st.slots[k], 16); }
+    await EX.gold(st, EX.rightCard(st), '是' + CHARS[q.answer][0] + '！');
+  },
   next(st, strat) { return st.picked || !st.cards ? null : K.cardNext(st, strat); },
 };
 
@@ -9357,8 +9874,9 @@ const MCorners = {
     const d = Math.min(5, o.level), rng = o.rng;
     const mk = (n, irr) => ({ n, rot: rng.int(0, 5) * 15, sx: 0.8 + rng() * 0.4, jit: irr ? Array.from({ length: n }, () => 0.72 + rng() * 0.3) : null, c: rng.int(0, 4) });
     if (d <= 2) {
-      const want = d === 1 ? 3 : 4, others = rng.shuffle([0, 3, 4, 5, 6].filter(x => x !== want)).slice(0, 2);
-      const items = rng.shuffle([want].concat(others)).map(n => mk(n, false));
+      const want = d === 1 ? 3 : 4, others = rng.shuffle([0, 3, 4, 5, 6].filter(x => x !== want));   /* five stones (client 2026-10-10) */
+      const pos = bagPick(G, 'cnpos', [0, 1, 2, 3, 4]), ns = [0, 1, 2, 3, 4].map(i => (i === pos ? want : others.pop()));
+      const items = ns.map(n => mk(n, false));
       return { k: [d, items.map(x => x.n).join()], mode: 'find', want, items, answer: items.findIndex(x => x.n === want) };
     }
     if (d === 3 || d === 5) { const n = d === 3 ? rng.int(3, 6) : rng.int(4, 7); const it = mk(n, d === 5); return { k: [d, n], mode: 'count', items: [it], answer: n, opts: numOptions(G, n, 3, 9) }; }
@@ -9376,7 +9894,7 @@ const MCorners = {
     return s;
   },
   geo(st) { const L = K.L(), n = st.q.items.length; return st.q.mode === 'count' ? { size: L ? 300 : 300, y: L ? 300 : 470, step: 0 } : { size: L ? (n > 3 ? 140 : 170) : (n > 3 ? 130 : 170), y: L ? 360 : 520, step: L ? (n > 3 ? 158 : 230) : (n > 3 ? 148 : 214), cols: K.L() ? n : (n > 3 ? 3 : n) }; },
-  cardSpot() { return K.L() ? { cx: 512, cy: 612 } : { cx: 352, cy: 840 }; },
+  cardSpot() { return K.L() ? { cx: 512, cy: 612, size: 120, gap: 22 } : { cx: 352, cy: 840 }; },
   decor(G) { const L = K.L(), m = this; this.chars.forEach((id, i) => { const a = G.actors[id]; if (i === 0) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 180 : 140); else if (i === 1 && !(Session.st && Session.st.q && Session.st.q.mode === 'all')) showActor(a, L ? 944 : 634, L ? 698 : 1016, L ? 170 : 140); else if (i === 1) showActor(a, L ? 790 : 470, L ? 698 : 1016, L ? 170 : 140); else hideActor(a); }); },
   place(st) {
     const g = this.geo(st), n = st.stones.length, cols = g.cols || n;
@@ -9410,7 +9928,8 @@ const MCorners = {
   },
   async countCorners(st, i) {
     const it = st.q.items[i], e = st.stones[i], my = st;
-    for (let k = 1; k <= it.n; k++) { if (!Session.alive(my)) return; e.innerHTML = ''; const s = this.stone(it, '92%', k); s.style.pointerEvents = 'none'; e.appendChild(s); await Count.beat(st.scope, 300, k); }
+    for (let k = 1; k <= it.n; k++) { if (!Session.alive(my)) return; e.innerHTML = ''; const s = this.stone(it, '92%', k); s.style.pointerEvents = 'none'; e.appendChild(s); if (st.explaining) { Sfx.count(k); await st.scope.wait(230); } else await Count.beat(st.scope, 300, k); }
+    if (st.explaining && it.n) await Count.beat(st.scope, 200, it.n);        /* the explanation: quick ticks, then the number */
   },
   async reveal(st) {
     const q = st.q, list = q.mode === 'count' ? [0] : q.mode === 'find' ? [q.answer] : String(q.answer).split(',').map(Number);
@@ -9424,6 +9943,24 @@ const MCorners = {
     else if (q.mode === 'find') { if (st.stones[ans]) K.wiggle(st, st.stones[ans]); const n = q.items[ans].n; W2X.say(n ? '这个有' + W2X.numQ(n) + '个角' : '这个没有角'); }
     else { const sel = String(ans).split(',').filter(Boolean).map(Number), bad = sel.find(i => q.items[i].n !== 3); if (bad != null) { K.wiggle(st, st.stones[bad]); const n = q.items[bad].n; W2X.say(n ? '这个有' + W2X.numQ(n) + '个角' : '这个没有角'); } else W2X.say('还有三个角的'); }
     await st.scope.wait(600);
+  },
+  /* explain: count - the card he chose (blue), the corners counted, the right card gold; find - the stone he chose (blue)
+     and its corners counted, then the right stone's; all - the wrong picks (blue), every three-cornered stone counted, gold */
+  async explain(st, ans) {
+    const q = st.q;
+    if (q.mode === 'count') { await EX.cards(st, ans, () => this.countCorners(st, 0)); return; }
+    if (q.mode === 'find') {
+      await EX.chose(st, st.stones[ans]); await this.countCorners(st, ans);
+      if (!Session.alive(st)) return;
+      EX.ring(st, st.stones[q.answer], 'xgold', 4); await this.countCorners(st, q.answer);
+      await EX.gold(st, st.stones[q.answer], (q.want === 3 ? '三' : '四') + '个角！');
+      return;
+    }
+    const sel = String(ans).split(',').filter(Boolean).map(Number), right = String(q.answer).split(',').map(Number), bad = sel.filter(i => !right.includes(i));
+    if (bad.length) await EX.chose(st, bad.map(i => st.stones[i]));
+    st.stones.forEach(e => e.classList.remove('hi'));
+    for (const i of right) { if (!Session.alive(st)) return; EX.ring(st, st.stones[i], 'xgold', 4); await this.countCorners(st, i); }
+    await EX.gold(st, right.map(i => st.stones[i]), '三个角！');
   },
   next(st, strat) {
     const q = st.q; if (st.picked) return null;
@@ -9499,6 +10036,22 @@ const MCoins = {
     st.summary = '正好' + W2X.numQ(st.q.price) + '文！'; Sfx.reveal(); this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1000);
   },
   async feedback(st, ans) { const d = ans - st.q.price; K.wiggle(st, st.mat); W2X.say(d > 0 ? '多给了' + W2X.numQ(d) + '文' : '还差' + W2X.numQ(-d) + '文'); await st.scope.wait(600); },
+  async explain(st) {
+    const q = st.q, my = st;
+    await EX.chose(st, st.on.map(i => st.coins[i].e));
+    st.coins.forEach(o => { o.on = false; }); st.on = []; this.place(st);
+    await st.scope.wait(350);
+    let run = 0;
+    for (let k = 0; k < 9 && run < q.price; k++) {
+      if (!Session.alive(my)) return;
+      const need = q.price - run, free = st.coins.map((o, i) => [o, i]).filter(([o]) => !o.on);
+      const pick = free.find(([o]) => o.v === 2 && need >= 2 && (need - 2 !== 1 || free.some(([x]) => x.v === 1))) || free.find(([o]) => o.v === 1) || free.find(([o]) => o.v === 2);
+      if (!pick) break;
+      pick[0].on = true; st.on.push(pick[1]); run += pick[0].v; this.place(st); Sfx.place(); K.hop(st, pick[0].e, 12);
+      await Count.beat(st.scope, 420, run);
+    }
+    await EX.gold(st, st.on.map(i => st.coins[i].e), '正好' + W2X.numQ(q.price) + '文！');
+  },
   next(st, strat) {
     if (st.picked) return null;
     const q = st.q, want = strat === 'wrong' ? q.price + 1 : q.price, s = this.sum(st);
@@ -9599,6 +10152,14 @@ const MTrace = {
     st.summary = '是' + W2X.num(n) + '！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(900);
   },
   async feedback(st) { W2X.say('要从绿点开始写'); const S = this.geo(st).S.list, p = this.pt(st, S[0]); const r = W2X.thing(st, 80, 80, 8, ''); Object.assign(r.style, { borderRadius: '50%', boxShadow: '0 0 0 6px #FFC93C' }); place(r, p.x - 40, p.y - 40, 80, 80); K.flash(st, [r]); await st.scope.wait(800); },
+  async explain(st) {
+    const S = this.geo(st).S.list, my = st;
+    st.done = 0; this.draw(st);
+    await EX.say(st, '看蜻蜓写！');
+    for (let k = 1; k <= S.length; k++) { if (!Session.alive(my)) return; st.done = k; this.draw(st); if (S[k - 1].start && k > 1) Sfx.pop(); await st.scope.wait(70); }
+    const g = this.geo(st);
+    await EX.gold(st, { x: g.x0 - 20, y: g.y0 - 20, w: g.S.width * g.k + 40, h: 160 * g.k + 40 }, '是' + W2X.num(st.q.n) + '！');
+  },
   next(st, strat) {
     if (st.over) return null;
     const S = this.geo(st).S.list;
@@ -9632,9 +10193,12 @@ const MMatrix = {
     const key = x => x.kind + x.c + x.count + x.big;
     const foils = [];
     const tw = [x => Object.assign({}, x, { c: cols[(cols.indexOf(x.c) + 1) % N] }), x => Object.assign({}, x, { kind: shapes[(shapes.indexOf(x.kind) + 1) % N] }), x => Object.assign({}, x, { count: x.count % 3 + 1 }), x => Object.assign({}, x, { big: x.big === 1 ? 0.55 : 1 })];
-    for (const t of rng.shuffle(tw)) { const f = t(ans); if (key(f) !== key(ans) && !foils.some(y => key(y) === key(f))) foils.push(f); if (foils.length >= (d >= 4 ? 3 : 2)) break; }
-    const opts = rng.shuffle([ans].concat(foils));
-    return { k: [d, hole, grid.map(key).join()], N, grid, hole, opts, answer: opts.indexOf(ans) };
+    /* four foils (client 2026-10-10: five options): one thing changed, then two things changed - never the answer again */
+    const tws = rng.shuffle(tw);
+    for (const t of tws) { const f = t(ans); if (key(f) !== key(ans) && !foils.some(y => key(y) === key(f))) foils.push(f); if (foils.length >= 4) break; }
+    for (let i = 0; i < tws.length && foils.length < 4; i++) for (let j = i + 1; j < tws.length && foils.length < 4; j++) { const f = tws[j](tws[i](ans)); if (key(f) !== key(ans) && !foils.some(y => key(y) === key(f))) foils.push(f); }
+    const pos = bagPick(G, 'mxpos', [0, 1, 2, 3, 4]), rest = rng.shuffle(foils.slice(0, 4)), opts = [0, 1, 2, 3, 4].map(i => (i === pos ? ans : rest.pop()));
+    return { k: [d, hole, grid.map(key).join()], N, grid, hole, opts, answer: pos };
   },
   draw(x, size) {
     const s = svg('svg', { viewBox: '0 0 100 100', width: size, height: size }), r = 26 * (x.big || 1) * (x.count > 1 ? 0.62 : 1);
@@ -9643,7 +10207,7 @@ const MMatrix = {
     return s;
   },
   geo(st) { const L = K.L(), N = st.q.N, cell = L ? (N === 2 ? 150 : 124) : (N === 2 ? 170 : 148); return { cell, x0: L ? 300 - N * cell / 2 : 352 - N * cell / 2, y0: L ? 110 : 240 }; },
-  cardSpot(st) { return K.L() ? { cx: 760, cy: 360 } : { cx: 352, cy: 830 }; },
+  cardSpot(st) { return K.L() ? { cx: 770, cy: 380, size: 116, gap: 18, maxW: 440, rows: 2 } : { cx: 352, cy: 830 }; },     /* five pictures: two rows right of the grid (landscape) */
   decor(G) { W2X.hideAll(G, this.chars); const L = K.L(), a = G.actors[this.chars[0]]; if (a) showActor(a, L ? 940 : 634, L ? 698 : 1016, L ? 160 : 140); },
   place(st) {
     const g = this.geo(st), N = st.q.N;
@@ -9655,9 +10219,7 @@ const MMatrix = {
     st.cells = q.grid.map((x, i) => { const e = W2X.thing(st, 10, 10, 4, ''); Object.assign(e.style, { borderRadius: '16px', background: i === q.hole ? 'rgba(255,255,255,.6)' : '#FFF8EC', boxShadow: '0 0 0 4px #2B2118', display: 'flex', alignItems: 'center', justifyContent: 'center', border: i === q.hole ? '5px dashed #2B2118' : '' }); if (i === q.hole) { e.innerHTML = ICONS.q; e.firstChild.setAttribute('width', 48); e.firstChild.setAttribute('height', 48); } else e.appendChild(this.draw(x, '90%')); return e; });
     this.place(st);
     st.cells.forEach((e, i) => K.pop(st, e, 40 * i));
-    const sz = L ? (q.opts.length > 3 ? 112 : 128) : (q.opts.length > 3 ? 132 : 150);
-    W2X.cards(st, q.opts.map(x => this.draw(x, '100%')), q.opts.map((_, i) => i), Object.assign({ size: sz, gap: 18 }, this.cardSpot(st)));
-    if (L) { const cs = this.cardSpot(st); const tot = q.opts.length * sz + (q.opts.length - 1) * 18; if (tot > 440) K.cardsPlace(st, Object.assign({ gap: 18 }, cs)); }
+    W2X.cards(st, q.opts.map(x => this.draw(x, '100%')), q.opts.map((_, i) => i), Object.assign({ size: L ? 116 : 132, gap: 18 }, this.cardSpot(st)));
     K.task(st, [[W2X.icon('<rect x="8" y="8" width="38" height="38" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><rect x="54" y="8" width="38" height="38" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><rect x="8" y="54" width="38" height="38" rx="6" fill="#FFF8EC" stroke="#2B2118" stroke-width="5"/><rect x="54" y="54" width="38" height="38" rx="6" fill="#fff" stroke="#2B2118" stroke-width="5" stroke-dasharray="6 5"/>')], ['q']]);
     K.say(st, '空格里是什么？');
   },
@@ -9673,6 +10235,21 @@ const MMatrix = {
     const a = st.q.opts[ans], b = st.q.grid[st.q.hole]; if (st.cards[ans]) K.wiggle(st, st.cards[ans]);
     W2X.say(a.kind !== b.kind ? '形状不对哦' : a.c !== b.c ? '颜色不对哦' : a.count !== b.count ? '个数不对哦' : '大小不对哦'); await st.scope.wait(500);
   },
+  /* explain: the picture he chose is tried in the gap (blue) - its row and column hop: it does not fit; then the right one
+     goes in - gold */
+  async explain(st, ans) {
+    const q = st.q, e = st.cells[q.hole], N = q.N, r = Math.floor(q.hole / N), c = q.hole % N, my = st;
+    await EX.chose(st, st.cards[ans]);
+    e.innerHTML = ''; e.style.border = ''; e.appendChild(this.draw(q.opts[ans], '90%')); e.style.opacity = 0.6; const ring = EX.ring(st, e, 'xchose', 4);
+    await st.scope.wait(800);
+    if (!Session.alive(my)) return;
+    if (ring) ring.remove();
+    e.style.opacity = ''; e.innerHTML = ''; e.style.background = '#FFF3C4'; e.appendChild(this.draw(q.grid[q.hole], '90%')); K.pop(st, e);
+    for (let k = 0; k < N; k++) { if (!Session.alive(my)) return; K.hop(st, st.cells[r * N + k], 12); await st.scope.wait(160); }
+    for (let k = 0; k < N; k++) { if (!Session.alive(my)) return; K.hop(st, st.cells[k * N + c], 12); await st.scope.wait(160); }
+    EX.ring(st, e, 'xgold', 4);
+    await EX.gold(st, st.cards[q.answer], '对的是这个！');
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.opts.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
 };
 
@@ -9686,9 +10263,10 @@ const MRotate = {
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
     const pool = d <= 1 ? ['L3'] : d === 2 ? ['L4', 'T4'] : d === 3 ? ['L4', 'T4', 'S4'] : ['P5', 'F5', 'L5', 'Y5'];
-    const shape = bagPick(G, 'rt' + d, pool), hole = rng.int(0, 3);
-    const need = d <= 1 ? 1 : d === 2 ? rng.int(1, 2) : rng.int(1, 3);
-    return { k: [shape, hole, need], shape, hole, start: (hole - need + 4) % 4, answer: hole };
+    const one = () => { const shape = bagPick(G, 'rt' + d, pool), hole = rng.int(0, 3), need = d <= 1 ? 1 : d === 2 ? rng.int(1, 2) : rng.int(1, 3); return { k: [shape, hole, need], shape, hole, start: (hole - need + 4) % 4, answer: hole }; };
+    /* one question, two asks (client 2026-10-10: a piece has only four ways to lie): two pieces - both right = right */
+    const q = one(); q.q2 = one();
+    return q;
   },
   cells(shape, rot) {
     let c = POLYO[shape].map(p => p.slice());
@@ -9705,6 +10283,7 @@ const MRotate = {
   },
   geo() { return K.L() ? { door: { x: 140, y: 110, w: 330, h: 420 }, piece: { cx: 700, cy: 330 }, u: 62 } : { door: { x: 182, y: 220, w: 340, h: 330 }, piece: { cx: 352, cy: 720 }, u: 58 }; },
   decor(G) { W2X.decorDone(G, this.chars); },
+  cleanup(st) { st.inside = false; },
   place(st) {
     const g = this.geo(), q = st.q;
     place(st.door, g.door.x, g.door.y, g.door.w, g.door.h);
@@ -9729,8 +10308,22 @@ const MRotate = {
   onGesture(st, name, p) {
     const id = p.id || ''; if (name !== 'tap' || st.picked) return false;
     if (id === 'piece') { st.rot = (st.rot + 1) % 4; Sfx.mar(784, 0, 0.3, 0.1); this.place(st); st.scope.anim(st.piece, [{ transform: 'rotate(-90deg)' }, { transform: 'rotate(0)' }], { duration: 220, easing: EASE.out }); return 'ok'; }
-    if (id === 'done') { st.picked = true; Session.submit(st, st.rot); return 'ok'; }
+    if (id === 'done') { st.picked = true; Two.answer(st, st.rot); return 'ok'; }
     return false;
+  },
+  /* explain: the piece as he left it (blue) next to the hole; it turns, a tap at a time, until it matches - and goes in, gold */
+  async explain(st) {
+    const q = st.q, my = st;
+    await EX.chose(st, st.piece);
+    for (let k = 0; k < 4 && st.rot !== q.hole; k++) {
+      if (!Session.alive(my)) return;
+      st.rot = (st.rot + 1) % 4; this.place(st); Sfx.mar(784, 0, 0.3, 0.1);
+      st.scope.anim(st.piece, [{ transform: 'rotate(-90deg)' }, { transform: 'rotate(0)' }], { duration: 260, easing: EASE.out });
+      await st.scope.wait(520);
+    }
+    const hb = box(st.hole), pb = box(st.piece), ps = st.piece.firstChild, pw = parseFloat(ps.getAttribute('width')), ph = parseFloat(ps.getAttribute('height'));
+    st.inside = true; await K.flyTo(st, st.piece, hb.x - (pb.w - pw) / 2, hb.y - (pb.h - ph) / 2, 480, 60);
+    if (Session.alive(my)) await EX.gold(st, st.hole, '放进去啦！');
   },
   async reveal(st) {
     const hb = box(st.hole), pb = box(st.piece), ps = st.piece.firstChild, pw = parseFloat(ps.getAttribute('width')), ph = parseFloat(ps.getAttribute('height'));
@@ -9763,10 +10356,14 @@ const MAnalogy = {
     let B = tf(A), D = tf(Cc);
     if (ops.includes('color')) { B.c = cols[4]; D.c = cols[4]; }
     const key = x => [x.kind, x.c, x.big, x.rot, x.count, x.fill].join();
-    const foils = [Cc].concat(ops.map(op => ops.filter(x => x !== op).reduce((y, o2) => T[o2](y), Cc)), [Object.assign({}, D, { kind: shapes[2] })]).filter(f => key(f) !== key(D));
-    const uniq = []; foils.forEach(f => { if (!uniq.some(u => key(u) === key(f))) uniq.push(f); });
-    const opts = rng.shuffle([D].concat(uniq.slice(0, d >= 4 ? 3 : 2)));
-    return { k: [d, key(A), key(Cc)], A, B, C: Cc, D, ops, opts, answer: opts.indexOf(D) };
+    /* four near misses (client 2026-10-10: five options), each visibly different from the answer and from each other: C
+       unchanged, half the change, another shape, another colour, two of it, hollow, the other size */
+    const look = x => { const sym = ['circle', 'sq', 'hex', 'star', 'diamond'].includes(x.kind) && x.rot % 90 === 0 ? 0 : x.rot; return [x.kind, x.c, x.big, sym, x.count, x.fill].join(); };
+    const extra = [Object.assign({}, D, { kind: shapes[2] }), Object.assign({}, D, { c: cols[(cols.indexOf(D.c) + 2) % 6] }), Object.assign({}, D, { count: D.count > 1 ? 1 : 2 }), Object.assign({}, D, { fill: D.fill ? 0 : 1 }), Object.assign({}, D, { big: D.big === 1 ? 0.55 : 1 })];
+    const foils = [Cc].concat(ops.map(op => ops.filter(x => x !== op).reduce((y, o2) => T[o2](y), Cc)), rng.shuffle(extra)).filter(f => look(f) !== look(D));
+    const uniq = []; foils.forEach(f => { if (!uniq.some(u => look(u) === look(f))) uniq.push(f); });
+    const pos = bagPick(G, 'anpos', [0, 1, 2, 3, 4]), rest = uniq.slice(0, 4).reverse(), opts = [0, 1, 2, 3, 4].map(i => (i === pos ? D : rest.pop()));
+    return { k: [d, key(A), key(Cc)], A, B, C: Cc, D, ops, opts, answer: pos };
   },
   draw(x, size) {
     const s = svg('svg', { viewBox: '0 0 100 100', width: size, height: size }), r = 30 * x.big * (x.count > 1 ? 0.62 : 1);
@@ -9776,7 +10373,7 @@ const MAnalogy = {
     return s;
   },
   geo() { return K.L() ? { y: 250, size: 150, xs: [150, 370, 640, 860] } : { y: 380, size: 132, xs: [90, 260, 444, 614] }; },
-  cardSpot() { return K.L() ? { cx: 512, cy: 560 } : { cx: 352, cy: 760 }; },
+  cardSpot() { return K.L() ? { cx: 548, cy: 560, size: 128, gap: 24 } : { cx: 352, cy: 760 }; },
   decor(G) { W2X.hideAll(G, this.chars); const L = K.L(), a = G.actors[this.chars[0]]; if (a) showActor(a, L ? 70 : 60, L ? 698 : 1016, L ? 160 : 130); },
   place(st) {
     const g = this.geo();
@@ -9792,7 +10389,7 @@ const MAnalogy = {
     st.bar = W2X.thing(st, 8, 160, 3, ''); Object.assign(st.bar.style, { borderRadius: '4px', background: 'rgba(43,33,24,.35)' });
     this.place(st);
     st.row.forEach((e, i) => K.pop(st, e, 120 * i));
-    W2X.cards(st, q.opts.map(x => this.draw(x, '100%')), q.opts.map((_, i) => i), Object.assign({ size: L ? 140 : 130, gap: 26 }, this.cardSpot()));
+    W2X.cards(st, q.opts.map(x => this.draw(x, '100%')), q.opts.map((_, i) => i), Object.assign({ size: L ? 128 : 130, gap: 24 }, this.cardSpot()));
     K.task(st, [[{ node: (() => { const d = el('span'); d.appendChild(this.draw(q.A, 40)); return d; })() }], [{ node: (() => { const d = el('span'); d.appendChild(this.draw(q.B, 40)); return d; })() }]]);
     K.say(st, '它这样变，它呢？');
   },
@@ -9807,6 +10404,16 @@ const MAnalogy = {
     const a = st.q.opts[ans], D = st.q.D; if (st.cards[ans]) K.wiggle(st, st.cards[ans]);
     W2X.say(a.kind !== D.kind ? '形状变了哦' : a.big !== D.big ? '大小不对哦' : a.c !== D.c ? '颜色不对哦' : a.rot !== D.rot ? '方向不对哦' : a.count !== D.count ? '个数不对哦' : '空心实心不对');
     await st.scope.wait(500);
+  },
+  /* explain: the picture he chose (blue - what is off was said); the right one in the gap, the two pairs ringed, what
+     changed said ("变小！"), the right card gold */
+  async explain(st, ans) {
+    await EX.chose(st, st.cards[ans]);
+    const e = st.row[3]; e.innerHTML = ''; e.style.border = ''; e.style.background = '#FFF3C4'; e.appendChild(this.draw(st.q.D, '88%')); K.pop(st, e);
+    K.ring(st, [box(st.row[0]), box(st.row[1])], 8, '#FFC93C'); await st.scope.wait(350); K.ring(st, [box(st.row[2]), box(st.row[3])], 8, '#FFC93C');
+    const W = { size: '变小', color: '变颜色', turn: '转一下', count: '变两个', fill: '变空心' };
+    await EX.say(st, st.q.ops.map(o => W[o]).join('，') + '！');
+    await EX.gold(st, st.cards[st.q.answer]);
   },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.opts.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
 };
@@ -9860,6 +10467,13 @@ const MNumLine = {
     Sfx.reveal(); st.summary = '停在' + W2X.num(q.target) + '！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(900);
   },
   async feedback(st, ans) { K.wiggle(st, st.mk); W2X.say(ans > st.q.target ? '飞过头啦' : '还不够远'); await st.scope.wait(500); },
+  async explain(st) {
+    const q = st.q, my = st, g = this.geo(st), u = this.unit(st);
+    await EX.chose(st, st.mk);
+    for (let i = 0; i <= q.target; i++) { if (!Session.alive(my)) return; const e = st.tickEls[i]; e.style.visibility = ''; e.style.background = '#FFC93C'; K.hop(st, e, 10); if (i) { Sfx.count(i); await st.scope.wait(160); } }
+    st.pos = q.target; this.place(st);
+    await EX.gold(st, { x: g.x0 + q.target * u - 52, y: g.y - 150, w: 104, h: 190 }, '停在' + W2X.num(q.target) + '！');
+  },
   next(st, strat) {
     if (st.picked) return null;
     const want = strat === 'wrong' ? Math.min(st.q.max, st.q.target + st.q.tol + 2) : st.q.target;
@@ -9882,7 +10496,7 @@ const MClock = {
     return { k: [kind, h, add], kind, h, add, answer: a, opts: numOptions(G, a, 1, 12) };
   },
   geo() { return K.L() ? { cx: 360, cy: 330, r: 190 } : { cx: 352, cy: 470, r: 200 }; },
-  cardSpot() { return K.L() ? { cx: 770, cy: 330 } : { cx: 352, cy: 830 }; },
+  cardSpot() { return K.L() ? { cx: 790, cy: 330, size: 116, gap: 20, maxW: 420, rows: 2 } : { cx: 352, cy: 790 }; },     /* five cards: two rows right of the clock (landscape), above the watchers' heads (portrait) */
   decor(G) { const L = K.L(); this.chars.forEach((id, i) => { const a = G.actors[id]; if (i === 0) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 170 : 140); else if (i === 1) showActor(a, L ? 640 : 470, L ? 698 : 1016, L ? 160 : 140); else hideActor(a); }); },
   face(st, hour, ghost) {
     const g = this.geo(), s = svg('svg', { viewBox: '-110 -110 220 220', width: g.r * 2, height: g.r * 2 }), ink = W2X.ink;
@@ -9910,7 +10524,6 @@ const MClock = {
     if (q.kind === 'set') { st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {}); st.doneBtn.classList.add('ready'); K.task(st, [[mini], [{ qty: q.h }]]); K.say(st, '拨到' + W2X.num(q.h) + '点！'); Voice.say('点钟表，红针走', { tag: 'prompt2' }); }
     else {
       K.cards(st, q.opts, Object.assign({ layout: 'frame', gap: 22 }, this.cardSpot()));
-      if (L) K.cardsPlace(st, Object.assign({ gap: 22 }, this.cardSpot()));
       if (q.kind === 'read') { K.task(st, [[mini], ['q']]); K.say(st, '现在几点？'); }
       else { K.task(st, [[mini], [{ qty: q.add }], ['q']]); K.say(st, '再过' + W2X.numQ(q.add) + '小时几点？'); }
     }
@@ -9935,6 +10548,22 @@ const MClock = {
     else { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W2X.say('不是' + W2X.num(ans) + '点'); }
     await st.scope.wait(500);
   },
+  /* explain: read - the card he chose (blue), the short hand points at the number ("三点！"), gold; later - the hours walked
+     on one by one, counted; set - the hand walked from where he left it to the right hour */
+  async explain(st, ans) {
+    const q = st.q, my = st;
+    if (q.kind === 'set') {
+      await EX.chose(st, st.clock);
+      for (let k = 0; k < 12 && st.cur !== q.h; k++) { if (!Session.alive(my)) return; st.cur = st.cur % 12 + 1; this.place(st); Sfx.mar(1046, 0, 0.3, 0.08); await st.scope.wait(260); }
+      await EX.gold(st, st.clock, W2X.num(q.h) + '点！');
+      return;
+    }
+    await EX.cards(st, ans, async () => {
+      if (q.kind === 'later') { const h0 = q.h; for (let k = 1; k <= q.add; k++) { if (!Session.alive(my)) return; st.q.h = st.q.h % 12 + 1; this.place(st); await Count.beat(st.scope, 560, k); } st.q.h = h0; this.place(st); st.q.h = q.answer; this.place(st); }
+      K.hop(st, st.clock, 10);
+      await EX.say(st, W2X.num(q.answer) + '点！');
+    });
+  },
   next(st, strat) {
     if (st.picked) return null;
     if (st.q.kind !== 'set') return K.cardNext(st, strat);
@@ -9949,20 +10578,19 @@ const MClock = {
 /* ================================================================ 复仇者 W3 · 拼 which pieces build the outline (geometry: composing shapes) */
 const COMPOSE = [
   null,
-  { out: [[0, 2], [2, 0], [4, 2], [4, 4], [0, 4]], good: [[[0, 2], [4, 2], [4, 4], [0, 4]], [[0, 2], [2, 0], [4, 2]]], foils: [[[[0, 0], [2, 0], [2, 2], [0, 2]], [[0, 2], [2, 0], [4, 2]]], [[[0, 2], [4, 2], [4, 4], [0, 4]], [[0, 1], [1, 0], [2, 1]]], [[[0, 0], [4, 0], [4, 2], [0, 2]], [[0, 0], [4, 0], [4, 2], [0, 2]]]], why: ['屋子太小了', '屋顶太小了', '没有屋顶'] },
-  { out: [[0, 0], [4, 0], [4, 2], [0, 2]], good: [[[0, 0], [2, 0], [2, 2], [0, 2]], [[2, 0], [4, 0], [4, 2], [2, 2]]], foils: [[[[0, 0], [2, 0], [2, 2], [0, 2]], [[0, 0], [1, 0], [1, 1], [0, 1]]], [[[0, 0], [2, 0], [0, 2]], [[2, 0], [2, 2], [0, 2]]], [[[0, 0], [3, 0], [3, 2], [0, 2]], [[0, 0], [2, 0], [2, 2], [0, 2]]]], why: ['这块太小了', '拼出来太短了', '拼出来太长了'] },
-  { out: [[0, 0], [4, 0], [4, 4], [0, 4]], good: [[[0, 0], [4, 0], [0, 4]], [[4, 0], [4, 4], [0, 4]]], foils: [[[[0, 0], [2, 0], [0, 2]], [[2, 0], [2, 2], [0, 2]]], [[[0, 0], [4, 0], [0, 4]], [[0, 0], [4, 0], [4, 2], [0, 2]]], [[[0, 0], [4, 0], [2, 3]], [[0, 0], [4, 0], [2, 3]]]], why: ['拼出来太小了', '多出来一块', '形状不对哦'] },
-  { out: [[0, 4], [2, 0], [4, 4]], good: [[[0, 4], [2, 0], [2, 4]], [[2, 0], [4, 4], [2, 4]]], foils: [[[[0, 4], [2, 0], [4, 4]], [[0, 4], [2, 0], [4, 4]]], [[[0, 2], [2, 0], [2, 2]], [[2, 0], [4, 2], [2, 2]]], [[[0, 0], [2, 0], [2, 4], [0, 4]], [[2, 0], [4, 4], [2, 4]]]], why: ['多出来一块', '拼出来太矮了', '这块是长方形'] },
-  { out: [[2, 0], [3, 1], [3, 3], [4, 5], [0, 5], [1, 3], [1, 1]], good: [[[1, 1], [3, 1], [3, 5], [1, 5]], [[1, 1], [2, 0], [3, 1]], [[1, 3], [1, 5], [0, 5]], [[3, 3], [4, 5], [3, 5]]], foils: [[[[1, 1], [3, 1], [3, 5], [1, 5]], [[1, 1], [2, 0], [3, 1]], [[1, 3], [1, 5], [0, 5]]], [[[1, 1], [3, 1], [3, 4], [1, 4]], [[1, 1], [2, 0], [3, 1]], [[1, 3], [1, 5], [0, 5]], [[3, 3], [4, 5], [3, 5]]], [[[1, 1], [3, 1], [3, 5], [1, 5]], [[0, 1], [2, 0], [4, 1]], [[1, 3], [1, 5], [0, 5]], [[3, 3], [4, 5], [3, 5]]]], why: ['少了一块', '火箭身子太短', '尖顶太大了'] },
+  { out: [[0, 2], [2, 0], [4, 2], [4, 4], [0, 4]], good: [[[0, 2], [4, 2], [4, 4], [0, 4]], [[0, 2], [2, 0], [4, 2]]], foils: [[[[0, 0], [2, 0], [2, 2], [0, 2]], [[0, 2], [2, 0], [4, 2]]], [[[0, 2], [4, 2], [4, 4], [0, 4]], [[0, 1], [1, 0], [2, 1]]], [[[0, 0], [4, 0], [4, 2], [0, 2]], [[0, 0], [4, 0], [4, 2], [0, 2]]], [[[0, 1], [4, 1], [4, 4], [0, 4]], [[0, 2], [2, 0], [4, 2]]]], why: ['屋子太小了', '屋顶太小了', '没有屋顶', '屋子太高了'] },
+  { out: [[0, 0], [4, 0], [4, 2], [0, 2]], good: [[[0, 0], [2, 0], [2, 2], [0, 2]], [[2, 0], [4, 0], [4, 2], [2, 2]]], foils: [[[[0, 0], [2, 0], [2, 2], [0, 2]], [[0, 0], [1, 0], [1, 1], [0, 1]]], [[[0, 0], [2, 0], [0, 2]], [[2, 0], [2, 2], [0, 2]]], [[[0, 0], [3, 0], [3, 2], [0, 2]], [[0, 0], [2, 0], [2, 2], [0, 2]]], [[[0, 0], [2, 0], [2, 2], [0, 2]], [[0, 2], [2, 0], [2, 2]]]], why: ['这块太小了', '拼出来太短了', '拼出来太长了', '这块是三角形'] },
+  { out: [[0, 0], [4, 0], [4, 4], [0, 4]], good: [[[0, 0], [4, 0], [0, 4]], [[4, 0], [4, 4], [0, 4]]], foils: [[[[0, 0], [2, 0], [0, 2]], [[2, 0], [2, 2], [0, 2]]], [[[0, 0], [4, 0], [0, 4]], [[0, 0], [4, 0], [4, 2], [0, 2]]], [[[0, 0], [4, 0], [2, 3]], [[0, 0], [4, 0], [2, 3]]], [[[0, 0], [4, 0], [0, 4]], [[0, 0], [2, 0], [2, 2], [0, 2]]]], why: ['拼出来太小了', '多出来一块', '形状不对哦', '这块太小了'] },
+  { out: [[0, 4], [2, 0], [4, 4]], good: [[[0, 4], [2, 0], [2, 4]], [[2, 0], [4, 4], [2, 4]]], foils: [[[[0, 4], [2, 0], [4, 4]], [[0, 4], [2, 0], [4, 4]]], [[[0, 2], [2, 0], [2, 2]], [[2, 0], [4, 2], [2, 2]]], [[[0, 0], [2, 0], [2, 4], [0, 4]], [[2, 0], [4, 4], [2, 4]]], [[[0, 4], [2, 0], [2, 4]], [[2, 2], [3, 4], [2, 4]]]], why: ['多出来一块', '拼出来太矮了', '这块是长方形', '这块太小了'] },
+  { out: [[2, 0], [3, 1], [3, 3], [4, 5], [0, 5], [1, 3], [1, 1]], good: [[[1, 1], [3, 1], [3, 5], [1, 5]], [[1, 1], [2, 0], [3, 1]], [[1, 3], [1, 5], [0, 5]], [[3, 3], [4, 5], [3, 5]]], foils: [[[[1, 1], [3, 1], [3, 5], [1, 5]], [[1, 1], [2, 0], [3, 1]], [[1, 3], [1, 5], [0, 5]]], [[[1, 1], [3, 1], [3, 4], [1, 4]], [[1, 1], [2, 0], [3, 1]], [[1, 3], [1, 5], [0, 5]], [[3, 3], [4, 5], [3, 5]]], [[[1, 1], [3, 1], [3, 5], [1, 5]], [[0, 1], [2, 0], [4, 1]], [[1, 3], [1, 5], [0, 5]], [[3, 3], [4, 5], [3, 5]]], [[[1.5, 1], [2.5, 1], [2.5, 5], [1.5, 5]], [[1, 1], [2, 0], [3, 1]], [[1, 3], [1, 5], [0, 5]], [[3, 3], [4, 5], [3, 5]]]], why: ['少了一块', '火箭身子太短', '尖顶太大了', '火箭身子太细'] },
 ];
 const MCompose = {
   kind0: 'compose', verb: '拼！', intro: '哪几块能拼出来？', praise: ['拼得严严实实！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng, T = COMPOSE[d];
     const sets = [{ pieces: T.good, why: null }].concat(T.foils.map((f, i) => ({ pieces: f, why: T.why[i] })));
-    const pick = [sets[0]].concat(rng.shuffle(sets.slice(1)).slice(0, d >= 4 ? 3 : 2));
-    const opts = rng.shuffle(pick);
-    return { k: [d, opts.map(s => s.why || 'ok').join()], d, out: T.out, opts, answer: opts.findIndex(s => !s.why) };
+    const pos = bagPick(G, 'cppos', [0, 1, 2, 3, 4]), rest = rng.shuffle(sets.slice(1)), opts = [0, 1, 2, 3, 4].map(i => (i === pos ? sets[0] : rest.pop()));   /* five groups (client 2026-10-10) */
+    return { k: [d, opts.map(s => s.why || 'ok').join()], d, out: T.out, opts, answer: pos };
   },
   piecesSvg(pieces, u, spread) {
     const all = pieces.flat(), maxX = Math.max(...all.map(p => p[0])), maxY = Math.max(...all.map(p => p[1]));
@@ -9980,7 +10608,7 @@ const MCompose = {
     pieces.forEach((p, i) => { const b = bs[i], ox = x - b.mx, oy = (H - b.h) / 2 - b.my; svg('polygon', { points: W2X.pts(p.map(([px, py]) => [px + ox, py + oy])), fill: cols[i % 4], stroke: W2X.ink, 'stroke-width': 0.12, 'stroke-linejoin': 'round' }, s); x += b.w + gap; });
     return s;
   },
-  geo(st) { return K.L() ? { out: { x: 360, y: 110, s: 300 }, cards: { cx: 512, cy: 560 } } : { out: { x: 202, y: 230, s: 300 }, cards: { cx: 352, cy: 760 } }; },
+  geo(st) { return K.L() ? { out: { x: 362, y: 100, s: 290 }, cards: { cx: 560, cy: 520, size: 150, gap: 20, rows: 2 } } : { out: { x: 202, y: 200, s: 300 }, cards: { cx: 352, cy: 740, size: 150, gap: 20, rows: 2 } }; },     /* five groups: 3 + 2 */
   cardSpot(st) { return this.geo(st).cards; },
   decor(G) { W2X.hideAll(G, this.chars); const L = K.L(), a = G.actors[this.chars[0]]; if (a) showActor(a, L ? 86 : 72, L ? 698 : 1016, L ? 170 : 140); },
   place(st) {
@@ -9995,7 +10623,7 @@ const MCompose = {
     st.off = [(m - maxX) / 2, (m - maxY) / 2, m];
     this.place(st);
     K.pop(st, st.outline);
-    W2X.cards(st, q.opts.map(o => { const d = el('div'); Object.assign(d.style, { width: '100%', height: '100%' }); d.appendChild(this.piecesSvg(o.pieces, 1, true)); return d; }), q.opts.map((_, i) => i), Object.assign({ size: L ? (q.opts.length > 3 ? 200 : 230) : (q.opts.length > 3 ? 150 : 196), gap: 20 }, this.cardSpot(st)));
+    W2X.cards(st, q.opts.map(o => { const d = el('div'); Object.assign(d.style, { width: '100%', height: '100%' }); d.appendChild(this.piecesSvg(o.pieces, 1, true)); return d; }), q.opts.map((_, i) => i), Object.assign({ gap: 20 }, this.cardSpot(st)));
     st.cards.forEach(c => { c.style.height = (parseFloat(c.style.height) * 0.78) + 'px'; c.firstChild.style.width = '94%'; c.firstChild.style.height = '90%'; });
     K.cardsPlace(st, Object.assign({ gap: 20 }, this.cardSpot(st)));
     K.task(st, [[W2X.icon('<polygon points="10,90 50,10 90,90" fill="none" stroke="#2B2118" stroke-width="7" stroke-dasharray="10 8"/>')], ['q']]);
@@ -10015,6 +10643,20 @@ const MCompose = {
     Sfx.reveal(); st.summary = '拼好啦！'; this.cheerAll(st); Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1000);
   },
   async feedback(st, ans) { if (st.cards[ans]) K.wiggle(st, st.cards[ans]); W2X.say(st.q.opts[ans].why || '拼不出来哦'); await st.scope.wait(600); },
+  /* explain: the group he chose (blue - why it cannot was said); the right pieces drop into the outline one by one, gold */
+  async explain(st, ans) {
+    await EX.chose(st, st.cards[ans]);
+    const q = st.q, [ox, oy, m] = st.off;
+    const s2 = svg('svg', { viewBox: '-0.3 -0.3 ' + (m + 0.6) + ' ' + (m + 0.6), width: '100%', height: '100%' }), cols = ['#FF6B5B', '#4FB3FF', '#FFC93C', '#5CC46E'];
+    st.outline.appendChild(s2); s2.style.position = 'absolute'; s2.style.left = '0'; s2.style.top = '0';
+    for (let i = 0; i < q.opts[q.answer].pieces.length; i++) {
+      if (!Session.alive(st)) return;
+      const pc = q.opts[q.answer].pieces[i], pl = svg('polygon', { points: W2X.pts(pc.map(([x, y]) => [x + ox, y + oy])), fill: cols[i % 4], stroke: W2X.ink, 'stroke-width': 0.1, 'stroke-linejoin': 'round' }, s2);
+      st.scope.anim(pl, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: EASE.pop }); Sfx.place(); await st.scope.wait(340);
+    }
+    EX.ring(st, st.outline, 'xgold', 6);
+    await EX.gold(st, st.cards[q.answer], '拼好啦！');
+  },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.opts.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
 };
 
@@ -10028,7 +10670,8 @@ const MTransitive = {
     const shown = d === 1 ? pairs : rng.shuffle(pairs.slice());
     const ask = d === 3 ? 'slow' : d === 5 ? 'second' : 'fast';
     const answer = ask === 'fast' ? heroes[0] : ask === 'slow' ? heroes[n - 1] : heroes[1];
-    const opts = rng.shuffle(heroes.slice());
+    const others = rng.shuffle(this.pool.filter(x => !heroes.includes(x))).slice(0, 5 - n);      /* + heroes who did not run: five faces (client 2026-10-10) */
+    const opts = placeOptions(G, heroes.concat(others), answer);
     return { k: [d, heroes.join(), ask], heroes, pairs: shown, ask, answer, opts };
   },
   geo(st) { const L = K.L(), n = st.q.pairs.length; return L ? { y: 110, h: 150, w: 290, gap: 24, cols: n } : { y: 230, h: 140, w: 300, gap: 18, cols: 2 }; },
@@ -10058,7 +10701,7 @@ const MTransitive = {
     this.place(st);
     for (let i = 0; i < st.pairEls.length; i++) { if (!Session.alive(my)) return; K.pop(st, st.pairEls[i]); const [a, b] = q.pairs[i]; Voice.say(CHARS[a][0] + '赢了' + CHARS[b][0], { tag: 'pair' }); await st.scope.guard(Voice.afterSay(150)); }
     if (!Session.alive(my)) return;
-    W2X.cards(st, q.opts.map(id => W2X.charImg(id)), q.opts, Object.assign({ size: L ? (q.opts.length > 3 ? 130 : 150) : 130, gap: 24 }, this.cardSpot()));
+    W2X.cards(st, q.opts.map(id => W2X.charImg(id)), q.opts, Object.assign({ size: L ? 130 : 126, gap: 24 }, this.cardSpot()));
     const medal = W2X.icon('<circle cx="50" cy="58" r="30" fill="#FFC93C" stroke="#2B2118" stroke-width="7"/><path d="M34 10L50 30L66 10" fill="none" stroke="#E8414B" stroke-width="10"/>');
     K.task(st, [[medal], ['q']]);
     K.say(st, q.ask === 'fast' ? '谁跑得最快？' : q.ask === 'slow' ? '谁跑得最慢？' : '谁跑第二名？');
@@ -10079,8 +10722,25 @@ const MTransitive = {
   async feedback(st, ans) {
     const q = st.q, i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]);
     const lost = q.pairs.find(p => p[1] === ans), won = q.pairs.find(p => p[0] === ans);
-    W2X.say(q.ask === 'slow' ? (won ? '它赢了' + CHARS[won[1]][0] : '再想一想') : q.ask === 'fast' ? (lost ? '它输给了' + CHARS[lost[0]][0] : '再想一想') : (ans === q.heroes[0] ? '它是第一名' : lost ? '它输给了' + CHARS[lost[0]][0] : '再想一想'));
+    W2X.say(!q.heroes.includes(ans) ? '它没有比赛' : q.ask === 'slow' ? (won ? '它赢了' + CHARS[won[1]][0] : '再想一想') : q.ask === 'fast' ? (lost ? '它输给了' + CHARS[lost[0]][0] : '再想一想') : (ans === q.heroes[0] ? '它是第一名' : lost ? '它输给了' + CHARS[lost[0]][0] : '再想一想'));
     await st.scope.wait(600);
+  },
+  /* explain: the face he chose (blue); the runners stand in their order, counted "第一、第二、第三", the right one and its
+     card gold */
+  async explain(st, ans) {
+    const q = st.q, my = st, L = K.L();
+    await EX.chose(st, EX.card(st, ans));
+    st.pairEls.forEach(e => e.style.visibility = 'hidden');
+    const n = q.heroes.length, step = L ? 150 : 140, y = L ? 300 : 470;
+    let goldEl = null;
+    for (let i = 0; i < n; i++) {
+      if (!Session.alive(my)) return;
+      const e = W2X.thing(st, 104, 150, 6, ''); e.appendChild(W2X.charImg(q.heroes[i])); place(e, Stage.W / 2 + (i - (n - 1) / 2) * step - 52, y - 150 + i * 20, 104, 150);
+      K.pop(st, e); if (q.heroes[i] === q.answer) goldEl = e; if (q.heroes[i] === ans) EX.ring(st, e, 'xchose', 4);
+      await Count.beat(st.scope, 360, i + 1, 'o');
+    }
+    if (goldEl) EX.ring(st, goldEl, 'xgold', 4);
+    await EX.gold(st, EX.rightCard(st), CHARS[q.answer][0] + (q.ask === 'fast' ? '最快！' : q.ask === 'slow' ? '最慢！' : '第二名！'));
   },
   next(st, strat) { return st.picked || !st.cards ? null : K.cardNext(st, strat); },
 };
@@ -10113,7 +10773,7 @@ const IC = {
   compose: W2X.icon('<polygon points="10,50 50,10 90,50" fill="#FF6B5B" stroke="#2B2118" stroke-width="5"/><rect x="18" y="50" width="64" height="40" fill="#4FB3FF" stroke="#2B2118" stroke-width="5"/>'),
   race: W2X.icon('<circle cx="50" cy="58" r="30" fill="#FFC93C" stroke="#2B2118" stroke-width="7"/><path d="M34 10L50 30L66 10" fill="none" stroke="#E8414B" stroke-width="10"/><path d="M46 46L54 42V74" fill="none" stroke="#2B2118" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>'),
 };
-w2Game(MPattern,  { id: 'Q1', world: 'peppa2', bg: 'peppa_beach', chars: PEP, host: 'peppa', icon: 'umbrella', items: ['umbrella', 'umbrella_blue', 'umbrella_yellow'] });
+w2Game(MPattern,  { id: 'Q1', world: 'peppa2', bg: 'peppa_beach', chars: PEP, host: 'peppa', icon: 'umbrella', items: ['umbrella', 'umbrella_blue', 'umbrella_yellow'], more: ['umbrella#110', 'umbrella#265'] });   /* + a green and a purple umbrella: five options */
 w2Game(MPlace,    { id: 'Q2', world: 'peppa2', bg: 'peppa_school', chars: ['george', 'peppa'], host: 'george', icon: 'dino', props: ['dino', 'toybox'] });
 w2Game(MSeriate,  { id: 'Q3', world: 'peppa2', bg: 'peppa_playground', chars: ['peppa', 'george'], host: 'peppa', icon: 'puddle', props: ['puddle'] });
 w2Game(MTwins,    { id: 'Q4', world: 'peppa2', bg: 'peppa_hill', chars: ['peppa', 'george'], host: 'peppa', iconSrc: IC.kite, boost: 1 });
@@ -10128,7 +10788,7 @@ w2Game(MOddOne,   { id: 'J4', world: 'pjmasks', bg: 'pj_rooftop', chars: ['catbo
 w2Game(MCode,     { id: 'D1', world: 'paw2', bg: 'paw_city', chars: ['ryder', 'chase'], host: 'ryder', icon: 'policecar', props: ['policecar', 'kitten'] });
 w2Game(MDouble,   { id: 'D2', world: 'paw2', bg: 'paw_farm', chars: ['skye', 'chase'], host: 'skye', icon: 'egg', item: 'egg' });
 w2Game(MCubes,    { id: 'D3', world: 'paw2', bg: 'paw_snow', chars: ['rubble', 'marshall'], host: 'rubble', iconSrc: IC.cube });
-w2Game(MMemory,   { id: 'D4', world: 'paw2', bg: 'paw_lookout', chars: ['ryder'], host: 'ryder', iconSrc: IC.memory, pool: ['chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble'], boost: 1 });
+w2Game(MMemory,   { id: 'D4', world: 'paw2', bg: 'paw_lookout', chars: ['ryder'], host: 'ryder', iconSrc: IC.memory, pool: ['chase', 'marshall', 'skye', 'rocky', 'zuma', 'rubble'], extra: ['ryder'], boost: 1 });
 w2Game(MCorners,  { id: 'G1', world: 'huluwa2', bg: 'huluwa_bamboo', chars: ['gourd1', 'grandpa'], host: 'gourd1', iconSrc: IC.corners });
 w2Game(MCoins,    { id: 'G2', world: 'huluwa2', bg: 'huluwa_village', chars: ['grandpa', 'gourd2'], host: 'grandpa', iconSrc: IC.coin, items: ['corn', 'radish', 'mushroom', 'gourd'] });
 w2Game(MTrace,    { id: 'G3', world: 'huluwa2', bg: 'huluwa_lotus', chars: ['gourd3', 'grandpa'], host: 'gourd3', iconSrc: IC.trace });

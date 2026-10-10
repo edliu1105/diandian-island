@@ -134,7 +134,9 @@ with sync_playwright() as p, serve() as base:
       const bad = [];
       ['Z1', 'Z2', 'Z3', 'Z4'].forEach(g => { const R = GAMES[g]; for (let lv = 1; lv <= 5; lv++) { const G = { world: 'trans3', W: WORLDS.trans3, rng: RNG(lv * 7 + 1), bags: {} };
         for (let i = 0; i < 300; i++) { const qq = R.gen(G, { level: lv, rng: G.rng }); const opts = qq.opts || [];
-          if (!opts.includes(qq.answer) || new Set(opts.map(String)).size !== opts.length) bad.push(g + ' L' + lv + ' opts ' + JSON.stringify(qq.k));
+          /* "the same or not" asks two doors in one question (一题两问, 2026-10-10): its answer is both signs */
+          if (qq.mode === 'judge') { if (qq.ds.map(x => (x.a + x.b === x.c ? 'eq' : 'ne')).join(',') !== qq.answer || qq.ds.length !== 2) bad.push(g + ' L' + lv + ' two doors ' + JSON.stringify(qq.k)); }
+          else if (!opts.includes(qq.answer) || new Set(opts.map(String)).size !== opts.length || opts.length !== (g === 'Z4' ? 5 : opts.length)) bad.push(g + ' L' + lv + ' opts ' + JSON.stringify(qq.k));
           const nums = JSON.stringify(qq).match(/-?\\d+/g).map(Number); if (g !== 'Z4' && typeof qq.answer === 'number' && qq.answer > (g === 'Z1' ? (lv <= 2 ? 6 : 10) : [0, 5, 7, 9, 10, 10][lv])) bad.push(g + ' L' + lv + ' big ' + qq.answer);
           if (g === 'Z1' && lv === 1 && qq.answer > 5) bad.push('Z1 L1 ' + qq.answer);
           if (g === 'Z4') { const tru = qq.eqs.filter(e => (e[1] === '+' ? e[0] + e[2] : e[0] - e[2]) === e[4]); if (tru.length !== 1 || qq.eqs.indexOf(tru[0]) !== qq.answer) bad.push('Z4 true sentences ' + JSON.stringify(qq.eqs)); } } } });
