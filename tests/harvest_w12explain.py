@@ -94,7 +94,6 @@ def templates():
     out += ['颜色不一样', '图案不一样', '尾巴不一样', '方向不一样']                                                   # Q4
     out += ['它没有比赛', '再想一想', '它是第一名']                                                                  # W4
     out += ['再来一题！', '下一题来啦！', '再来一个！']                                                               # AGAIN: after every explanation (a new question comes)
-    out += ['再来一局吧！']                                                                                          # rule 3: a session with 3 wrong guesses ends (its stars do not count)
     return out
 
 

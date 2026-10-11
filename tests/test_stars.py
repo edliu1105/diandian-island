@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """Stars are earned, games open by stars (client rules):
 1. every game of both seas: after a wrong answer the next question is a NEW one (another question key), same kind;
-   the round with the mistake earns no star; the right one after it lights its star in the session, and the game's
-   stars are credited when the session ends - with 3 wrong guesses (a guessable game) not at all (rule 3, 2026-10-10)
+   the round with the mistake earns no star (stars in the session and the game's stars unchanged after wrong + right)
 2. a session with fewer than 5 stars: the game is not done, the next game stays locked, the island panel shows its
    stars (n of 5); the tray starts with them next time; the 5th star opens the next game ("新游戏开啦！")
 3. a save from before the rule: sea 1 stays as earned (passed, gate open, games checked); sea 2's played-through games
@@ -33,9 +32,6 @@ def per_game(ids):
                     res.setdefault('diff', []).append(k0 != k1); res.setdefault('kind', []).append(st['kind'] == kind0 and st['retest'])
                 gen, snap = answer_question(page, 'right', timeout=20000); wait_next_question(page, gen, timeout=30000)
                 res['stars'] = page.evaluate("[Session.G.stars, (Session.G.ws.gstars || {})[Session.G.id] || 0]")
-                res['wrongs'] = page.evaluate("Session.G.led ? Session.G.led.wrongs : -1")      # the wrong guesses the session counted (0: not guessable)
-                page.evaluate("gesture('home')"); page.wait_for_timeout(60)
-                res['after'] = page.evaluate("([w, g]) => W2.stars(w, g)", [w, g])
             except Exception as e:
                 res['err'] = str(e)[:160]
             res['pe'] = page.errors[:2]; del page.errors[:]
@@ -87,8 +83,7 @@ def rules(log):
         wait_map(page, timeout=60000); page.wait_for_timeout(1500)
         st = page.evaluate("() => ({ stars: W2.stars('peppa2', 'Q1'), done: W2.gameDone('peppa2', 'Q1'), q2: W2.gameOpen('peppa2', 'Q2'), said: JSON.stringify(window.__speechLog).includes('新游戏开啦'), full: (window.__said || []).includes('集满啦！'), panel: !!MapView.panel })")
         log.check(st['done'] and st['q2'] and st['said'] and st['panel'], '5 stars: Q1 done, Q2 opens, "新游戏开啦！" with the panel %s' % st)
-        # rule 3: the 5th star ends the session at once only when it can no longer turn void (wrong guesses + questions left < 3)
-        log.check(st['full'] and st['stars'] == n1 + max(5 - n1, 3), 'the 5th star is a moment: "集满啦！" and the session ends as soon as it cannot turn void any more (%d + %d stars) %s' % (n1, max(5 - n1, 3), st))
+        log.check(st['full'] and st['stars'] == 5, 'the 5th star is a moment: "集满啦！" and the session ends there (5 stars, not 6 or 7) %s' % st)
         log.check(not page.errors, 'rules: zero page errors %s' % page.errors[:3])
         # ---- an old save: sea 1 played through (some games < 5 stars), sea 2 peppa2 played through with 2 stars each
         page.evaluate("""() => {
@@ -124,10 +119,7 @@ def main():
         if 'err' in r:
             log.fail('%s: %s' % (r['g'], r['err'])); continue
         log.check(all(r['diff']) and all(r['kind']), '%s: three wrong answers -> three new questions, same kind, retest %s %s' % (r['g'], r['diff'], r['kind']))
-        # rule 3 (2026-10-10): the star is lit in the session and credited at its end - not with 3 wrong guesses
-        log.check(r['stars'] == [1, 0], '%s: the wrong answers earn nothing, the next question answered right lights its star (session, game until the end) %s' % (r['g'], r['stars']))
-        w3 = r.get('wrongs', -1)          # of the 3 wrong answers, those that could be guessed (a game can mix both kinds)
-        log.check(0 <= w3 <= 3 and r.get('after') == (0 if w3 >= 3 else 1), '%s: leaving then: %s star (%d of the 3 wrong answers were guesses - %s)' % (r['g'], r.get('after'), w3, 'the session does not count' if w3 >= 3 else 'the star counts'))
+        log.check(r['stars'] == [1, 1], '%s: the wrong answers earn nothing, the next question answered right earns its star (session, game) %s' % (r['g'], r['stars']))
         log.check(not r['pe'], '%s: no page error %s' % (r['g'], r['pe']))
     rules(log)
     return log.close()

@@ -422,7 +422,6 @@ const W4U = {
     return ok ? 'ok' : 'false';
   };
   W4R.F3 = {
-    guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
     kind0: 'build4', verb: '拼！', intro: '拼一个算式！', praise: ['算式拼对啦！'],
     /* L1 + and = (5, dots); L2 + and = (9, dots); L3 − too (10, numerals); L4 one more number card than needed; L5 that and
        all three signs (+ − =): the child picks the numbers and the operation */
@@ -1779,7 +1778,6 @@ const W4U = {
      L1 6 · L2 7 · L3 8 · L4 9, numbers only · L5 10, and one split also turned round ("4 | 6" and "6 | 4": both right). The wrong
      cards make N − 2, N − 1, N + 1 or N + 2. */
   W4R.N1 = {
-    guess: true,   /* rule 3: random tapping can answer it (pick all that fit: a multi-select) */
     kind0: 'splits', verb: '分！', intro: '分一分，找全！', praise: ['全都找到啦！'],
     gen(G, o) {
       const d = Math.min(5, o.level), rng = o.rng, N = 5 + d, nc = d <= 2 ? 5 : 6, dots = d <= 3;
@@ -1873,7 +1871,6 @@ const W4U = {
      Exactly one pair of cards makes N (no other two cards do, no card is N's half). L1 N 6-7, 4 cards · L2 N 7-8, 5 cards · L3
      N 7-9, 6 cards · L4 N 8-10, numbers only · L5 N 8-10, some cards dots only, some numbers only. */
   W4R.N2 = {
-    guess: true,   /* rule 3: random tapping can answer it (pick two: a multi-select) */
     kind0: 'pair', verb: '配！', intro: '凑数配对！', praise: ['配得正好！'], props: ['rocket'],
     gen(G, o) {
       const d = Math.min(5, o.level), rng = o.rng, N = rng.pick([null, [6, 7], [7, 8], [7, 8, 9], [8, 9, 10], [8, 9, 10]][d]), nc = [0, 5, 5, 6, 6, 6][d];          /* five cards at least (the client, 2026-10-10) */
@@ -2042,7 +2039,6 @@ const W4U = {
      place whose row or column is otherwise full). */
   const SH = [{ k: 'star', c: '#FFC93C', n: '星星' }, { k: 'circle', c: '#4FB3FF', n: '圆圈' }, { k: 'tri', c: '#FF6B5B', n: '三角' }, { k: 'sq', c: '#5CC46E', n: '方块' }];
   W4R.N4 = {
-    guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
     kind0: 'sudoku', verb: '填！', intro: '小小数独！', praise: ['每格都想对啦！'],
     gen(G, o) {
       const d = Math.min(5, o.level), rng = o.rng, n = d >= 4 ? 4 : 3, k = [0, 2, 3, 4, 3, 4][d];
@@ -2379,7 +2375,6 @@ const W4U = {
      kept in the head (the support fades with the level, as the dots do) · L4 numerals only, a stone can be 0 ·
      L5 4 x 3 or 3 x 4 (ten ways of six stones), stones 0-2 (now and then 3). */
   W4R.O2 = {
-    guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
     kind0: 'steps', verb: '走！', intro: '找对的路！', praise: ['路找对啦！'], props: [],
     ways(C, R) { const out = [], rec = (r, c, acc) => { acc = acc.concat([[r, c]]); if (r === 0 && c === C - 1) { out.push(acc); return; } if (r > 0) rec(r - 1, c, acc); if (c < C - 1) rec(r, c + 1, acc); }; rec(R - 1, 0, []); return out; },
     gen(G, o) {

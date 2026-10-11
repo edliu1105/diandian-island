@@ -594,7 +594,6 @@ const Store = {
       t.pass = w.pass === true; t.allOpen = w.allOpen === true;              /* passed / all games open by the old world-1 rule */
       t.gstars = {}; t.gdone = {};                                          /* stars per game, games played through */
       for (const g of WORLDS[id].games) { if (w.gstars && typeof w.gstars[g] === 'number') t.gstars[g] = Math.round(num(w.gstars[g], 0, 0, 1e6)); if (w.gdone && w.gdone[g] === true) t.gdone[g] = true; }
-      if (w.voids && typeof w.voids === 'object') { t.voids = {}; for (const g of WORLDS[id].games) if (typeof w.voids[g] === 'number') t.voids[g] = Math.round(num(w.voids[g], 0, 0, 1e6)); }   /* rule 3: sessions that credited nothing */
       if (w.keep && typeof w.keep === 'object') { t.keep = {}; for (const g of WORLDS[id].games) if (w.keep[g] === true) t.keep[g] = true; }   /* sea 1 as earned before the 5-star rule */
       t.lastKey = typeof w.lastKey === 'string' ? w.lastKey.slice(0, 80) : '';
       t.demo = {};
@@ -1886,7 +1885,6 @@ const SILENT_ALT = { giveN: 'giveNvis' };
 const Mastery = {
   gs(ws, g) { ws.g = ws.g || {}; return ws.g[g] || (ws.g[g] = { n: 0, c: 0, bits: [], k: {} }); },
   record(G, st, ok) {
-    if (Ledger.hold(() => this.record(G, st, ok), ok)) return true;        /* rule 3: in the session's ledger */
     const ws = G.ws;
     ws.log = ws.log || [];
     ws.log.push({ g: G.id, k: st.evKind || st.kind, ok: ok ? 1 : 0, ev: st.evidence && !st.hinted ? 1 : 0, h: st.hinted ? 1 : 0, gd: st.guided ? 1 : 0, pr: st.probe ? 1 : 0, lv: st.level, t: Date.now() });
@@ -1926,7 +1924,6 @@ const Mastery = {
     if (ws.guidedRun >= 3) { ws.guidedRun = 0; if (ws.level > ws.floor) { ws.level--; ws.win = []; } }
   },
   sessionEnd(G) {
-    if (G.led && G.led.void) return;                                         /* rule 3: a void session is no window */
     const ws = G.ws;
     if (G.ev.length >= 4 && G.ev.reduce((s, x) => s + x, 0) / G.ev.length >= 0.75) ws.windows++;
     this.checkGate(G.world);
@@ -2061,64 +2058,6 @@ const Clock = {
   hide() { if (!this.hiddenAt) this.hiddenAt = now(); },
   show() { if (this.hiddenAt) { this.lost += now() - this.hiddenAt; this.hiddenAt = 0; } },
 };
-/* ================================================================ RULE 3: STARS COUNT ONLY WITHOUT 3 WRONG GUESSES
-   (the client, 2026-10-10, docs/OPTIONS-EXPLAIN-SPEC.md). Random tapping hits one of five options in five, so a session
-   in which the child answered 3 or more GUESSABLE questions wrong (a choice, a two-ask, a multi-select; review and key
-   questions too) credits nothing: no star, so no ✓, no new game, island or flag; no review gem; no memory-box step up and
-   no pass / mastery evidence. Its wrong answers are recorded as always. A question that cannot be guessed (give N, build,
-   carry, write, walk a path) never counts as wrong, nor does an answer right after the 2nd hint (no star, not wrong).
-   How: everything an answer writes into the save goes into the session's ledger, in order - a right answer's writes as
-   'credit', a wrong answer's as 'always' - and the ledger is applied when the session ends (finish, home, any teardown):
-   all of it with fewer than 3 wrong guesses, only the 'always' part with 3 or more. The tray lights its stars as before
-   during the session; a void session's stars fade grey and float away at the end ("再来一局吧！", no failure sound).
-   The page going to the background settles what is there so far as if he left then (the app may never come back).
-   The monthly test keeps its own rule (it is a measurement: no ledger); the key round counts like any session (its gem
-   is not given when it is void). */
-/* can random tapping answer this question? The game says so itself (guess: true | false | st => bool); else its own check
-   of the question (world 3, the arithmetic island: audit(q); a review card: RQ.audit - 'none' = not a choice); else the
-   question's options as shown (option cards: st.opts) or its two asks */
-function guessable(st) {
-  if (!st || st.demo) return false;
-  const g = st.game, q = st.q || {};
-  if (!st.rv && g && g.guess != null) return typeof g.guess === 'function' ? !!g.guess(st) : !!g.guess;
-  const A = st.rv ? (typeof RQ !== 'undefined' ? q2 => RQ.audit(q2) : null) : (g && typeof g.audit === 'function' ? q2 => g.audit(q2) : null);
-  if (A) { try { const a = A(q); if (a) return !a.none; } catch (e) {} }
-  return !!(q.q2 || q.q1 || q.asks === 2 || st.sub2 || (Array.isArray(st.opts) && st.opts.length >= 2));
-}
-const Ledger = {
-  VOID: 3, applying: false,
-  open(G) { G.led = G.test ? null : { list: [], wrongs: 0, done: false, void: false, paid: 0 }; },
-  live() { const G = Session.G; return G && G.led && !G.led.done && !this.applying ? G : null; },
-  /* a write of an answer: held in the ledger while a session is open (true), else the caller writes it now (false) */
-  hold(fn, credit, tag) { const G = this.live(); if (!G) return false; G.led.list.push({ fn, credit: !!credit, tag: tag || '' }); return true; },
-  put(fn, credit, tag) { if (!this.hold(fn, credit, tag)) fn(); },
-  count(tag) { const G = this.live(); return G ? G.led.list.filter(e => e.tag === tag).length : 0; },
-  wrong(G, st) { if (G && G.led && !G.led.done && guessable(st)) G.led.wrongs++; },
-  voided(G) { return !!(G && G.led && G.led.wrongs >= this.VOID); },
-  run(L, all) {
-    const es = L.list.splice(0);
-    this.applying = true;
-    try { for (const e of es) if (all || !e.credit) { try { e.fn(); } catch (err) { console.error('ledger', err); } } } finally { this.applying = false; }
-  },
-  /* the page goes to the background: settled so far as if he left now (stars paid stay paid) */
-  checkpoint() {
-    const G = Session.G; if (!G || !G.led || G.led.done || !G.led.list.length) return;
-    const ok = G.led.wrongs < this.VOID; this.run(G.led, ok); if (ok) G.led.paid = G.stars; Store.save();
-  },
-  /* the end of a session: 'credit' | 'void' (null: no ledger - the monthly test) */
-  settle(G) {
-    const L = G && G.led; if (!L) return null;
-    if (L.done) return L.void ? 'void' : 'credit';
-    L.void = L.wrongs >= this.VOID;
-    this.run(L, !L.void);
-    L.done = true;
-    if (L.void) { const v = G.ws.voids || (G.ws.voids = {}); v[G.id] = (v[G.id] || 0) + 1; }
-    Store.save();
-    return L.void ? 'void' : 'credit';
-  },
-  /* the parent panel: the sessions of a game that credited nothing */
-  voids(w, g) { const v = Store.w(w).voids; return (v && v[g]) || 0; },
-};
 const Session = {
   G: null, st: null, qn: 0,
   alive(st) { return !!st && this.st === st && !st.scope.dead && this.G === st.G && !st.G.dead; },
@@ -2146,7 +2085,6 @@ const Session = {
     ws.visits++; ws.sessions++; Store.save();
     { const gl = W.games; G.nx = gl[gl.indexOf(gameId) + 1] || null; G.nxWas = G.nx ? W2.gameOpen(worldId, G.nx) : true; }
     G.wasDone = W2.gameDone(worldId, gameId);          /* the 5th star in this session is a moment (R9-1) */
-    Ledger.open(G);                                     /* rule 3: what the answers earn waits for the session's end */
     Voice.enter('game');
     MapView.closePanel(true);
     await Loader.run(G);
@@ -2359,7 +2297,6 @@ const Session = {
       await st.scope.guard(Voice.afterSay(200));
       if (!this.alive(my)) return 'dead';
       if (!st.demo && !st.rv) Mastery.record(G, st, false);
-      Ledger.wrong(G, st);                         /* rule 3: a wrong guess (a choice, two asks, a multi-select) counts */
       this.ffOff();
       this.endQ(st);
       return 'wrong';
@@ -2398,8 +2335,9 @@ const Session = {
     this.lastPraise = p; return p;
   },
   async reward(G, st) {
-    G.stars++;
-    { const ws = G.ws, id = G.id; Ledger.put(() => { ws.stars++; const gs = ws.gstars || (ws.gstars = {}); gs[id] = (gs[id] || 0) + 1; Store.save(); }, true, 'star'); }   /* rule 3 */
+    G.stars++; G.ws.stars++;
+    { const gs = G.ws.gstars || (G.ws.gstars = {}); gs[G.id] = (gs[G.id] || 0) + 1; }
+    Store.save();
     const slots = $$('#tray i');
     const slot = slots[Math.min((G.trayBase || 0) + G.stars, slots.length) - 1];
     if (!slot) return;
@@ -2413,13 +2351,7 @@ const Session = {
     star.remove();
     slot.classList.add('on');
     slot.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: T(260) + 1, easing: EASE.pop });
-    /* the 5th star (credited ones + this session's): the game is done. Rule 3: the session ends at once only when it can
-       no longer turn void (its wrong guesses + the questions left < 3, or a game nobody can guess); else it goes on and
-       the tray celebrates at its end, if it counts (a 5th star never cuts a session short of its chance to be void) */
-    if (!G.wasDone && !G.full && !Ledger.voided(G) && W2.stars(G.world, G.id) + Ledger.count('star') >= 5) {
-      if (!G.led || G.game.guess === false || G.led.wrongs + (G.rounds - G.round - 1) < Ledger.VOID) { G.full = true; await this.fullTray(G); }
-      else G.fullDue = true;
-    }
+    if (!G.wasDone && !G.full && W2.gameDone(G.world, G.id)) { G.full = true; await this.fullTray(G); }
   },
   /* all five stars of this game: the tray glows star by star, a fanfare and "集满啦！" (then the session ends) */
   async fullTray(G) {
@@ -2431,19 +2363,6 @@ const Session = {
     Voice.say('集满啦！', { tag: 'praise' });
     await G.scope.guard(Promise.race([Voice.afterSay(150), G.scope.wait(2400)]));      /* the words are heard before the map */
     await G.scope.wait(500);
-  },
-  /* rule 3, a void session: the stars it lit (not those paid when the page went away) turn grey and float away, softly;
-     no failure sound, no red - the host says "再来一局吧！" */
-  async voidOut(G) {
-    const slots = $$('#tray i'), from = (G.trayBase || 0) + (G.led ? G.led.paid : 0), to = Math.min(slots.length, (G.trayBase || 0) + G.stars);
-    for (let i = from; i < to; i++) {
-      const s = slots[i];
-      G.scope.anim(s, [{ transform: 'translateY(0) scale(1)', filter: 'grayscale(0)', opacity: 1 }, { transform: 'translateY(0) scale(1)', filter: 'grayscale(1)', opacity: 1, offset: 0.35 }, { transform: 'translateY(-46px) scale(.7)', filter: 'grayscale(1)', opacity: 0 }], { duration: 1300, delay: 120 * (i - from), easing: 'ease-in', fill: 'none' }).then(() => s.classList.remove('on'));
-    }
-    G.stars = G.led ? G.led.paid : 0;            /* the map counts only what was credited */
-    Voice.say('再来一局吧！', { tag: 'bye', owner: G });
-    await G.scope.guard(Promise.race([Voice.afterSay(150), G.scope.wait(1800)]));
-    await G.scope.wait(Math.max(0, 1300 + 120 * (to - from) - 900));
   },
   /* D04: the friends react to the child's answer together - everyone turns to where it happened, then a wave of cheers */
   cheer(G, st) {
@@ -2531,23 +2450,19 @@ const Session = {
     G.finishing = true;
     this.ffOn();
     const sc = G.scope;
-    if (Ledger.settle(G) === 'void') await this.voidOut(G);       /* rule 3: 3 wrong guesses - the stars do not count */
-    else {
-      if (G.fullDue && !G.full && W2.gameDone(G.world, G.id)) { G.full = true; await this.fullTray(G); }   /* its 5th star came earlier in this session */
-      Sfx.complete();
-      Fx.confetti(40);
-      Object.values(G.actors).filter(a => !a.math).forEach((a, i) => sc.timeout(() => a.cheer(), i * 110));
-      Voice.say(G.game.bye || '玩得真开心！', { tag: 'bye', owner: G });
-    }
+    Sfx.complete();
+    Fx.confetti(40);
+    Object.values(G.actors).filter(a => !a.math).forEach((a, i) => sc.timeout(() => a.cheer(), i * 110));
+    Voice.say(G.game.bye || '玩得真开心！', { tag: 'bye', owner: G });
     await sc.wait(DUR.finish);                /* never resolves if the child left meanwhile (C02-a) */
     if (G.dead || this.G !== G) return;
     this.ffOff();
     Mem.today().ms += Math.max(0, Clock.t() - G.t0); Store.s.lastDay = DAY(); Store.save();
-    if (G.key || G.test) { if (G.key) Mem.today().keyEnd++; else MonthTest.done(G); this.teardown(G); Screens.show('map'); Voice.enter('map'); MapView.update(); if (G.key) Gems.grant(G.led && G.led.void ? 'void' : 'key'); else Parent.toast('月测做完啦'); return; }
+    if (G.key || G.test) { if (G.key) Mem.today().keyEnd++; else MonthTest.done(G); this.teardown(G); Screens.show('map'); Voice.enter('map'); MapView.update(); if (G.key) Gems.grant('key'); else Parent.toast('月测做完啦'); return; }
     Mastery.sessionEnd(G);
     const wid = G.world, stars = G.stars, lvUp = !!G.levelUp;
     let newGame = null;
-    if (!(G.led && G.led.void)) (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through (a record only: a game is done with 5 stars) */
+    (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through (a record only: a game is done with 5 stars) */
     if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (its 5th star) */
     Progress.check(true);
     Store.save();
@@ -2563,7 +2478,6 @@ const Session = {
   /* tears down exactly the session it is given; an old flow can never destroy the current one */
   teardown(G) {
     G = G || this.G; if (!G) return;
-    Ledger.settle(G);                           /* rule 3: any other way out (a new session, an error) settles it too */
     G.dead = true;
     if (this.G !== G) { G.scope.dispose(); return; }
     Input.abort();
@@ -2588,7 +2502,6 @@ const Session = {
     Sfx.touch();
     if (Screens.cur === 'finale') { Finale.stop(); Screens.show('map'); Voice.enter('map'); MapView.update(); MapView.after(T(500)); return; }
     if (!this.G) return;
-    Ledger.settle(this.G);                      /* rule 3: he leaves - fewer than 3 wrong guesses so far: the stars count */
     const G = this.G, wid = G.world, opened = G.nx && !G.nxWas && W2.gameOpen(wid, G.nx);
     Mem.today().ms += Math.max(0, Clock.t() - G.t0); Store.s.lastDay = DAY();
     if (G.test && G.testRes && G.testRes.length && G.testRes.length < 15) Store.s.testPart = { day: DAY(), by: G.testRes.slice() };      /* a test left half way goes on next time */
@@ -3358,13 +3271,6 @@ const Parent = {
         el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
     }
     if (!digits()) el('div', 'mut', sh, { text: '数字显示已关闭：复仇者世界的“解码”只记录点卡映射，不代表已检验数字。' });
-    /* rule 3: per game, the sessions that credited nothing (3 wrong guesses) - a child who taps at random shows here */
-    {
-      const ids = ORDER.concat(ORDER2, ORDER3, typeof ORDER4 !== 'undefined' ? ORDER4 : []).filter(id => Store.w(id).unlocked && !TAKEDOWN.includes(id));
-      el('h3', '', sh, { text: '不算星的局（一局里猜错 3 道选择题：这一局的星不算）' });
-      const tv = el('table', '', sh); tv.innerHTML = '<tr><th>岛</th><th>每个小游戏：不算星的局</th></tr>';
-      ids.forEach(id => { const tr = el('tr', '', tv); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: WORLDS[id].games.map(g => g + ' ' + Ledger.voids(id, g) + '局').join('  ') }); });
-    }
     /* offline readiness: the service worker writes its list only after EVERY asset is in the cache */
     el('h3', '', sh, { text: '离线' });
     const off = el('div', '', sh, { text: '检查中…' });
@@ -3667,8 +3573,7 @@ function boot() {
   document.body.dataset.scr = 'entry';
   /* a release that finished installing last time: switch to it now, on the entry screen (page + assets together) */
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.getRegistration().then(reg => { if (reg) SWU.watch(reg); }).catch(() => {});
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { Ledger.checkpoint(); SWU.maybe(); SWU.reloadIfSafe(); } });
-  window.addEventListener('pagehide', () => Ledger.checkpoint());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { SWU.maybe(); SWU.reloadIfSafe(); } });
   window.__swApply = () => SWU.apply();
   /* after the entry screen is up: warm the map pictures, then (a little later) let the service worker precache */
   window.addEventListener('load', () => setTimeout(() => Boot.later(), 1500));
@@ -4361,7 +4266,6 @@ defGame({
 /* ---- P2 穿！ one-to-one: every pig one pair of boots ---- */
 const BOOTS = ['boots', 'boots_blue', 'boots_yellow', 'boots_green', 'boots_pink'];
 defGame({
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   id: 'P2', world: 'peppa', verb: '穿！', bg: 'peppa_porch', props: BOOTS.concat(['bench', 'teddy']), chars: ['peppa', 'george', 'daddy_pig', 'mummy_pig'], host: 'george', icon: 'boots',
   intro: '穿雨靴，跳泥坑！', kind0: 'pair', praise: ['每人一双，真好！'],
   gen(G, o) {
@@ -4669,7 +4573,6 @@ defGame({
 
 /* ---- P4 插！ Give-N: birthday candles ---- */
 defGame({
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   id: 'P4', world: 'peppa', verb: '插！', bg: 'peppa_kitchen', props: ['cake', 'candle', 'candlebox', 'hat'], chars: ['peppa', 'george', 'daddy_pig', 'mummy_pig'], host: 'peppa', icon: 'cake',
   intro: '乔治过生日！', kind0: 'giveN', praise: ['正好这么多！'],
   /* L1 'match': the dots of N are on the card from the start (learn the task, candles can be matched to dots).
@@ -5566,7 +5469,6 @@ function hideActor(a) { a.at(-600, -600); }
 
 /* ---- H1 摘！ which gourd is the k-th from the root ---- */
 defGame({
-  guess: true,   /* rule 3: random tapping can answer it (a pick among several / a multi-select) */
   id: 'H1', world: 'huluwa', verb: '摘！', bg: 'huluwa_vine', props: ['gourd'], chars: BRO.concat(['grandpa']), host: 'grandpa', icon: 'gourd',
   intro: '葫芦熟啦！', kind0: 'ord', praise: ['找得真准！'],
   gen(G, o) {
@@ -5700,7 +5602,6 @@ defGame({
 
 /* ---- H2 站！ "the third one" is one child, "three" are three children ---- */
 defGame({
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   id: 'H2', world: 'huluwa', verb: '站！', bg: 'huluwa_meadow', props: [], chars: BRO.concat(['grandpa']), host: 'grandpa', icon: 'gourd',
   intro: '排好队！', kind0: 'ord', praise: ['第几个，几个，分得清！'],
   kinds() { return ['ord', 'card']; },
@@ -7023,7 +6924,6 @@ defGame({
 
 /* ---- X2 翻！ somersault cloud: predict where Wukong lands, then flip there ---- */
 defGame({
-  guess: true,   /* rule 3: random tapping can answer it (a pick among several / a multi-select) */
   id: 'X2', world: 'xiyou', verb: '翻！', bg: 'xiyou_sky', props: ['cloud'], chars: ['wukong', 'tangseng', 'dragon_horse', 'bajie', 'shaseng'], host: 'wukong', icon: 'cloud',
   intro: '筋斗云，翻！', kind0: 'line', praise: ['猜得真准！'],
   gen(G, o) {
@@ -8957,7 +8857,6 @@ const MSort = {
 
 /* ================================================================ RULE 7 · 量 how many blocks long */
 const MMeasure = {
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   kind0: 'measure', verb: '量！', intro: '量一量！', praise: ['量得真准！'],
   gen(G, o) {
     const d = o.level, rng = o.rng;
@@ -9116,7 +9015,6 @@ const W2X = {
 const PLACE_WORD = { on: '上面', under: '下面', in: '里面', beside: '旁边', left: '左边', right: '右边', mid: '中间' };
 const PLACE_SAY = { on: '放到桌子上面！', under: '放到桌子下面！', in: '放进盒子里面！', beside: '放到桌子旁边！', left: '放到桌子左边！', right: '放到桌子右边！', mid: '放到两个中间！' };
 const MPlace = {
-  guess: true,   /* rule 3: random tapping can answer it (a pick among several / a multi-select) */
   kind0: 'place', verb: '藏！', intro: '帮乔治藏恐龙！', praise: ['放得对对的！'],
   gen(G, o) {
     const d = Math.min(5, o.level);
@@ -9196,7 +9094,6 @@ const MPlace = {
 
 /* ================================================================ 佩奇 Q3 · 跳 puddles from the smallest to the biggest (seriation) */
 const MSeriate = {
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   kind0: 'seriate', verb: '跳！', intro: '从小跳到大！', praise: ['跳得真有顺序！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -9272,7 +9169,6 @@ const MSeriate = {
 
 /* ================================================================ 佩奇 Q4 · 找双胞胎 the two kites that are exactly the same (reasoning) */
 const MTwins = {
-  guess: true,   /* rule 3: random tapping can answer it (a pick among several / a multi-select) */
   kind0: 'twins', verb: '找！', intro: '找一模一样的！', praise: ['眼睛真尖！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -9454,7 +9350,6 @@ const HID_SHAPES = {
 /* drawings that do NOT hide the shape: none contains it as a closed figure (five drawings, client 2026-10-10) */
 const HID_FOILS = { tri: ['sq', 'trap', 'flag', 'L'], sq: ['trap', 'house', 'tri', 'flag'], house: ['trap', 'flag', 'tri', 'L'], L: ['flag', 'sq', 'tri', 'trap'], arrow: ['flag', 'house', 'tri', 'sq'], flag: ['arrow', 'L', 'sq', 'trap'], trap: ['tri', 'sq', 'L', 'flag'] };
 const MHidden = {
-  guess: true,   /* rule 3: random tapping can answer it (a pick among several / a multi-select) */
   kind0: 'hidden', verb: '找！', intro: '它藏在哪幅画里？', praise: ['藏不住啦！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -9508,7 +9403,6 @@ const MHidden = {
 
 /* ================================================================ 睡衣小英雄 J2 · 线索 which robot do the clues describe (logic) */
 const MClue = {
-  guess: true,   /* rule 3: random tapping can answer it (a pick among several / a multi-select) */
   kind0: 'clue', verb: '找！', intro: '照着线索找机器人！', praise: ['神探就是你！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -9712,7 +9606,6 @@ const MOddOne = {
 /* ================================================================ 汪汪队 D1 · 开车 drive to the kitten - only enough fuel for the shortest way */
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const MCode = {
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   kind0: 'code', verb: '开！', intro: '开到小猫那里！', praise: ['一步都不多！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng, C = 6, R = 4;
@@ -9988,7 +9881,6 @@ const MMemory = {
 
 /* ================================================================ 葫芦娃 G1 · 角 corners of the mountain stones */
 const MCorners = {
-  guess: true,   /* rule 3: random tapping can answer it (a pick among several / a multi-select) */
   kind0: 'corners', verb: '数！', intro: '石头有几个角？', praise: ['角角都数清啦！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -10101,7 +9993,6 @@ const MCorners = {
 
 /* ================================================================ 葫芦娃 G2 · 铜钱 pay with one-coins and two-coins */
 const MCoins = {
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   kind0: 'coins', verb: '付！', intro: '用铜钱付钱！', praise: ['钱付得正好！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -10207,7 +10098,6 @@ const DIGITS = {    /* strokes in a 100 x 160 box, in writing order - the Chines
   9: [[[78, 28], [62, 10], [38, 10], [20, 28], [22, 56], [44, 72], [70, 64], [80, 40], [80, 96], [76, 152]]],   /* from the top right, the circle counterclockwise, then down */
 };
 const MTrace = {
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   kind0: 'trace', verb: '写！', intro: '跟着蜻蜓写数字！', praise: ['写得真漂亮！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -10547,7 +10437,6 @@ const MAnalogy = {
 
 /* ================================================================ 复仇者 W1 · 数线 where on the line is the number (number line estimation) */
 const MNumLine = {
-  guess: false,  /* rule 3: random tapping cannot answer it (built / walked / filled by hand) - a wrong answer is not counted */
   kind0: 'line', verb: '停！', intro: '停在数字那里！', praise: ['停得真准！'],
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
@@ -11078,7 +10967,6 @@ const Mem = {
   touch(c) { const d = DAY(); let m = Store.s.mem[c]; if (!m) { m = Store.s.mem[c] = { b: 0, due: 0, last: d, up: -1, seen: d, pass: [], n: 0, ok: 0, sup: 0, sd: [], pd: [] }; Mem.today().newK++; } return m; },
   answer(c, how, sid, ctx) {
     if (!c || !(SKILLS[c] || isFact(c))) return;
-    if (Ledger.hold(() => this.answer(c, how, sid, ctx), how === 'ok' || how === 'probe-ok')) return;
     ctx = ctx || {};
     const d = DAY(), m = this.touch(c), gap = d - m.last, wasDue = m.b > 0 && d >= m.due;
     m.n++;
@@ -11122,8 +11010,8 @@ const Gems = {
     Mem.today().keyGo++; Store.save();
     W3.load().then(() => Session.start(isl, g, { key: true, keyItems: due.slice(0, n), noDemo: true }));
   },
-  grant(why) { const k = Store.s.key; k.day = DAY(); if (why === 'void') { Store.save(); return; } k.got = (k.got || 0) + 1; Store.save(); this.turn(why || 'key'); },
-  turn(src, quiet) { if (src === 'star' && Ledger.hold(() => this.turn(src, true), true, 'gem')) { if (!fast() && this.reveal) this.reveal(Store.s.gems.n + Ledger.count('gem')); return; } const a = Store.s.gems; if (a.n >= 9999) return; a.n++; a.src.push(src); Store.save(); if (!fast() && !quiet && this.reveal) this.reveal(a.n); },
+  grant(why) { const k = Store.s.key; k.day = DAY(); k.got = (k.got || 0) + 1; Store.save(); this.turn(why || 'key'); },
+  turn(src) { const a = Store.s.gems; if (a.n >= 9999) return; a.n++; a.src.push(src); Store.save(); if (!fast() && this.reveal) this.reveal(a.n); },
   album() {},
 };
 const V2Mig = {

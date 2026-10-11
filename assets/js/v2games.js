@@ -350,8 +350,8 @@ Object.assign(V2D, {
       if (st.supProbe) Mem.answer(c, how === 'ok' ? 'probe-ok' : 'probe-no', G.sid, { rv: true, sup: st.sup });
       else Mem.answer(c, how, G.sid, { sup: st.sup, rv: true, pass: st.pass, miss: st.missQ, form: 'rq:' + st.q.t });
       if (!ok && !G.key) G.miss.push({ c, at: G.round + 2 });
-      if (st.pass && ok) Ledger.put(() => { if (Store.s.passFail[c]) { Store.s.passFail[c] = 0; Store.save(); } }, true);
-      if (st.pass && !ok) Ledger.put(() => { const n = (Store.s.passFail[c] || 0) + 1; Store.s.passFail[c] = n; if (n >= 2) { const m = Mem.touch(c); m.b = 1; m.due = DAY() + 1; Store.s.notes.push([DAY(), c]); Store.s.passFail[c] = 0; } Store.save(); }, false);
+      if (st.pass && ok && Store.s.passFail[c]) { Store.s.passFail[c] = 0; Store.save(); }
+      if (st.pass && !ok) { const n = (Store.s.passFail[c] || 0) + 1; Store.s.passFail[c] = n; if (n >= 2) { const m = Mem.touch(c); m.b = 1; m.due = DAY() + 1; Store.s.notes.push([DAY(), c]); Store.s.passFail[c] = 0; } Store.save(); }
       return;
     }
     /* the game's own question: its card (and, for the arithmetic games, the number fact it asked) */
@@ -362,10 +362,9 @@ Object.assign(V2D, {
   /* where a star of this question goes: the game's tray (at most 2 review stars counted there) or a gem (A.9) */
   starTo(G, st) {
     if (!st.rv) return 'game';
-    const ws = G.ws, rvs = ws.rvs || (ws.rvs = {}), id = G.id;
-    /* rule 3: this session's own stars and review stars count as they will be once credited */
-    if (W2.gameDone(G.world, id) || W2.stars(G.world, id) + Ledger.count('star') >= 5 || (rvs[id] || 0) + Ledger.count('rvs') >= 2) return 'gem';
-    Ledger.put(() => { rvs[id] = (rvs[id] || 0) + 1; }, true, 'rvs'); return 'game';
+    const ws = G.ws, rvs = ws.rvs || (ws.rvs = {});
+    if (W2.gameDone(G.world, G.id) || (rvs[G.id] || 0) >= 2) return 'gem';
+    rvs[G.id] = (rvs[G.id] || 0) + 1; return 'game';
   },
   /* review was making the child quit (first two weeks): a round of review quits more than twice as often as a game's own
      question, or three quits in a row on review -> one review a session, the rest to the key (A.16) */
