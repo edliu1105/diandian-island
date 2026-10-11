@@ -109,7 +109,11 @@ def to_answer(page, game=None, gen=None):
             page.wait_for_timeout(50); continue
         o = page.evaluate(OPTS_JS)
         if o and o['opts'] and cur['phase'] in ('ready', 'input'):
-            return o
+            page.wait_for_timeout(150)                 # the options pop in one after another: the same set twice in a row
+            o2 = page.evaluate(OPTS_JS)
+            if o2 and [x['id'] for x in o2['opts']] == [x['id'] for x in o['opts']]:
+                return o2
+            continue
         if cur['phase'] in ('act', 'ready', 'input'):
             s = page.evaluate("window.__next('right')")
             sid = (s and s.get('p') and (s['p'].get('id') or '')) or ''
