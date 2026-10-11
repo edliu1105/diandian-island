@@ -2547,7 +2547,7 @@ const Session = {
    Every one of them marks the question as assisted (it can never count as mastery evidence). */
 /* said after the explanation of a wrong answer: the NEXT question is a new one (2026-10-10), so the line announces a new
    question - not "try again" (the same question never comes back) */
-const AGAIN = ['再来一题！', '下一题来啦！', '再来一个！'];
+const AGAIN = ['再来一题！', '下一题来啦！'];      /* not 再来一个！: that opens the missed-item review card, which can come right after */
 const CHEER = ['慢慢想，不着急', '你能行的！', '再看一看！', '我们等你哦！'];
 const Hints = {
   arm(st) { this.reset(st); st.hintTimer = st.scope.interval(() => this.tick(st), 100); },
