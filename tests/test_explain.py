@@ -16,9 +16,11 @@ from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import Log, ROOT
 
-PART = sys.argv[1] if len(sys.argv) > 1 else 'all'
-WSEL = sys.argv[2] if len(sys.argv) > 2 else 'w1,w2'
-JOBS = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+ARGS = [a.split('=', 1)[-1] for a in sys.argv[1:]]      # positional, or part=... worlds=... jobs=...
+_KW = dict(a.split('=', 1) for a in sys.argv[1:] if '=' in a)
+PART = _KW.get('part', ARGS[0] if len(ARGS) > 0 and '=' not in sys.argv[1] else 'all')
+WSEL = _KW.get('worlds', ARGS[1] if len(ARGS) > 1 and '=' not in sys.argv[2] else 'w1,w2')
+JOBS = int(_KW.get('jobs', ARGS[2] if len(ARGS) > 2 and '=' not in sys.argv[3] else 3))
 W1 = ['peppa', 'bluey', 'huluwa', 'paw', 'xiyou', 'avengers']
 W2 = ['peppa2', 'bluey2', 'pjmasks', 'paw2', 'huluwa2', 'xiyou2', 'avengers2']
 VIEWS = [(1180, 820), (820, 1180), (1024, 768)]

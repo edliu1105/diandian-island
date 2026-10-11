@@ -44,7 +44,8 @@
 - 用 `tests/harness.py` 和 Playwright 自己操作、截图。
   - 测试钩子：`window.__go(world, game, level, opt)`、`window.__q`、`window.__state()`、`gesture()`。
   - 开所有岛：家长面板"全部解锁"，或直接改 `Store.s`。
-- 已有的测试：`tests/test_opt12.py`（第一、二世界）、`test_opt3.py`（云上、运算岛、复习题）、`test_w4.py`（星空）、`test_w3`、`test_v2`、`test_v2r1`–`r3`、`test_stars`、`spotcheck`、`test_boot`、`test_offline`。可以跑，但要自己验证，不要只信测试。
+- 已有的测试：`tests/test_explain.py`（第一、二世界）、`time_explain.py`（讲解的真实时长）、`test_opt3.py`（云上、运算岛、复习题）、`test_w4.py`（星空）、`test_w3`、`test_v2`、`test_v2r1`–`r3`、`test_stars`、`spotcheck`、`test_boot`、`test_offline`；`tests/run_ox.sh` 一次跑完。可以跑，但要自己验证，不要只信测试。
+  - 已知的旧测试问题（和这次改动无关，上一个版本 510e63b 同样失败，另有任务处理）：`test_flow` 的"每轮一颗星"和"错、错、引导题"、`test_hints` 的系统代做步骤、`test_real_input` 最高级第一题的驱动、`test_consistency` 的读卡方式，都还是旧规则。
 - 截图和数据放 `tests/logs/`。不要改 app 的代码。
 - **重要**：这是非交互模式，你的回合一结束会话就结束，后台任务不会再叫醒你。
   - 所有命令都在前台运行（长的命令分段跑，或加 timeout），不要放到后台；

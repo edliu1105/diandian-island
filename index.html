@@ -3954,16 +3954,36 @@ const EX = {
   say(st, text) { if (!text || st.ff || !Session.alive(st)) return Promise.resolve(); return st.scope.guard(Voice.say(text, { tag: 'explain' })); },
   wait(st, ms) { return st.scope.wait(ms); },
   /* step 1: the chosen one, ringed blue (+ a short line: what it is) */
-  async chose(st, els, line, ms) { const list = [].concat(els).filter(Boolean); list.forEach(x => this.ring(st, x, 'xchose')); this.log(st, 'chose', list[0]); list.forEach(x => x.nodeType && K.wiggle(st, x)); if (line) await this.say(st, line); await this.wait(st, ms == null ? 350 : ms); },
+  async chose(st, els, line, ms) { const list = [].concat(els).filter(Boolean); list.forEach(x => this.ring(st, x, 'xchose')); this.log(st, 'chose', list[0]); list.forEach(x => x.nodeType && K.wiggle(st, x)); if (typeof line === 'number') await this.word(st, line); else if (line) await this.say(st, line); await this.wait(st, ms == null ? 120 : ms); },
+  /* a number said as its word (the counting clip: "七", or "第七" with kind 'o'), once the line before it has ended */
+  async word(st, n, kind) {
+    if (st.ff || !Session.alive(st)) return;
+    await st.scope.guard(Voice.afterSay(0));
+    if (st.ff || !Session.alive(st)) return;
+    if (n >= 1 && n <= 20) await Count.beat(st.scope, 0, n, kind); else await this.say(st, (kind === 'o' ? '第' : '') + (CN[n] != null ? CN[n] : String(n)));
+  },
   /* step 2: the right one, ringed gold (it also glows) */
   async gold(st, els, line, ms, sep) {
     const list = [].concat(els).filter(Boolean), e = list[0];
     if (sep) list.forEach(x => this.ring(st, x, 'xgold', 10)); else this.ring(st, list, 'xgold', 12);
     this.log(st, 'gold', e);
     list.forEach(x => { if (x.classList && (x.classList.contains('card') || x.dataset.gid)) x.classList.add('hi'); });
-    if (line) await this.say(st, line); await this.wait(st, ms == null ? 650 : ms);
+    if (line) await this.say(st, line); await this.wait(st, ms == null ? 200 : ms);
   },
-  num(n) { return '你选的是' + (CN[n] != null ? CN[n] : n); },
+  /* counting shown without a word for every thing (a long count would take too long): each one hops and gets its
+     number badge with a tone; the line after it says how many */
+  async tick(st, els, from, ms) {
+    from = from == null ? 1 : from;
+    for (let i = 0; i < els.length; i++) { if (!Session.alive(st)) return; const e = els[i]; if (e) { K.hop(st, e, 14); K.badge(st, e, from + i, 0, -6, 40); } Sfx.count(Math.min(20, from + i)); await st.scope.wait(ms || 170); }
+  },
+  /* a spoken count: each one hops, gets its number badge and the number is said (waits for the word) */
+  async count(st, els, from, ms, kind) {
+    from = from == null ? 1 : from;
+    for (let i = 0; i < els.length; i++) { if (!Session.alive(st)) return; const e = els[i]; if (e) { K.hop(st, e, 14); K.badge(st, e, from + i, 0, -6, 40); } await Count.beat(st.scope, ms || 420, from + i, kind); }
+  },
+  /* a group counted by its number: one ring round it, its number on it, said once */
+  async group(st, els, n, color) { const list = [].concat(els).filter(Boolean); if (list.length) K.ring(st, list.map(e => this.rect(e)), 8, color || '#FF9F43'); if (list.length) K.badge(st, list[list.length - 1], n, 0, -6, 44); await Count.beat(st.scope, 300, n); },
+  num(n) { return n; },                     /* the chosen number: EX.chose says its word ("七"; was "你选的是七", too long) */
   /* the card the child tapped / the right card (card games) */
   card(st, v) { const i = (st.opts || []).findIndex(x => x === v || JSON.stringify(x) === JSON.stringify(v)); return st.cards && i >= 0 ? st.cards[i] : null; },
   rightCard(st) { return this.card(st, st.q.answer); },
@@ -3972,9 +3992,9 @@ const EX = {
     const c = this.card(st, ans);
     await this.chose(st, c, typeof ans === 'number' ? this.num(ans) : null);
     if (!Session.alive(st)) return;
-    if (demo) await demo(); else if (st.game.correct) await st.game.correct(st);
+    const line = demo ? await demo() : st.game.correct ? await st.game.correct(st) : null;   /* a demonstration may end in its own line ("一共五个！"): said at the gold ring */
     if (!Session.alive(st)) return;
-    await this.gold(st, this.rightCard(st), '对的是这个！');
+    await this.gold(st, this.rightCard(st), typeof line === 'string' ? line : '对的是这个！');
   },
 };
 
@@ -4185,16 +4205,14 @@ defGame({
   async correct(st) {
     const q = st.q, r = this.sheetRect(), my = st;
     const gs = q.n <= 3 ? [st.splats] : (q.chunks ? this.groups(st) : [st.splats.slice(0, Math.ceil(q.n / 2)), st.splats.slice(Math.ceil(q.n / 2))]);
-    Voice.say('我们一起看！', { tag: 'fix' });
     for (const g of gs) {
       if (!Session.alive(my)) return;
       g.forEach(s => s.classList.add('glow'));
       K.ring(st, g.map(s => { const b = box(s); return { x: b.x + r.x, y: b.y + r.y, w: b.w, h: b.h }; }), 8, '#FF9F43');
-      if (gs.length > 1) await Voice.say(CNQ(g.length) + '个', { tag: 'fix' });
-      await st.scope.wait(350);
+      if (gs.length > 1) await EX.say(st, CNQ(g.length) + '个');
+      await st.scope.wait(gs.length > 1 ? 120 : 300);
     }
-    st.cards[st.opts.indexOf(q.n)].classList.add('hi');
-    await Voice.say('一共' + CNQ(q.n) + '个！', { tag: 'fix' });
+    return '一共' + CNQ(q.n) + '个！';
   },
   /* explain: the card he chose ("你选的是四"), the splats shown again in their groups and counted, the right card gold */
   async explain(st, ans) { await EX.cards(st, ans); },
@@ -4350,9 +4368,8 @@ defGame({
     await st.scope.wait(900);
   },
   async correct(st) {
-    const my = st, s = K.lines(st), sp = this.recSpots(st);
-    Voice.say('一个一个看！', { tag: 'fix' });
-    for (let i = 0; i < st.q.n; i++) {
+    const my = st, s = K.lines(st);
+    for (let i = 0; i < st.q.n; i++) {                             /* one after the other: each gets a pair, counted aloud */
       if (!Session.alive(my)) return;
       let b = st.boots.find(o => o.owner === i);
       if (!b) { b = st.boots.find(o => o.owner < 0); if (b) { b.owner = i; await this.placeBoot(st, b); } }
@@ -4361,13 +4378,13 @@ defGame({
       if (b) await K.link(st, s, { x: eb.x + eb.w / 2, y: eb.y + eb.h * 0.5 }, { x: box(b.el).x + 50, y: box(b.el).y + 47 }, '#5CC46E');
       await st.scope.wait(250);
     }
-    await Voice.say('每人一双！', { tag: 'fix' });
+    return '每人一双！';
   },
   /* explain: (feedback flashed who has none, took back the extra pairs) every pig gets one pair, tied by a line, gold */
   async explain(st) {
-    await this.correct(st);
+    const line = await this.correct(st);
     if (!Session.alive(st)) return;
-    await EX.gold(st, st.q.who.map((_, i) => this.recEl(st, i)).concat(st.boots.filter(b => b.owner >= 0).map(b => b.el)));
+    await EX.gold(st, st.q.who.map((_, i) => this.recEl(st, i)).concat(st.boots.filter(b => b.owner >= 0).map(b => b.el)), line);
   },
   next(st, strat) {
     const c = this.counts(st);
@@ -4499,22 +4516,22 @@ defGame({
     await st.scope.wait(600);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(400); },
-  async correct(st) {
+  async correct(st, out) {
     const q = st.q, my = st;
-    Voice.say('我们一起数！', { tag: 'fix' });
-    await this.popOut(st, q.toys.map((_, i) => i));
+    await (out || this.popOut(st, q.toys.map((_, i) => i)));
     for (let i = 0; i < q.n; i++) {
       if (!Session.alive(my)) return;
       const t = st.toys[i];
-      K.hop(st, t.el, 30); Count.say(i + 1); Sfx.count(i + 1);
+      K.hop(st, t.el, 30); Sfx.count(i + 1);
       K.badge(st, t.el, i + 1, 0, 0, 44);
-      await st.scope.wait(520);
+      await Count.beat(st.scope, 420, i + 1);
     }
     K.ring(st, st.toys.map(t => box(t.el)), 14, '#FF9F43');
-    st.cards[st.opts.indexOf(q.n)].classList.add('hi');
-    await Voice.say('一共' + CNQ(q.n) + '个！', { tag: 'fix' });
+    return '一共' + CNQ(q.n) + '个！';
   },
-  async explain(st, ans) { await EX.cards(st, ans); },
+  /* explain: the toys come out of the box while his card is named (blue, "四"), every toy counted aloud, "一共五个！" at the
+     right card (gold) */
+  async explain(st, ans) { const out = this.popOut(st, st.q.toys.map((_, i) => i)); await EX.cards(st, ans, () => this.correct(st, out)); },
   next(st, strat) {
     const t = (st.toys || []).find(x => !x.inBox);
     if (t && !st.asked) return { g: 'tap', p: { id: t.id } };
@@ -4669,16 +4686,16 @@ defGame({
   },
   async correct(st) {
     const N = st.q.N, my = st;
-    Voice.say('我们一起数！', { tag: 'fix' });
-    while (st.candles.length < N) { if (!Session.alive(my)) return; this.add(st); await Count.beat(st.scope, 480, st.candles.length); }
+    while (st.candles.length < N) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(140); }
+    await st.scope.wait(250);
     for (let i = 0; i < N; i++) { if (!Session.alive(my)) return; K.hop(st, st.candles[i].el, 16); await Count.beat(st.scope, 420, i + 1); }
-    await Voice.say(CNQ(N) + '根蜡烛！', { tag: 'fix' });
+    return CNQ(N) + '根蜡烛！';
   },
   /* explain: (feedback sent the extra candles back / showed the empty places) the missing ones go in, all are counted, gold */
   async explain(st) {
-    await this.correct(st);
+    const line = await this.correct(st);
     if (!Session.alive(st)) return;
-    await EX.gold(st, st.candles.map(c => c.el));
+    await EX.gold(st, st.candles.map(c => c.el), line);
   },
   cleanup(st) { (st.candles || []).forEach(c => c.el.remove()); },
   next(st, strat) {
@@ -4874,24 +4891,22 @@ defGame({
   },
   async feedback(st, ans) { const e = this.find(st, ans); if (e) K.wiggle(st, e); await st.scope.wait(350); },
   async correct(st) {
-    const q = st.q, my = st, L = K.L();
-    Voice.say('一个对一个！', { tag: 'fix' });
-    const G = st.G, pA = G.els.plates[this.sideOf(st, 'bluey')], pB = G.els.plates[this.sideOf(st, 'bingo')];
+    const my = st, G = st.G, pA = G.els.plates[this.sideOf(st, 'bluey')], pB = G.els.plates[this.sideOf(st, 'bingo')];
     const extra = await stackCompare(st, pA, st.items.bluey, pB, st.items.bingo, [G.els.same]);
     if (!Session.alive(my)) return;
     K.flash(st, extra);
-    if (extra.length) await Voice.say('多了' + CNQ(extra.length) + '个', { tag: 'fix' });
-    await Voice.say(this.line(st), { tag: 'fix' });
+    if (extra.length) await EX.say(st, '多了' + CNQ(extra.length) + '个');
+    return this.line(st);
   },
   /* explain: the plate / button he chose (blue), the two rows paired one for one - the one left over shows who has more -
      and the right plate (or "the same" button) gold */
   async explain(st, ans) {
     const G = st.G, q = st.q, el0 = a => a === 'same' ? G.els.same : G.els.plates[this.sideOf(st, a)];
-    await this.correct(st);                                    /* the plates move together: the rings come after, where they are */
+    const line = await this.correct(st);                       /* the plates move together: the rings come after, where they are */
     if (!Session.alive(st)) return;
     if (q.answer === 'same' || ans === 'same') { G.els.same.getAnimations().forEach(a => a.cancel()); G.els.same.style.opacity = 1; }
     await EX.chose(st, el0(ans));
-    await EX.gold(st, el0(q.answer));
+    await EX.gold(st, el0(q.answer), line);
   },
   next(st, strat) {
     const q = st.q, all = ['bluey', 'bingo', 'same'];
@@ -5052,21 +5067,21 @@ defGame({
     await st.scope.wait(700);
   },
   async correct(st) {
-    const n = st.q.n, my = st, s = K.lines(st), g = this.geo();
-    Voice.say('一样东西一个币', { tag: 'fix' });
+    const n = st.q.n, my = st, s = K.lines(st);
     if (st.stacks) { st.stacks.forEach(sk => sk.remove()); st.coins = []; }
-    while (st.coins.length < n) { if (!Session.alive(my)) return; this.addCoin(st); await st.scope.wait(300); }
-    for (let i = 0; i < n; i++) { if (!Session.alive(my)) return; const tb = box(st.things[i]), cb = box(st.coins[i]); await K.link(st, s, { x: tb.x + 44, y: tb.y + 88 }, { x: cb.x + 36, y: cb.y }, '#5CC46E'); await Count.beat(st.scope, 200, i + 1); }
-    await Voice.say(CNQ(n) + '样东西' + CNQ(n) + '个币', { tag: 'fix' });
+    while (st.coins.length < n) { if (!Session.alive(my)) return; this.addCoin(st); await st.scope.wait(120); }
+    await st.scope.wait(150);
+    if (!Session.alive(my)) return;
+    for (let i = 0; i < n; i++) { if (!Session.alive(my)) return; const tb = box(st.things[i]), cb = box(st.coins[i]); K.link(st, s, { x: tb.x + 44, y: tb.y + 88 }, { x: cb.x + 36, y: cb.y }, '#5CC46E'); await Count.beat(st.scope, 420, i + 1); }   /* the line drawn while its number is said */
+    return CNQ(n) + '样东西' + CNQ(n) + '个币';
   },
   /* explain: L1-2 the coins put right, one line per thing, gold; L3 the stack he chose (blue), the things counted, the
      right stack gold */
   async explain(st, ans) {
-    if (!st.stacks) { await this.correct(st); if (Session.alive(st)) await EX.gold(st, st.coins); return; }
+    if (!st.stacks) { const line = await this.correct(st); if (Session.alive(st)) await EX.gold(st, st.coins, line); return; }
     await EX.chose(st, EX.card(st, ans), EX.num(ans));
-    await EX.say(st, '一样东西一个币');
-    for (let i = 0; i < st.things.length; i++) { if (!Session.alive(st)) return; K.hop(st, st.things[i], 18); K.badge(st, st.things[i], i + 1, 0, 0, 44); await Count.beat(st.scope, 380, i + 1); }
-    await EX.gold(st, EX.rightCard(st), '对的是这个！');
+    for (let i = 0; i < st.things.length; i++) { if (!Session.alive(st)) return; K.hop(st, st.things[i], 18); K.badge(st, st.things[i], i + 1, 0, 0, 44); await Count.beat(st.scope, 380, i + 1); }   /* the things counted aloud */
+    await EX.gold(st, EX.rightCard(st), CNQ(st.q.n) + '样东西' + CNQ(st.q.n) + '个币');
   },
   next(st, strat) {
     const n = st.q.n;
@@ -5204,11 +5219,16 @@ defGame({
   /* explain: what he chose (blue); the stretched row goes back, every block paired with one across - the block left over
      (or none) is what Dad added / took ("爸爸加了一块！"); the right row / "the same" button gold */
   async explain(st, ans) {
-    const G = st.G, el0 = a => a === 'same' ? G.els.same : a === 'bluey' ? G.els.rowB : G.els.rowG;
+    const G = st.G, g = this.geo(), el0 = a => a === 'same' ? G.els.same : a === 'bluey' ? G.els.rowB : G.els.rowG;
     await EX.chose(st, el0(ans));
-    await this.reveal(st);
+    st.stretched = false; Sfx.whoosh(0.3);
+    await this.arrange(st);
     if (!Session.alive(st)) return;
-    await EX.gold(st, el0(st.q.answer));
+    const s2 = K.lines(st);
+    for (let i = 0; i < Math.min(st.bl.length, st.bg.length); i++) { K.link(st, s2, { x: this.xAt(st, 'bluey', i, st.bl.length), y: g.rowB + 30 }, { x: this.xAt(st, 'bingo', i, st.bg.length), y: g.rowG - 30 }); await st.scope.wait(70); }
+    const extra = st.bl.length > st.bg.length ? st.bl.slice(st.bg.length) : st.bg.slice(st.bl.length);
+    extra.forEach(e => { e.classList.add('glow'); K.hop(st, e, 24); });
+    await EX.gold(st, el0(st.q.answer), this.line(st));
   },
   async reveal(st) {
     const my = st, g = this.geo(), q = st.q;
@@ -5370,31 +5390,31 @@ defGame({
   },
   async correct(st) {
     const q = st.q, my = st;
-    Voice.say('一个对一个看！', { tag: 'fix' });
     if (st.bagEls) { st.bagEls.forEach(b => b.remove()); st.bagEls = null; st.doneBtn = { classList: { add() {} } }; }
     const extra = await stackCompare(st, st.G.els.pb, st.cb, st.G.els.pg, st.cg, [st.G.els.jar]);
     if (!Session.alive(my)) return;
     K.flash(st, extra);
-    if (q.d) await Voice.say('还差' + CNQ(q.d) + '个', { tag: 'fix' }); else await Voice.say('本来就一样多！', { tag: 'fix' });
     const pg = box(st.G.els.pg);
+    let flew = 0;
     while (st.cg.length < q.a) {
       if (!Session.alive(my)) return;
       const e = this.cookie(); st.els.push(e); const jb = box(st.G.els.jar); place(e, jb.x + 60, jb.y + 30);
       const i = st.cg.length, t = box(st.cb[i]); st.cg.push(e);
-      await K.flyTo(st, e, t.x, pg.y + pg.h / 2 - t.h / 2, 360, 60); e.style.width = e.style.height = t.w + 'px'; Count.say(st.cg.length); Sfx.place();
+      await K.flyTo(st, e, t.x, pg.y + pg.h / 2 - t.h / 2, 360, 60); e.style.width = e.style.height = t.w + 'px'; Count.say(st.cg.length); Sfx.place(); flew++;
     }
+    if (flew) await st.scope.wait(350);                             /* the last number is said before the line */
+    return q.d ? '还差' + CNQ(q.d) + '个' : '本来就一样多！';
   },
   /* explain: L1-2 the plates paired one for one, the missing ones poured in, gold; L3 the bag he chose (blue), the
      plates paired - the cookies left over are how many Bingo needs - and the right bag gold */
   async explain(st, ans) {
     const q = st.q;
-    if (!st.bagEls) { await this.correct(st); if (Session.alive(st)) await EX.gold(st, [st.G.els.pb, st.G.els.pg]); return; }
+    if (!st.bagEls) { const line = await this.correct(st); if (Session.alive(st)) await EX.gold(st, [st.G.els.pb, st.G.els.pg], line); return; }
     await EX.chose(st, EX.card(st, ans), EX.num(ans));
     const extra = await stackCompare(st, st.G.els.pb, st.cb, st.G.els.pg, st.cg, [st.G.els.jar]);
     if (!Session.alive(st)) return;
     K.flash(st, extra);
-    await EX.say(st, q.d ? '还差' + CNQ(q.d) + '个' : '本来就一样多！');
-    await EX.gold(st, EX.rightCard(st), '对的是这个！');
+    await EX.gold(st, EX.rightCard(st), q.d ? '还差' + CNQ(q.d) + '个' : '本来就一样多！');
   },
   next(st, strat) {
     const q = st.q;
@@ -5516,25 +5536,24 @@ defGame({
   async feedback(st, ans) { const g = st.gourds[ans - 1]; if (g) { K.wiggle(st, g); const f = UI.flag(ans, 48); Stage.el.appendChild(f); st.els.push(f); const b = box(g); place(f, b.x + 40, b.y - 36); K.pop(st, f); } await st.scope.wait(600); },
   async correct(st) {
     const my = st, k = st.q.target;
-    Voice.say('从根开始数！', { tag: 'fix' });
-    await Voice.afterSay(100);
-    for (let i = 0; i < k; i++) {
+    for (let i = 0; i < k; i++) {                                 /* from the root: first, second, third ... said aloud */
       if (!Session.alive(my)) return;
       const c = center(st.gourds[i]);
-      await Hand.go(st.scope, c.x, c.y, st.explaining ? 240 : 380);
+      await Hand.go(st.scope, c.x, c.y, st.explaining ? 200 : 380);
       st.gourds[i].classList.add('glow'); Count.say(i + 1, 'o');
       await st.scope.wait(st.explaining ? 260 : 300);
     }
     Hand.hide(st.scope);
     K.hop(st, st.gourds[k - 1], 30);
-    await Voice.say('这是第' + CN[k] + '个', { tag: 'fix' });
+    return '这是第' + CN[k] + '个';
   },
-  /* explain: the gourd he picked (blue, its own flag: "这是第四个"), then the hand counts from the root to the right
-     one ("从根开始数！") - gold */
+  /* explain: the gourd he picked (blue, its place said: "第六"), then the hand counts the places from the root, aloud, up to
+     the right one - gold (its place is the last word said, "第五") */
   async explain(st, ans) {
-    await EX.chose(st, st.gourds[ans - 1], '这是第' + CN[ans] + '个');
+    await EX.chose(st, st.gourds[ans - 1], null, 0);
+    await EX.word(st, ans, 'o');
     await this.correct(st);
-    if (Session.alive(st)) await EX.gold(st, st.gourds[st.q.target - 1]);
+    if (Session.alive(st)) await EX.gold(st, st.gourds[st.q.target - 1], null, 350);
   },
   cleanup(st) { BRO.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) {
@@ -5650,25 +5669,22 @@ defGame({
     st.bros.forEach(b => { b.on = false; }); await this.arrange(st);
     if (!Session.alive(my)) return;
     if (q.kind === 'ord') {
-      Voice.say('数位置，第' + CN[k] + '个', { tag: 'fix' });
       for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; st.bros[i].a.hop(); await Count.beat(st.scope, 420, i + 1, 'o'); }
       st.bros[k - 1].on = true; await this.arrange(st);
-      await Voice.say('只有一个站出来', { tag: 'fix' });
     } else {
-      Voice.say(CNQ(k) + '个，一起出来', { tag: 'fix' });
       for (let i = 0; i < k; i++) { if (!Session.alive(my)) return; st.bros[i].on = true; this.arrange(st); await Count.beat(st.scope, 420, i + 1); }
-      await Voice.say(CNQ(k) + '个娃！', { tag: 'fix' });
+      await st.scope.wait(200);
     }
+    return q.kind === 'ord' ? '第' + CN[k] + '个只一个' : CNQ(k) + '个娃！';
   },
   /* explain: (the ones he put up wiggled) all step down, then "the third" = count places, ONE steps up; "three" = three
      step up - the right ones gold */
   async explain(st) {
     const on = st.bros.filter(b => b.on).map(b => b.a.root);
     if (on.length) await EX.chose(st, on);
-    await this.correct(st);
+    const line = await this.correct(st);
     if (!Session.alive(st)) return;
-    await st.scope.wait(300);
-    await EX.gold(st, st.bros.filter(b => b.on).map(b => b.a.root));
+    await EX.gold(st, st.bros.filter(b => b.on).map(b => b.a.root), line);
   },
   cleanup(st) { (st.bros || []).forEach(b => { Input.bind(b.a.root, { id: 'char:' + b.a.id }); }); BRO.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) {
@@ -5872,31 +5888,29 @@ defGame({
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
   async correct(st) {
     const my = st, q = st.q, outs = st.bros.filter(x => !x.cave), ins = st.bros.filter(x => x.cave), g = this.geo();
+    /* the first team: four brothers in all, counted aloud; more, said by its number. The others come (all at once) and
+       are counted on: aloud up to three, with number badges and tones when more (time_explain: <= 5.5 s) */
+    const on = (team, from) => team.length <= 3 ? EX.count(st, team, from, 400) : EX.tick(st, team, from);
+    const first = async (team, color) => {
+      if (q.N > 4) { await EX.group(st, team.map(x => x.a.root), team.length, color); return; }
+      for (let i = 0; i < team.length; i++) { if (!Session.alive(my)) return; team[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
+    };
     if (st.kind === 'out') {
-      /* count the cave team (they stand in the mouth), then keep counting as the patrol comes back one by one */
-      Voice.say('洞口' + CNQ(ins.length) + '个，一共' + CNQ(q.N) + '个', { tag: 'fix' });
-      for (let i = 0; i < ins.length; i++) { ins[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
+      await first(ins, '#FFD34D');                                                   /* the cave team in the mouth */
+      if (!Session.alive(my)) return;
       st.patrolBack = true;
-      for (let j = 0; j < outs.length; j++) {
-        if (!Session.alive(my)) return;
-        const x = outs[j], p = this.home(st, st.bros.indexOf(x)); x.a.root.style.visibility = '';
-        await x.a.moveTo(p.x, p.y, 380, 30);
-        await Count.beat(st.scope, 360, ins.length + j + 1);
-      }
-      st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
-      await Voice.say('巡山的' + CNQ(outs.length) + '个', { tag: 'fix' });
-      return;
+      await Promise.all(outs.map(x => { const p = this.home(st, st.bros.indexOf(x)); x.a.root.style.visibility = ''; return x.a.moveTo(p.x, p.y, 380, 30); }));
+      if (!Session.alive(my)) return;
+      await on(outs.map(x => x.a.root), ins.length + 1);
+      return '巡山的' + CNQ(outs.length) + '个';
     }
-    Voice.say('外面' + CNQ(outs.length) + '个，一共' + CNQ(q.N) + '个', { tag: 'fix' });
-    for (let i = 0; i < outs.length; i++) { outs[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
-    /* keep counting on: the brothers in the cave peek out one by one */
-    for (let j = 0; j < ins.length; j++) {
-      const x = ins[j]; x.a.root.style.visibility = ''; x.a.root.style.zIndex = '3';
-      await x.a.moveTo(this.mouthX(j, ins.length), g.cave.y + g.cave.h - 12, 300, 30);
-      await Count.beat(st.scope, 360, outs.length + j + 1);
-    }
-    st.cards[st.opts.indexOf(st.inCave)].classList.add('hi');
-    await Voice.say('洞里有' + CNQ(st.inCave) + '个', { tag: 'fix' });
+    await first(outs, '#5CC46E');                                                    /* the outside team */
+    if (!Session.alive(my)) return;
+    ins.forEach((x, j) => { x.a.root.style.visibility = ''; x.a.root.style.zIndex = '3'; });
+    await Promise.all(ins.map((x, j) => x.a.moveTo(this.mouthX(j, ins.length), g.cave.y + g.cave.h - 12, 300, 30)));
+    if (!Session.alive(my)) return;
+    await on(ins.map(x => x.a.root), outs.length + 1);
+    return '洞里有' + CNQ(st.inCave) + '个';
   },
   async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { (st.bros || []).forEach(b => { b.a.root.style.visibility = ''; b.a.root.style.zIndex = ''; }); BRO.forEach(id => hideActor(st.G.actors[id])); },
@@ -6048,17 +6062,16 @@ defGame({
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
   async correct(st) {
     const my = st, q = st.q, vis = st.gems.filter(g => !g._gone), a = this.area();
-    Voice.say('数到' + CN[q.N], { tag: 'fix' });
-    for (let i = 0; i < vis.length; i++) { if (!Session.alive(my)) return; K.hop(st, vis[i], 16); await Count.beat(st.scope, 400, i + 1); }
-    for (let j = 0; j < q.took; j++) {
+    if (q.N <= 7) { for (let i = 0; i < vis.length; i++) { if (!Session.alive(my)) return; K.hop(st, vis[i], 16); await Count.beat(st.scope, 400, i + 1); } }
+    else await EX.group(st, vis, vis.length, '#5CC46E');                            /* eight or more: the ones left, by their number */
+    for (let j = 0; j < q.took; j++) {                                               /* the taken ones come back as ghosts, counted on aloud */
       if (!Session.alive(my)) return;
       const gh = el('div', '', Stage.el); gh.style.position = 'absolute'; st.els.push(gh);
       Object.assign(gh.style, { width: '64px', height: '64px', borderRadius: '18px', border: '5px dashed #FFFFFF', zIndex: 6, transform: 'rotate(45deg)' });
       place(gh, a.x + a.w + 20 + (j % 3) * 70, a.y + Math.floor(j / 3) * 70);
       K.pop(st, gh); await Count.beat(st.scope, 420, vis.length + j + 1);
     }
-    st.cards[st.opts.indexOf(q.took)].classList.add('hi');
-    await Voice.say('拿了' + CNQ(q.took) + '个', { tag: 'fix' });
+    return '拿了' + CNQ(q.took) + '个';
   },
   async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { hideActor(st.G.actors.gourd6); st.G.actors.scorpion.body.style.transform = ''; },
@@ -6235,38 +6248,26 @@ defGame({
   },
   async correct(st) {
     const q = st.q, my = st;
-    if (st.level >= 3) {
-      Voice.say('剩下的数一数', { tag: 'fix' });
-      st.pups.forEach((p, i) => { p.m = i < q.a ? 0 : 1; }); await this.arrange(st);
-      const flood = st.pups.filter(o => o.m === 1);
-      for (let i = 0; i < flood.length; i++) { if (!Session.alive(my)) return; flood[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
-      this.bond(st);
-      st.cards[st.opts.indexOf(q.b)].classList.add('hi');
-      await Voice.say('洪水要' + CNQ(q.b) + '只', { tag: 'fix' });
-      return;
-    }
-    Voice.say('火灾' + CNQ(q.a) + '只，洪水' + CNQ(q.b) + '只', { tag: 'fix' });
-    st.pups.forEach(p => { p.m = -1; }); await this.arrange(st);
-    for (let i = 0; i < q.n; i++) { if (!Session.alive(my)) return; st.pups[i].m = i < q.a ? 0 : 1; this.arrange(st); await Count.beat(st.scope, 420, i < q.a ? i + 1 : i - q.a + 1); }
+    /* from where he put them, one pup after the other goes to its team, each team counted aloud ("一" | "一、二、三") */
+    for (let i = 0; i < q.n; i++) { if (!Session.alive(my)) return; st.pups[i].m = i < q.a ? 0 : 1; this.arrange(st); await Count.beat(st.scope, 380, i < q.a ? i + 1 : i - q.a + 1); }
     this.bond(st);
-    await st.scope.wait(600);
+    return '火灾' + CNQ(q.a) + '只，洪水' + CNQ(q.b) + '只';
   },
   /* explain: L1-2 every pup goes to its mission counted, the part-whole bar, both teams gold; L3-4 the card he chose
      (blue), the fire team out, the rest counted ("洪水要三只"), the right card gold */
   async explain(st, ans) {
-    if (st.level >= 3) {                 /* the pups stay where they wait (the cards are right above them): fire team ringed, the rest counted */
+    if (st.level >= 3) {                 /* the pups stay where they wait (the cards are right above them): fire team ringed, the rest counted aloud */
       await EX.cards(st, ans, async () => {
         const q = st.q, fire = st.pups.slice(0, q.a), rest = st.pups.slice(q.a);
-        await EX.say(st, '剩下的数一数');
         K.ring(st, fire.map(p => p.a.root._box()), 6, '#FF9A6C');
-        await st.scope.wait(400);
+        await st.scope.wait(250);
         for (let i = 0; i < rest.length; i++) { if (!Session.alive(st)) return; rest[i].a.hop(); await Count.beat(st.scope, 420, i + 1); }
-        await EX.say(st, '洪水要' + CNQ(q.b) + '只');
+        return '洪水要' + CNQ(q.b) + '只';
       });
       return;
     }
-    await this.correct(st);
-    if (Session.alive(st)) await EX.gold(st, st.pups.map(p => p.a.root));
+    const line = await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.pups.map(p => p.a.root), line);
   },
   cleanup(st) { (st.pups || []).forEach(p => Input.bind(p.a.root, { id: 'char:' + p.a.id })); PUPS.forEach(id => hideActor(st.G.actors[id])); },
   next(st, strat) {
@@ -6437,17 +6438,15 @@ defGame({
   async correct(st) {
     const q = st.q, my = st;
     await this.lineUp(st);
+    if (!Session.alive(my)) return;
     if (st.level >= 4) {
-      Voice.say('五只，接着数', { tag: 'fix' });
-      Count.say(5); K.ring(st, st.animals.filter(an => !an.from).map(an => box(an.el)), 6, '#FF9A6C'); await st.scope.wait(600);
-      const B = st.animals.filter(an => an.from);
+      const A = st.animals.filter(an => !an.from).map(an => an.el), B = st.animals.filter(an => an.from);
+      await EX.group(st, A, 5, '#FF9A6C');
       for (let i = 0; i < B.length; i++) { if (!Session.alive(my)) return; K.hop(st, B[i].el, 18); await Count.beat(st.scope, 450, 6 + i); }
     } else {
-      Voice.say('从一开始，全部数', { tag: 'fix' });
       for (let i = 0; i < st.animals.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.animals[i].el, 18); await Count.beat(st.scope, 420, i + 1); }
     }
-    st.cards[st.opts.indexOf(q.n)].classList.add('hi');
-    await Voice.say('一共' + CNQ(q.n) + '只', { tag: 'fix' });
+    return '一共' + CNQ(q.n) + '只';
   },
   async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { const G = st.G; G.els.vB.firstChild.style.transform = ''; },
@@ -6593,11 +6592,10 @@ defGame({
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
   async correct(st) {
     const q = st.q, G = st.G, my = st;
-    Voice.say('电梯里本来' + CNQ(q.n0) + '只', { tag: 'fix' });
-    st.hi = q.n0; this.drawRuler(G, q.n0); this.setDisp(G, q.n0); await Voice.afterSay(100);
+    st.hi = q.n0; this.drawRuler(G, q.n0); this.setDisp(G, q.n0);
+    await Count.beat(st.scope, 300, q.n0);
     for (let v = q.n0; v !== q.answer;) { if (!Session.alive(my)) return; v += q.kind === 'plus' ? 1 : -1; st.hi = v; this.drawRuler(G, v); await Count.beat(st.scope, 600, v); }
-    st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
-    await Voice.say(this.line(st), { tag: 'fix' });
+    return this.line(st);
   },
   async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { (st.waiter || []).forEach(a => { a._in = false; }); PUPS.forEach(id => hideActor(st.G.actors[id])); st.hi = 0; },
@@ -6723,13 +6721,11 @@ defGame({
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
   async correct(st) {
     const q = st.q, my = st;
-    Voice.say('篮子里本来' + CNQ(q.k0) + '只', { tag: 'fix' });
     await this.open(st);
-    await Voice.afterSay(100);
+    if (!Session.alive(my)) return;
     await Count.beat(st.scope, 600, q.k0);
     for (let i = 0; i < q.m; i++) { if (!Session.alive(my)) return; K.hop(st, st.kits[i].el, 18); K.badge(st, st.kits[i].el, q.k0 + i + 1, 0, 0, 42); await Count.beat(st.scope, 600, q.k0 + i + 1); }
-    st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
-    await Voice.say('一共' + CNQ(q.answer) + '只', { tag: 'fix' });
+    return '一共' + CNQ(q.answer) + '只';
   },
   async explain(st, ans) { await EX.cards(st, ans); },
   next(st, strat) {
@@ -6870,18 +6866,17 @@ defGame({
   },
   async correct(st) {
     const q = st.q, my = st;
-    Voice.say('从' + CN[q.k0] + '接着数', { tag: 'fix' });
-    st.len = q.k0; this.draw(st); await Voice.afterSay(100);
+    st.len = q.k0; this.draw(st);
     await Count.beat(st.scope, 500, q.k0);
     for (let i = q.k0; i < q.N; i++) { if (!Session.alive(my)) return; st.len = i + 1; this.draw(st); await Count.beat(st.scope, 520, i + 1); }
-    await Voice.say('变到' + CN[q.N] + '节', { tag: 'fix' });
+    return '变到' + CN[q.N] + '节';
   },
   /* explain: (L4: the piece he chose, blue) the staff from its k on, one segment at a time, counted on to the target;
      the right length / piece gold */
   async explain(st, ans) {
     if (st.barEls) { await EX.cards(st, ans); return; }
-    await this.correct(st);
-    if (Session.alive(st)) await EX.gold(st, st.G.els.staff);
+    const line = await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.G.els.staff, line);
   },
   cleanup(st) { st.G.els.staff.innerHTML = ''; st.G.els.tip.style.display = ''; },
   next(st, strat) {
@@ -6998,18 +6993,17 @@ defGame({
   async feedback(st, ans) { const c = st.clouds[ans - 1]; if (c) { K.wiggle(st, c); c.style.opacity = 0.45; } await st.scope.wait(400); },
   async correct(st) {
     const q = st.q, my = st;
-    Voice.say('从' + CN[q.a] + '开始翻', { tag: 'fix' });
-    await this.flipTo(st, q.a); await Voice.afterSay(100);
+    await this.flipTo(st, q.a);
     for (let i = 1; i <= q.m; i++) { if (!Session.alive(my)) return; await this.flipTo(st, q.a + i); await Count.beat(st.scope, 300, q.a + i); }
     st.clouds[q.a + q.m - 1].classList.add('glow');
-    await Voice.say('到' + CN[q.a + q.m] + '！', { tag: 'fix' });
+    return '到' + CN[q.a + q.m] + '！';
   },
   /* explain: the cloud he picked (blue, "你选的是七"), Wukong back on his cloud flips the right number of times, counted
      on - the cloud he lands on is gold */
   async explain(st, ans) {
     await EX.chose(st, st.clouds[ans - 1], EX.num(ans));
-    await this.correct(st);
-    if (Session.alive(st)) await EX.gold(st, st.clouds[st.q.a + st.q.m - 1]);
+    const line = await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.clouds[st.q.a + st.q.m - 1], line);
   },
   cleanup(st) { st.clouds && st.clouds.forEach(c => { c.style.opacity = ''; }); st.G.actors.wukong.root.style.pointerEvents = ''; Input.bind(st.G.actors.wukong.root, { id: 'char:wukong' }); },
   next(st, strat) {
@@ -7150,13 +7144,13 @@ defGame({
   },
   async correct(st) {
     const q = st.q, my = st;
-    Voice.say('空格数一数', { tag: 'fix' });
     st.peaches = st.peaches.filter(p => q.holes.includes(p.hole) && st.peaches.indexOf(p) < q.a);
     const used = new Set(st.peaches.map(p => p.hole));
     let c = 0;
-    for (let i = 0; i < q.cap; i++) { if (used.has(i)) continue; if (!Session.alive(my)) return; c++; const h = this.holeXY(st, i); const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118' }); place(d, h.x - 26, h.y - 26); st.els.push(d); await Count.beat(st.scope, 420, c); }
+    for (let i = 0; i < q.cap; i++) { if (used.has(i)) continue; if (!Session.alive(my)) return; c++; const h = this.holeXY(st, i); const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118' }); place(d, h.x - 26, h.y - 26); st.els.push(d); await Count.beat(st.scope, 420, c); }   /* each empty place marked and counted aloud */
+    if (!Session.alive(my)) return;
     st.branches[st.opts.indexOf(q.need)].el.classList.add('glow');
-    await Voice.say('还差' + CNQ(q.need) + '个', { tag: 'fix' });
+    return '还差' + CNQ(q.need) + '个';
   },
   /* explain: the branch he chose (blue); its peaches leave the basket again, the empty places are counted ("还差三个"),
      the right branch gold */
@@ -7166,9 +7160,9 @@ defGame({
     (st.added || []).forEach(e => { st.scope.anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' }); });
     st.peaches = st.peaches.filter(p => !(st.added || []).includes(p.el));
     if (b) b.pe.forEach(pe => { pe.style.visibility = ''; });
-    await st.scope.wait(300);
-    await this.correct(st);
-    if (Session.alive(st)) await EX.gold(st, st.branches[st.opts.indexOf(st.q.need)].el, '对的是这个！');
+    await st.scope.wait(250);
+    const line = await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.branches[st.opts.indexOf(st.q.need)].el, line);
   },
   next(st, strat) { return K.cardNext(st, strat); },
   workEls(st) { return (st.branches || []).map(b => b.el); },
@@ -7305,13 +7299,14 @@ defGame({
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
   async correct(st) {
     const q = st.q, my = st;
-    Voice.say('外面的排进格子', { tag: 'fix' });
     const f = this.frameFor(st), cell = f._cell, fb = box(f);
     const vis = st.clones.filter(c => !c.hidden);
     await Promise.all(vis.map((c, i) => K.flyTo(st, c.a.root, fb.x + 6 + (i % 5) * cell + cell / 2 - c.a.w / 2, fb.y + 6 + Math.floor(i / 5) * cell + cell / 2 - c.a.h * 0.6, 420)));
-    for (let j = 0; j < q.h; j++) { if (!Session.alive(my)) return; const i = vis.length + j; const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: (cell - 12) + 'px', height: (cell - 12) + 'px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118' }); place(d, fb.x + 12 + (i % 5) * cell, fb.y + 12 + Math.floor(i / 5) * cell); st.els.push(d); await Count.beat(st.scope, 420, j + 1); }
-    st.cards[st.opts.indexOf(q.h)].classList.add('hi');
-    await Voice.say('还差' + CNQ(q.h) + '只', { tag: 'fix' });
+    if (!Session.alive(my)) return;
+    /* each empty cell marked and counted aloud; six or seven (L4): with a number badge and a tone, not said */
+    for (let j = 0; j < q.h; j++) { if (!Session.alive(my)) return; const i = vis.length + j; const d = el('div', 'note', Stage.el); Object.assign(d.style, { position: 'absolute', width: (cell - 12) + 'px', height: (cell - 12) + 'px', borderRadius: '50%', background: 'rgba(255,217,60,.6)', boxShadow: '0 0 0 3px #2B2118' }); place(d, fb.x + 12 + (i % 5) * cell, fb.y + 12 + Math.floor(i / 5) * cell); st.els.push(d);
+      if (q.h <= 5) await Count.beat(st.scope, 420, j + 1); else { K.badge(st, d, j + 1, 0, -6, 40); Sfx.count(j + 1); await st.scope.wait(170); } }
+    return '还差' + CNQ(q.h) + '只';
   },
   async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { const c = st.G.els.curtain; c.getAnimations().forEach(a => a.cancel()); c.style.transform = ''; c.style.opacity = ''; Input.bind(st.G.actors.wukong.root, { id: 'char:wukong' }); Input.unbind(c); },
@@ -7429,12 +7424,10 @@ defGame({
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); await st.scope.wait(350); },
   async correct(st) {
     const q = st.q, my = st;
-    Voice.say('飞机里本来' + CNQ(q.a) + '位', { tag: 'fix' });
-    await this.openJet(st); await Voice.afterSay(100);
+    await this.openJet(st);
     await Count.beat(st.scope, 600, q.a);
     for (let i = 0; i < q.b; i++) { if (!Session.alive(my)) return; st.out[i].hop(); K.badge(st, st.out[i].root, q.a + i + 1, 0, 0, 44); await Count.beat(st.scope, 600, q.a + i + 1); }
-    st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
-    await Voice.say('一共' + CNQ(q.answer) + '位', { tag: 'fix' });
+    return '一共' + CNQ(q.answer) + '位';
   },
   async explain(st, ans) { await EX.cards(st, ans); },
   cleanup(st) { HEROES.forEach(id => hideActor(st.G.actors[id])); },
@@ -7583,24 +7576,26 @@ defGame({
   },
   async correct(st) {
     const q = st.q, my = st, g = this.geo();
-    Voice.say('一箱是十个', { tag: 'fix' });
     const fr = frameEl(10, 44); Stage.el.appendChild(fr); st.els.push(fr); place(fr, g.plat.x + 20, g.plat.y - 250);
-    for (let i = 0; i < 10; i++) { if (!Session.alive(my)) return; const h = { x: g.plat.x + 20 + 6 + (i % 5) * 44 + 22, y: g.plat.y - 250 + 6 + Math.floor(i / 5) * 44 + 22 }; const c = K.item(Stage.el, 'assets/props/cube.png', 34, 34); c.style.zIndex = 9; st.els.push(c); place(c, h.x - 17, h.y - 17); K.pop(st, c); if (i === 9) await Count.beat(st.scope, 90, 10); }
-    await st.scope.wait(400);
-    for (let j = 1; j <= q.T - 10 && q.T > 10; j++) { if (!Session.alive(my)) return; const c = K.item(Stage.el, 'assets/props/cube.png', 38, 38); c.style.zIndex = 9; st.els.push(c); place(c, g.plat.x + 250 + ((j - 1) % 5) * 42, g.plat.y - 250 + Math.floor((j - 1) / 5) * 44); K.pop(st, c); await Count.beat(st.scope, 450, 10 + j); }
+    for (let i = 0; i < 10; i++) { const h = { x: g.plat.x + 20 + 6 + (i % 5) * 44 + 22, y: g.plat.y - 250 + 6 + Math.floor(i / 5) * 44 + 22 }; const c = K.item(Stage.el, 'assets/props/cube.png', 34, 34); c.style.zIndex = 9; st.els.push(c); place(c, h.x - 17, h.y - 17); K.pop(st, c); }
+    await Count.beat(st.scope, 300, 10);
+    const ones = [];
+    for (let j = 1; j <= q.T - 10 && q.T > 10; j++) { const c = K.item(Stage.el, 'assets/props/cube.png', 38, 38); c.style.zIndex = 9; st.els.push(c); place(c, g.plat.x + 250 + ((j - 1) % 5) * 42, g.plat.y - 250 + Math.floor((j - 1) / 5) * 44); ones.push(c); }
+    if (ones.length <= 3) await EX.count(st, ones, 11, 450); else await EX.tick(st, ones, 11, 160);
+    if (!Session.alive(my)) return;
     if (st.cards) st.cards[st.opts.indexOf(q.T)].classList.add('hi');
-    await Voice.say(this.line(st), { tag: 'fix' });
+    return this.line(st);
   },
   /* explain: name - the card he chose (blue), a crate opened into ten and the loose ones counted on, the right card
      gold; build - the same count, then the platform holds the right pieces (gold) */
   async explain(st, ans) {
     if (st.q.kind === 'name') { await EX.cards(st, ans); return; }
-    await this.correct(st);
+    const line = await this.correct(st);
     if (!Session.alive(st)) return;
     st.items.forEach(x => { x.on = false; });
     for (let left = st.q.T, k = 0; left > 0 && k < 20; k++) { const c = st.items.filter(x => !x.on && x.el._val <= left).sort((a, b) => b.el._val - a.el._val)[0]; if (!c) break; c.on = true; left -= c.el._val; }
     await this.arrange(st);
-    if (Session.alive(st)) await EX.gold(st, st.items.filter(x => x.on).map(x => x.el));
+    if (Session.alive(st)) await EX.gold(st, st.items.filter(x => x.on).map(x => x.el), line);
   },
   next(st, strat) {
     const q = st.q;
@@ -7779,18 +7774,14 @@ defGame({
   async correct(st) {
     const q = st.q, my = st;
     if (st.kind === 'sum10') {
-      /* the full gauge is ten at one look, then count on through the second gauge */
       st.scope.anim(st.g1, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 400, fill: 'none' });
-      Voice.say('满格是十', { tag: 'fix' }); await st.scope.wait(st.explaining ? 600 : 900);
-      for (let k = 0; k < q.T - 10; k++) { if (!Session.alive(my)) return; const c = st.g2._cells[k]; if (c) st.scope.anim(c, [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 300, fill: 'none' }); await Count.beat(st.scope, st.explaining ? 380 : 480, 11 + k); }
-      st.cards[st.opts.indexOf(q.answer)].classList.add('hi');
-      await Voice.say('一共' + CNQ(q.T) + '格', { tag: 'fix' });
-      return;
+      await Count.beat(st.scope, 300, 10);                                   /* a full gauge is ten at one look */
+      const aloud = q.T - 10 <= 3;                                           /* the numbers above ten are long words: more than three cells, tones */
+      for (let k = 0; k < q.T - 10; k++) { if (!Session.alive(my)) return; const c = st.g2._cells[k]; if (c) st.scope.anim(c, [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 260, fill: 'none' }); if (aloud) await Count.beat(st.scope, 380, 11 + k); else { Sfx.count(11 + k); await st.scope.wait(180); } }
+      return '一共' + CNQ(q.T) + '格';
     }
-    Voice.say('第一个还差几格？', { tag: 'fix' });
     for (let i = q.a; i < 10; i++) { if (!Session.alive(my)) return; st.g1._cells[i].setAttribute('fill', '#FFD34D'); await Count.beat(st.scope, 450, i - q.a + 1); }
-    st.pieces[st.opts.indexOf(q.need)].classList.add('hi');
-    await Voice.say('还差' + CNQ(q.need) + '格', { tag: 'fix' });
+    return '还差' + CNQ(q.need) + '格';
   },
   /* explain: the piece / card he chose (blue); split10: the empty cells of the first gauge counted ("还差两格");
      sum10: the full gauge is ten, then counted on; the right one gold */
@@ -7998,24 +7989,22 @@ defGame({
     const helper = el('div', 'card', Stage.el); helper.style.position = 'absolute'; st.els.push(helper); helper.style.zIndex = 15;
     helper.appendChild(UI.num(q.n, 60)); helper.appendChild(UI.dots(q.n, 110, { layout: q.n <= 6 ? 'dice' : 'frame' }));
     place(helper, lb.x + lb.w + 20, lb.y, 160, 180); K.pop(st, helper);
-    Voice.say(CN[q.n] + '有这么多', { tag: 'fix' });
-    await Voice.afterSay(100);
+    await st.scope.wait(300);
     if (q.kind === 'n2q') {
       st.src.forEach(s => { s.in = false; }); await this.arrange(st);
       const order = st.src.slice().sort((a, b) => b.el._val - a.el._val);
       let left = q.n;
       for (const s of order) { if (!Session.alive(my)) return; if (s.el._val <= left) { s.in = true; left -= s.el._val; this.arrange(st); await Count.beat(st.scope, 450, q.n - left); } if (!left) break; }
-    } else {
-      st.targets[st.opts.indexOf(q.n)].classList.add('hi');
     }
-    await Voice.say(CN[q.n] + '，就是' + CNQ(q.n) + '个', { tag: 'fix' });
+    if (!Session.alive(my)) return;
+    return CN[q.n] + '，就是' + CNQ(q.n) + '个';
   },
   /* explain: q2n - the target he chose (blue, "你选的是七"), the numeral beside its dots, the right target gold;
      n2q - the numeral beside its dots, the right crystals into the bowl, gold */
   async explain(st, ans) {
     if (st.q.kind === 'q2n') { await EX.cards(st, ans); return; }
-    await this.correct(st);
-    if (Session.alive(st)) await EX.gold(st, st.src.filter(s => s.in).map(s => s.el).concat([st.G.els.bowl]));
+    const line = await this.correct(st);
+    if (Session.alive(st)) await EX.gold(st, st.src.filter(s => s.in).map(s => s.el).concat([st.G.els.bowl]), line);
   },
   next(st, strat) {
     const q = st.q;
@@ -8279,12 +8268,10 @@ const MShare = {
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.notN(ans), { tag: 'wrong' }); await st.scope.wait(350); },
   async correct(st) {
-    const q = st.q, my = st;
-    Voice.say('数一个盘子！', { tag: 'fix' });
-    await Voice.afterSay(100);
-    for (let k = 0; k < st.on[0].length; k++) { if (!Session.alive(my)) return; K.hop(st, st.on[0][k], 18); await Count.beat(st.scope, 450, k + 1); }
+    const q = st.q;
+    await EX.tick(st, st.on[0]);
     st.plates.forEach(pl => K.badge(st, pl, q.per, 0, -20, 50));
-    await Voice.say('每人' + CNQ(q.per) + '个', { tag: 'fix' });
+    return '每人' + CNQ(q.per) + '个';
   },
   /* explain: the card he chose (blue, "你选的是四"), one plate counted, every plate gets its number, the right card gold */
   async explain(st, ans) { await EX.cards(st, ans); },
@@ -8367,14 +8354,16 @@ const MPattern = {
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.line(this, ans), { tag: 'wrong' }); await st.scope.wait(350); },
   async correct(st) {
-    const q = st.q, my = st;
-    Voice.say('一组一组看！', { tag: 'fix' });
-    const u = q.num ? 1 : q.unit.length;
-    for (let i = 0; i < st.slots.length - 1; i++) { if (!Session.alive(my)) return; K.hop(st, st.slots[i], 16); Sfx.mar(Sfx.SCALE[i % u * 2], 0, 0.35, 0.35); await st.scope.wait((q.num ? 420 : 330) * (st.explaining ? 0.7 : 1)); }
-    if (!Session.alive(my)) return;
+    const q = st.q, my = st, u = q.num ? 1 : q.unit.length, items = st.slots.slice(0, -1);
+    for (let s0 = 0; s0 < items.length; s0 += u) {
+      if (!Session.alive(my)) return;
+      const grp = items.slice(s0, s0 + u);
+      if (u > 1) K.ring(st, grp.map(x => box(x)), 6, '#FFC93C');
+      grp.forEach(x => K.hop(st, x, 16)); Sfx.mar(Sfx.SCALE[Math.min(9, (s0 / u) * 2)], 0, 0.35, 0.35);
+      await st.scope.wait(q.num ? 240 : 300);
+    }
     const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi');
     K.hop(st, st.blank, 20);
-    await st.scope.wait(600);
   },
   /* explain: the card he chose (blue); the row hops group by group ("一组一组看！"), the right picture fills the gap, the
      right card gold */
@@ -8384,7 +8373,7 @@ const MPattern = {
       if (!Session.alive(st)) return;
       const g = this.geo(st), e = this.pic(st, st.q.answer); Stage.el.appendChild(e); e.style.position = 'absolute'; e.style.zIndex = 6; st.els.push(e);
       const b = box(st.blank); place(e, b.x, b.y, g.sz, g.sz); st.blank.style.visibility = 'hidden'; K.pop(st, e);
-      await st.scope.wait(300);
+      await st.scope.wait(150);
     });
   },
   next(st, strat) { return K.cardNext(st, strat); },
@@ -8489,24 +8478,20 @@ const MBalance = {
   },
   async correct(st) {
     const q = st.q, my = st;
-    if (q.guess) {
-      Voice.say('一个一个加！', { tag: 'fix' });
-      await this.fill(st, q.need);
-    } else {
-      Voice.say('看看哪边重！', { tag: 'fix' });
-      while (st.added.length > q.need) { if (!Session.alive(my)) return; this.remove(st); await st.scope.wait(320); }
-      while (st.added.length < q.need) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(420); }
+    if (q.guess) await this.fill(st, q.need);
+    else {
+      while (st.added.length > q.need) { if (!Session.alive(my)) return; this.remove(st); await st.scope.wait(160); }
+      while (st.added.length < q.need) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(200); }
+      await st.scope.wait(300);                               /* the beam settles level */
     }
-    if (!Session.alive(my)) return;
-    await Voice.say('一样重啦', { tag: 'fix' });
+    return '一样重啦';
   },
   /* explain: (feedback: the heavy pan flashed, "放多啦" / "还不一样重") grapes taken off / put on one at a time until the
      beam is level - "一样重啦" - the right pan gold */
   async explain(st) {
-    await this.correct(st);
+    const line = await this.correct(st);
     if (!Session.alive(st)) return;
-    await st.scope.wait(300);
-    await EX.gold(st, [st.panR].concat(st.right));
+    await EX.gold(st, [st.panR].concat(st.right), line);
   },
   next(st, strat) {
     const q = st.q;
@@ -8586,25 +8571,17 @@ const MSeq = {
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); Voice.say(W2Say.line(this, ans), { tag: 'wrong' }); await st.scope.wait(350); },
   async correct(st) {
-    const q = st.q, my = st;
-    Voice.say('从头数一数！', { tag: 'fix' });
-    await Voice.afterSay(100);
-    await this.walk(st, q.gap - 1);
+    const q = st.q, my = st, k = q.gap;
+    if (k > 0) { K.hop(st, st.tiles[k - 1], 12); await Count.beat(st.scope, 300, q.vals[k - 1]); }
     if (!Session.alive(my)) return;
-    K.hop(st, st.tiles[q.gap], 24);
+    const t = st.tiles[k], nt = W2P.tile(q.answer, 100, this.tileColor, false); Stage.el.appendChild(nt); nt.style.position = 'absolute'; nt.style.zIndex = 5; st.els.push(nt);
+    const b = box(t); place(nt, b.x, b.y, b.w, b.h); t.style.visibility = 'hidden'; st.tiles[k] = nt; K.pop(st, nt);
+    await Count.beat(st.scope, 300, q.answer);
+    if (k + 1 < q.vals.length) { K.hop(st, st.tiles[k + 1], 12); await Count.beat(st.scope, 300, q.vals[k + 1]); }
     const i = st.opts.indexOf(q.answer); if (st.cards[i]) st.cards[i].classList.add('hi');
-    await Count.beat(st.scope, 600, q.answer);
   },
-  /* explain: the card he chose (blue, "你选的是七"); walked from the start, counting, to the gap - the missing number fills
-     it - the right card gold */
-  async explain(st, ans) {
-    await EX.cards(st, ans, async () => {
-      await this.correct(st);
-      if (!Session.alive(st)) return;
-      const q = st.q, t = st.tiles[q.gap], nt = W2P.tile(q.answer, 100, this.tileColor, false); Stage.el.appendChild(nt); nt.style.position = 'absolute'; nt.style.zIndex = 5; st.els.push(nt);
-      const b = box(t); place(nt, b.x, b.y, b.w, b.h); t.style.visibility = 'hidden'; K.pop(st, nt);
-    });
-  },
+  /* explain: the card he chose (blue, "你选的是七"); the numbers around the gap said - the missing one fills it - the right card gold */
+  async explain(st, ans) { await EX.cards(st, ans); },
   next(st, strat) { return K.cardNext(st, strat); },
   workEls(st) { return (st.cards || []).concat(st.tiles ? [st.tiles[st.q.gap]] : []); },
 };
@@ -8686,13 +8663,14 @@ const MDouble = {
     for (let i = 0; i < all.length; i++) { if (!Session.alive(my)) return; K.hop(st, all[i], 16); await Count.beat(st.scope, 420, i + 1); }
     const k = st.opts.indexOf(st.q.total); if (st.cards[k]) st.cards[k].classList.add('hi');
   },
-  /* explain: the card he chose (blue), both sides counted one by one (quick ticks), the total said, the right card gold */
+  /* explain: the card he chose (blue); one side said by its number (ringed, "五"), the other side counted on from there
+     (6, 7, ... with badges and tones), the total said at the right card, gold */
   async explain(st, ans) {
     await EX.cards(st, ans, async () => {
-      const all = st.L.map(o => o.e).concat(st.R.map(o => o.e));
-      await EX.say(st, '一个一个数！');
-      for (let i = 0; i < all.length; i++) { if (!Session.alive(st)) return; K.hop(st, all[i], 14); K.badge(st, all[i], i + 1, 0, -10, 34); Sfx.count(i + 1); await st.scope.wait(210); }
-      await Count.beat(st.scope, 300, st.q.total);
+      await EX.group(st, st.L.map(o => o.e), st.q.n);
+      if (!Session.alive(st)) return;
+      await EX.tick(st, st.R.map(o => o.e), st.q.n + 1, 180);
+      return '一共' + CNQ(st.q.total) + '个！';
     });
   },
   next(st, strat) {
@@ -8830,7 +8808,7 @@ const MSort = {
   async explain(st, ans) {
     const q = st.q;
     /* every column at once: its things hop together and its number comes up (counting each one would take too long) */
-    const quick = async () => { await EX.say(st, '每列数一数！'); for (let c = 0; c < q.kinds.length; c++) { if (!Session.alive(st)) return; const els = this.colEls(st, c); els.forEach(e => K.hop(st, e, 12)); K.badge(st, els[els.length - 1] || st.heads[c], q.counts[c], 0, -18, 46); Sfx.count(q.counts[c]); await st.scope.wait(480); } };
+    const quick = async () => { for (let c = 0; c < q.kinds.length; c++) { if (!Session.alive(st)) return; const els = this.colEls(st, c); els.forEach(e => K.hop(st, e, 12)); K.badge(st, els[els.length - 1] || st.heads[c], q.counts[c], 0, -18, 46); Sfx.count(q.counts[c]); await st.scope.wait(380); } };
     if (st.q.opts) { await EX.cards(st, ans, quick); return; }
     await EX.chose(st, st.heads[ans]);
     await quick();
@@ -8925,7 +8903,6 @@ const MMeasure = {
   /* explain: (feedback: the blocks too many flashed / the gap left) blocks taken off / laid on to the end, counted, gold */
   async explain(st) {
     const q = st.q, my = st;
-    await EX.say(st, '从头摆到尾！');
     while (st.blocks.length > q.len) { if (!Session.alive(my)) return; this.remove(st); await st.scope.wait(160); }
     while (st.blocks.length < q.len) { if (!Session.alive(my)) return; this.add(st); await st.scope.wait(200); }
     for (let k = 0; k < st.blocks.length; k++) { if (!Session.alive(my)) return; K.hop(st, st.blocks[k], 12); Sfx.count(k + 1); await st.scope.wait(150); }
@@ -9145,10 +9122,10 @@ const MSeriate = {
     const i = Number(String(ans).slice(1)), q = st.q;
     if (st.pd[i]) await EX.chose(st, st.pd[i]);
     const idx = q.order.map((r, j) => [r, j]).sort((a, b) => q.down ? b[0] - a[0] : a[0] - b[0]).map(x => x[1]);
-    for (let k = 0; k < idx.length; k++) { if (!Session.alive(st)) return; EX.ring(st, st.pd[idx[k]], 'xgold', 4); K.hop(st, st.pd[idx[k]], 12); Sfx.mar(Sfx.SCALE[k * 2 % 10], 0, 0.5, 0.4); await st.scope.wait(340); }
+    for (let k = 0; k < idx.length; k++) { if (!Session.alive(st)) return; EX.ring(st, st.pd[idx[k]], 'xgold', 4); K.hop(st, st.pd[idx[k]], 12); Sfx.mar(Sfx.SCALE[k * 2 % 10], 0, 0.5, 0.4); await st.scope.wait(260); }
     EX.log(st, 'gold', st.pd[idx[0]]);
     await EX.say(st, q.down ? '从大到小！' : '从小到大！');
-    await st.scope.wait(400);
+    await st.scope.wait(200);
   },
   next(st, strat) {
     if (st.over) return null;
@@ -9295,7 +9272,7 @@ const MSound = {
     const q = st.q, my = st; st.playing = true;
     const t0 = now();
     for (let i = 0; i < q.n; i++) {
-      const at = slow ? i * (st.explaining ? (q.n > 6 ? 430 : 560) : 760) : q.times[i], left = at - (now() - t0);
+      const at = slow ? i * (st.explaining ? 400 : 760) : q.times[i], left = at - (now() - t0);   /* the explanation: 400 ms apart, slow enough to count along (coordinator: C3 may take up to 6 s at n=10) */
       if (left > 0) await st.scope.wait(left);
       if (!Session.alive(my)) return;
       const b = st.bars[q.bars[i]];
@@ -9303,7 +9280,7 @@ const MSound = {
       Sfx.mar(Sfx.SCALE[q.bars[i] + 2], 0, 0.75, 0.6);
       if (dots) { const d = W2X.thing(st, 36, 36, 6, ''); Object.assign(d.style, { borderRadius: '50%', background: '#FFC93C', boxShadow: '0 0 0 4px #2B2118' }); (st.dots = st.dots || []).push(d); this.place(st); K.pop(st, d); }
     }
-    await st.scope.wait(500);
+    if (!st.explaining) await st.scope.wait(500);
     st.playing = false;
   },
   onGesture(st, name, p) {
@@ -9319,9 +9296,16 @@ const MSound = {
     Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(900);
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W2X.say('不是' + W2X.num(ans) + '下'); await st.scope.wait(400); },
-  /* explain: the card he chose (blue); the xylophone again, slowly, a dot for every note ("响了五下！"), the right card gold */
+  /* explain: the card he chose (blue; the feedback has just said "不是九下", so no word); the xylophone again, 400 ms a
+     note, a dot for every note; the right card gold ("响了五下！") */
   async explain(st, ans) {
-    await EX.cards(st, ans, async () => { (st.dots || []).forEach(d => d.remove()); st.dots = []; await this.play(st, true, true); await EX.say(st, '响了' + W2X.num(st.q.n) + '下！'); });
+    await EX.chose(st, EX.card(st, ans), null, 0);
+    await st.scope.guard(Voice.afterSay(0));
+    if (!Session.alive(st)) return;
+    (st.dots || []).forEach(d => d.remove()); st.dots = [];
+    await this.play(st, true, true);
+    if (!Session.alive(st)) return;
+    await EX.gold(st, EX.rightCard(st), '响了' + W2X.num(st.q.n) + '下！', 150);
   },
   next(st, strat) { return st.playing ? null : K.cardNext(st, strat); },
   workEls(st) { return st.cards || st.bars || []; },
@@ -9689,8 +9673,7 @@ const MCode = {
     const path = this.bfs(q.C, q.R, q.obs, q.s, q.g, true) || [];
     st.at = q.s.slice(); st.used = 0;
     st.cans.forEach(e => { e.getAnimations().forEach(a => a.cancel()); e.style.opacity = 1; });
-    const p0 = this.cellXY(st.at); st.car.style.transform = ''; await K.flyTo(st, st.car, p0.x - 38, p0.y - 30, 320, 40);
-    await EX.say(st, '最短的路！');
+    const p0 = this.cellXY(st.at); st.car.style.transform = ''; await K.flyTo(st, st.car, p0.x - 38, p0.y - 30, 260, 40);
     let c = q.s.slice();
     for (let i = 0; i < path.length; i++) {
       if (!Session.alive(my)) return;
@@ -9789,10 +9772,10 @@ const MCubes = {
       for (let k = 0; k < order.length; k++) {
         if (!Session.alive(my)) return;
         const o = st.cubeEls[order[k][1]]; o.out = true; o.e.style.zIndex = 30;
-        await K.flyTo(st, o.e, x0 + k * step - s0 * 1.732 / 2, y - s0, 140, 30, sc);
-        Sfx.count(k + 1); await st.scope.wait(60);
+        await K.flyTo(st, o.e, x0 + k * step - s0 * 1.732 / 2, y - s0, 120, 30, sc);
+        Sfx.count(k + 1); await st.scope.wait(40);
       }
-      await EX.say(st, '一共' + W2X.numQ(q.answer) + '块！');
+      return '一共' + W2X.numQ(q.answer) + '块！';
     });
   },
   next(st, strat) { return st.picked ? null : K.cardNext(st, strat); },
@@ -9928,8 +9911,13 @@ const MCorners = {
   },
   async countCorners(st, i) {
     const it = st.q.items[i], e = st.stones[i], my = st;
-    for (let k = 1; k <= it.n; k++) { if (!Session.alive(my)) return; e.innerHTML = ''; const s = this.stone(it, '92%', k); s.style.pointerEvents = 'none'; e.appendChild(s); if (st.explaining) { Sfx.count(k); await st.scope.wait(230); } else await Count.beat(st.scope, 300, k); }
-    if (st.explaining && it.n) await Count.beat(st.scope, 200, it.n);        /* the explanation: quick ticks, then the number */
+    for (let k = 1; k <= it.n; k++) { if (!Session.alive(my)) return; e.innerHTML = ''; const s = this.stone(it, '92%', k); s.style.pointerEvents = 'none'; e.appendChild(s); if (st.explaining) { Sfx.count(k); await st.scope.wait(200); } else await Count.beat(st.scope, 300, k); }
+  },
+  /* all its corners marked at once, the number said once (the explanation of a stone that is not it) */
+  async showCorners(st, i) {
+    const it = st.q.items[i], e = st.stones[i];
+    e.innerHTML = ''; const s = this.stone(it, '92%', it.n); s.style.pointerEvents = 'none'; e.appendChild(s);
+    if (it.n) await Count.beat(st.scope, 300, it.n); else await st.scope.wait(300);
   },
   async reveal(st) {
     const q = st.q, list = q.mode === 'count' ? [0] : q.mode === 'find' ? [q.answer] : String(q.answer).split(',').map(Number);
@@ -9948,9 +9936,9 @@ const MCorners = {
      and its corners counted, then the right stone's; all - the wrong picks (blue), every three-cornered stone counted, gold */
   async explain(st, ans) {
     const q = st.q;
-    if (q.mode === 'count') { await EX.cards(st, ans, () => this.countCorners(st, 0)); return; }
+    if (q.mode === 'count') { await EX.cards(st, ans, async () => { await this.countCorners(st, 0); return W2X.numQ(q.answer) + '个角！'; }); return; }
     if (q.mode === 'find') {
-      await EX.chose(st, st.stones[ans]); await this.countCorners(st, ans);
+      await EX.chose(st, st.stones[ans]); await this.showCorners(st, ans);
       if (!Session.alive(st)) return;
       EX.ring(st, st.stones[q.answer], 'xgold', 4); await this.countCorners(st, q.answer);
       await EX.gold(st, st.stones[q.answer], (q.want === 3 ? '三' : '四') + '个角！');
@@ -9959,8 +9947,9 @@ const MCorners = {
     const sel = String(ans).split(',').filter(Boolean).map(Number), right = String(q.answer).split(',').map(Number), bad = sel.filter(i => !right.includes(i));
     if (bad.length) await EX.chose(st, bad.map(i => st.stones[i]));
     st.stones.forEach(e => e.classList.remove('hi'));
-    for (const i of right) { if (!Session.alive(st)) return; EX.ring(st, st.stones[i], 'xgold', 4); await this.countCorners(st, i); }
-    await EX.gold(st, right.map(i => st.stones[i]), '三个角！');
+    for (const i of right) { const it = q.items[i], e = st.stones[i]; e.innerHTML = ''; const s2 = this.stone(it, '92%', it.n); s2.style.pointerEvents = 'none'; e.appendChild(s2); K.hop(st, e, 12); }   /* every three-cornered stone shows its corners */
+    Sfx.count(3); await st.scope.wait(400);
+    await EX.gold(st, right.map(i => st.stones[i]), '三个角！', null, true);
   },
   next(st, strat) {
     const q = st.q; if (st.picked) return null;
@@ -10040,7 +10029,7 @@ const MCoins = {
     const q = st.q, my = st;
     await EX.chose(st, st.on.map(i => st.coins[i].e));
     st.coins.forEach(o => { o.on = false; }); st.on = []; this.place(st);
-    await st.scope.wait(350);
+    await st.scope.wait(250);
     let run = 0;
     for (let k = 0; k < 9 && run < q.price; k++) {
       if (!Session.alive(my)) return;
@@ -10048,7 +10037,7 @@ const MCoins = {
       const pick = free.find(([o]) => o.v === 2 && need >= 2 && (need - 2 !== 1 || free.some(([x]) => x.v === 1))) || free.find(([o]) => o.v === 1) || free.find(([o]) => o.v === 2);
       if (!pick) break;
       pick[0].on = true; st.on.push(pick[1]); run += pick[0].v; this.place(st); Sfx.place(); K.hop(st, pick[0].e, 12);
-      await Count.beat(st.scope, 420, run);
+      await Count.beat(st.scope, 320, run);
     }
     await EX.gold(st, st.on.map(i => st.coins[i].e), '正好' + W2X.numQ(q.price) + '文！');
   },
@@ -10155,8 +10144,7 @@ const MTrace = {
   async explain(st) {
     const S = this.geo(st).S.list, my = st;
     st.done = 0; this.draw(st);
-    await EX.say(st, '看蜻蜓写！');
-    for (let k = 1; k <= S.length; k++) { if (!Session.alive(my)) return; st.done = k; this.draw(st); if (S[k - 1].start && k > 1) Sfx.pop(); await st.scope.wait(70); }
+    for (let k = 1; k <= S.length; k++) { if (!Session.alive(my)) return; st.done = k; this.draw(st); if (S[k - 1].start && k > 1) Sfx.pop(); await st.scope.wait(Math.max(30, Math.min(70, 2000 / S.length))); }
     const g = this.geo(st);
     await EX.gold(st, { x: g.x0 - 20, y: g.y0 - 20, w: g.S.width * g.k + 40, h: 160 * g.k + 40 }, '是' + W2X.num(st.q.n) + '！');
   },
@@ -10318,8 +10306,8 @@ const MRotate = {
     for (let k = 0; k < 4 && st.rot !== q.hole; k++) {
       if (!Session.alive(my)) return;
       st.rot = (st.rot + 1) % 4; this.place(st); Sfx.mar(784, 0, 0.3, 0.1);
-      st.scope.anim(st.piece, [{ transform: 'rotate(-90deg)' }, { transform: 'rotate(0)' }], { duration: 260, easing: EASE.out });
-      await st.scope.wait(520);
+      st.scope.anim(st.piece, [{ transform: 'rotate(-90deg)' }, { transform: 'rotate(0)' }], { duration: 240, easing: EASE.out });
+      await st.scope.wait(380);
     }
     const hb = box(st.hole), pb = box(st.piece), ps = st.piece.firstChild, pw = parseFloat(ps.getAttribute('width')), ph = parseFloat(ps.getAttribute('height'));
     st.inside = true; await K.flyTo(st, st.piece, hb.x - (pb.w - pw) / 2, hb.y - (pb.h - ph) / 2, 480, 60);
@@ -10470,7 +10458,9 @@ const MNumLine = {
   async explain(st) {
     const q = st.q, my = st, g = this.geo(st), u = this.unit(st);
     await EX.chose(st, st.mk);
-    for (let i = 0; i <= q.target; i++) { if (!Session.alive(my)) return; const e = st.tickEls[i]; e.style.visibility = ''; e.style.background = '#FFC93C'; K.hop(st, e, 10); if (i) { Sfx.count(i); await st.scope.wait(160); } }
+    let i0 = 0;
+    if (q.target > 10) { for (let i = 0; i <= 10; i++) { const e = st.tickEls[i]; e.style.visibility = ''; e.style.background = '#FFC93C'; K.hop(st, e, 10); } await Count.beat(st.scope, 300, 10); i0 = 11; }   /* ten at one look */
+    for (let i = i0; i <= q.target; i++) { if (!Session.alive(my)) return; const e = st.tickEls[i]; e.style.visibility = ''; e.style.background = '#FFC93C'; K.hop(st, e, 10); if (i) { Sfx.count(i); await st.scope.wait(140); } }
     st.pos = q.target; this.place(st);
     await EX.gold(st, { x: g.x0 + q.target * u - 52, y: g.y - 150, w: 104, h: 190 }, '停在' + W2X.num(q.target) + '！');
   },
@@ -10554,14 +10544,15 @@ const MClock = {
     const q = st.q, my = st;
     if (q.kind === 'set') {
       await EX.chose(st, st.clock);
-      for (let k = 0; k < 12 && st.cur !== q.h; k++) { if (!Session.alive(my)) return; st.cur = st.cur % 12 + 1; this.place(st); Sfx.mar(1046, 0, 0.3, 0.08); await st.scope.wait(260); }
+      st.cur = q.h; this.place(st); K.hop(st, st.clock, 10); Sfx.mar(1046, 0, 0.3, 0.08);       /* the red hand goes straight to the hour */
+      await st.scope.wait(300);
       await EX.gold(st, st.clock, W2X.num(q.h) + '点！');
       return;
     }
     await EX.cards(st, ans, async () => {
-      if (q.kind === 'later') { const h0 = q.h; for (let k = 1; k <= q.add; k++) { if (!Session.alive(my)) return; st.q.h = st.q.h % 12 + 1; this.place(st); await Count.beat(st.scope, 560, k); } st.q.h = h0; this.place(st); st.q.h = q.answer; this.place(st); }
+      if (q.kind === 'later') { for (let k = 1; k <= q.add; k++) { if (!Session.alive(my)) return; st.q.h = st.q.h % 12 + 1; this.place(st); await Count.beat(st.scope, 380, k); } }
       K.hop(st, st.clock, 10);
-      await EX.say(st, W2X.num(q.answer) + '点！');
+      return W2X.num(q.answer) + '点！';
     });
   },
   next(st, strat) {
