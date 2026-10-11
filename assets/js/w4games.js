@@ -64,6 +64,13 @@ const W4U = {
     Object.assign(d.style, { borderRadius: '50%', border: '5px ' + (dashed ? 'dashed ' : 'solid ') + this.BLUE, boxSizing: 'border-box', pointerEvents: 'none', background: 'rgba(79,179,255,.12)' });
     K.pop(st, d); return d;
   },
+  /* counting things one by one: spoken ("一、二、三") when a right answer is shown; in the explain step a rising tick each (the
+     step stays short - review OX1 - and the summary says how many) */
+  beat(st, ms, n) { if (!st.explaining) return Count.beat(st.scope, ms, n); Sfx.count(Math.max(1, n)); return st.scope.wait(Math.min(ms, 190)); },
+  /* a summary sentence; in an explain step a tap skipped (st.ff), nothing more is said */
+  sum(st, text) { if (st.explaining && st.ff) return Promise.resolve('ff'); return Voice.say(text, { tag: 'summary' }); },
+  /* a sentence early in the explain step (what his choice makes, "这里有墙"): a tap cuts it, like the feedback line */
+  note(st, text) { return Voice.say(text, { tag: 'explain' }); },
   /* the card a value / an index stands on */
   cardOf(st, v) { const i = (st.opts || []).indexOf(v); return i >= 0 && st.cards ? st.cards[i] : null; },
   /* the simplest explain: the chosen card ringed blue, a moment, then the game's own reveal (the right one in gold and the
@@ -232,7 +239,7 @@ const W4U = {
         if (!Session.alive(my)) return;
         if (r.rel !== 'lt') K.hop(st, st.sides[k][0], 18);
         if (r.rel !== 'gt') K.hop(st, st.sides[k][1], 18);
-        Voice.say(this.sumLine(r.L.v, r.rel, r.R.v), { tag: 'summary' });
+        W4U.sum(st, this.sumLine(r.L.v, r.rel, r.R.v));
         await st.scope.wait(T(700));
       }
       this.cheerAll(st);
@@ -255,7 +262,7 @@ const W4U = {
         await st.scope.wait(350); if (!Session.alive(my)) return;
         if (blue) blue.style.visibility = 'hidden';
         this.put(st, k, r.rel); K.pop(st, st.slots[k]); W4U.gold(st, st.slots[k]); Sfx.place();
-        Voice.say(this.sumLine(r.L.v, r.rel, r.R.v), { tag: 'summary' });
+        W4U.sum(st, this.sumLine(r.L.v, r.rel, r.R.v));
         await st.scope.wait(1300); if (!Session.alive(my)) return;
       }
     },
@@ -357,7 +364,7 @@ const W4U = {
       st.slots.forEach((s, i) => st.scope.anim(s, [{ transform: 'scale(.3)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: T(380) + 1, delay: T(140 * i), easing: EASE.pop }));
       st.eqCards.forEach(e => K.hop(st, e, 14)); this.cheerAll(st);
       const said = q.two ? [this.sumLine(q, 0)] : [this.sumLine(q, 0), this.sumLine(q, 1)];
-      said.forEach(t => Voice.say(t, { tag: 'summary' })); st.summary = said[said.length - 1];
+      said.forEach(t => W4U.sum(st, t)); st.summary = said[said.length - 1];
       await st.scope.wait(T(q.two ? 1300 : 2000)); void my;
     },
     sumLine(q, k) { return (q.two ? words([q.a, q.op[0], q.b, q.op[1], q.c, '=', q.v]) : (s => words([s.a, s.op, s.b, '=', s.c]))(q.sents[k])) + '！'; },
@@ -383,7 +390,7 @@ const W4U = {
         blues.forEach(b => { if (b) b.style.visibility = 'hidden'; });
         list.forEach(k => { this.put(st, k, want[k]); K.pop(st, st.slots[k]); }); W4U.gold(st, list.map(k => st.slots[k])); Sfx.place();
         K.hop(st, st.eqCards[q.two ? 0 : list[0]], 12);
-        Voice.say(this.sumLine(q, q.two ? 0 : list[0]), { tag: 'summary' });
+        W4U.sum(st, this.sumLine(q, q.two ? 0 : list[0]));
         await st.scope.wait(1400); return Session.alive(my);
       };
       if (q.two) { await show(ks); return; }
@@ -485,7 +492,7 @@ const W4U = {
       for (let i = 0; i < row.length; i++) { if (!Session.alive(my)) return; K.hop(st, row[i].e, 16); Sfx.mar(Sfx.SCALE[2 + i], 0, 0.3, 0.45); await st.scope.wait(T(160)); }
       this.cheerAll(st);
       const t = st.answer, n = t[1] === '=' ? [t[2], t[3], t[4], '=', t[0]] : t;          /* "5 = 2 + 3" is said the usual way round */
-      st.summary = words(n) + '！'; Voice.say(st.summary, { tag: 'summary' });
+      st.summary = words(n) + '！'; W4U.sum(st, st.summary);
       await st.scope.wait(T(1300));
     },
     wrongLine(ans) { const t = truth(ans); return t === 'form' ? '数和符号要隔开' : t === 'noeq' ? '要有一个等号' : '两边不一样多'; },
@@ -496,8 +503,8 @@ const W4U = {
     async explain(st, ans) {
       const q = st.q, my = st, row = this.inSlots(st);
       const blue = W4U.ring(st, row.map(o => o.e), W4U.BLUE, 10); st.xb = row.map(o => o.e);
-      if (truth(ans) === 'false') Voice.say(this.calcLine(ans), { tag: 'summary' });
-      await st.scope.wait(1300); if (!Session.alive(my)) return;
+      if (truth(ans) === 'false') W4U.note(st, this.calcLine(ans));
+      await st.scope.wait(1100); if (!Session.alive(my)) return;
       if (blue) blue.style.visibility = 'hidden';
       st.cardsE.forEach(o => { if (o.at == null) return; o.at = null; const h = this.homeXY(st, o); K.flyTo(st, o.e, h.x, h.y, 240, 20); });
       Sfx.back(); await st.scope.wait(360); if (!Session.alive(my)) return;
@@ -510,7 +517,7 @@ const W4U = {
       }
       await st.scope.wait(280); if (!Session.alive(my)) return;
       W4U.gold(st, st.board, 4); used.forEach((o, i) => st.scope.timeout(() => K.hop(st, o.e, 12), 90 * i));
-      Voice.say(words(q.sent) + '！', { tag: 'summary' }); await st.scope.wait(1400);
+      W4U.sum(st, words(q.sent) + '！'); await st.scope.wait(1000);          /* the engine's "again" waits for the sentence */
     },
     rightEls(st) { return st.slots || []; },
     async feedback(st, ans) { this.inSlots(st).forEach(o => K.wiggle(st, o.e)); W3X.say(this.wrongLine(ans)); await st.scope.wait(T(600)); },
@@ -594,7 +601,7 @@ const W4U = {
       st.qSlot.innerHTML = ''; st.qSlot.style.border = '0'; st.qSlot.style.background = 'transparent'; st.qSlot.appendChild(UI.num(q.answer, P ? 74 : 80));
       const c = st.cards[st.opts.indexOf(q.answer)]; if (c) K.ring(st, [box(c)], 6, '#FFC93C');
       K.hop(st, st.qCard, 14); Sfx.reveal(); this.cheerAll(st);
-      st.summary = this.sumLine(q.nums); Voice.say(st.summary, { tag: 'summary' });
+      st.summary = this.sumLine(q.nums); W4U.sum(st, st.summary);
       await st.scope.wait(T(1300));
     },
     sumLine(nums) { return nums.map(n => CN[n]).join('加') + '等于' + CN[nums.reduce((x, y) => x + y, 0)] + '！'; },
@@ -736,9 +743,9 @@ const W4U = {
       if (st.tag) st.tag.style.display = 'none';
       if (st.covered) { await st.scope.anim(st.coverEl, [{ transform: 'scaleY(1)' }, { transform: 'scaleY(0)' }], { duration: T(420) + 1, easing: EASE.glide, fill: 'forwards' }); if (!Session.alive(my)) return; st.coverEl.style.visibility = 'hidden'; }
       Sfx.reveal();
-      for (let i = 0; i < st.inside.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.inside[i], 12); await Count.beat(st.scope, 240, i + 1); }
+      for (let i = 0; i < st.inside.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.inside[i], 12); await W4U.beat(st, 240, i + 1); }
       this.cheerAll(st);
-      st.summary = '一共' + CNQ(q.n) + '颗！'; Voice.say(st.summary, { tag: 'summary' });
+      st.summary = '一共' + CNQ(q.n) + '颗！'; W4U.sum(st, st.summary);
       await st.scope.wait(T(1200));
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '颗'); await st.scope.wait(T(600)); },
@@ -820,7 +827,7 @@ const W4U = {
       if (st.closed) st.panels.forEach((_, i) => this.fill(st, i, true));
       st.panels.forEach((e, i) => K.hop(st, e, 16 + 4 * i));
       if (c) K.ring(st, [box(c)], 6, '#FFC93C'); Sfx.reveal(); this.cheerAll(st);
-      st.summary = sumLine(q.a, q.b); Voice.say(st.summary, { tag: 'summary' });
+      st.summary = sumLine(q.a, q.b); W4U.sum(st, st.summary);
       await st.scope.wait(T(1300));
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '根'); await st.scope.wait(T(600)); },
@@ -918,9 +925,9 @@ const W4U = {
       }
       const here = st.pets.filter(o => o.f === 1), news = q.d === 5 ? here.slice(q.a) : here.filter(o => o.row);
       const list = q.ask === 'came' ? news : here;
-      for (let i = 0; i < list.length; i++) { if (!Session.alive(my)) return; K.hop(st, list[i].e, 14); await Count.beat(st.scope, 240, i + 1); }
+      for (let i = 0; i < list.length; i++) { if (!Session.alive(my)) return; K.hop(st, list[i].e, 14); await W4U.beat(st, 240, i + 1); }
       this.cheerAll(st);
-      st.summary = q.ask === 'came' ? '来了' + CNQ(q.b) + '只！' : sumLine(q.a, q.b); Voice.say(st.summary, { tag: 'summary' });
+      st.summary = q.ask === 'came' ? '来了' + CNQ(q.b) + '只！' : sumLine(q.a, q.b); W4U.sum(st, st.summary);
       await st.scope.wait(T(1200));
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '只'); await st.scope.wait(T(600)); },
@@ -1043,12 +1050,12 @@ const W4U = {
       for (let i = 0; i < all.length; i++) {
         if (!Session.alive(my)) return;
         const h = svg('polygon', { points: st.P(all[i]), fill: 'rgba(255,201,60,.45)', stroke: '#E8A100', 'stroke-width': 12, 'stroke-linejoin': 'round' }, st.hiLayer);
-        await Count.beat(st.scope, 420, i + 1);
+        await W4U.beat(st, 420, i + 1);
         h.setAttribute('fill', 'none'); h.setAttribute('stroke-width', 5);
       }
       if (!Session.alive(my)) return;
       this.cheerAll(st);
-      st.summary = '有' + CNQ(q.n) + '个' + (q.ask === 'tri' ? '三角形' : '正方形') + '！'; Voice.say(st.summary, { tag: 'summary' });
+      st.summary = '有' + CNQ(q.n) + '个' + (q.ask === 'tri' ? '三角形' : '正方形') + '！'; W4U.sum(st, st.summary);
       await st.scope.wait(T(1200));
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(W2Say.notN(ans)); await st.scope.wait(T(600)); },
@@ -1073,21 +1080,21 @@ const W4U = {
       const all = []; q.items.forEach(it => it.count.forEach(p => all.push(p)));
       for (let i = 0; i < all.length; i++) {
         const h = svg('polygon', { points: st.P(all[i]), fill: 'rgba(255,201,60,.45)', stroke: '#E8A100', 'stroke-width': 12, 'stroke-linejoin': 'round' }, st.hiLayer);
-        await Count.beat(st.scope, 300, i + 1); if (!alive()) return;
+        await W4U.beat(st, 300, i + 1); if (!alive()) return;
         h.setAttribute('fill', 'none'); h.setAttribute('stroke-width', 5);
       }
       if (ans > q.n) {
         const la = this.lookAlikes(q);
         la.forEach(p => svg('polygon', { points: st.P(p), fill: 'rgba(79,179,255,.22)', stroke: '#2E8FE0', 'stroke-width': 9, 'stroke-dasharray': '16 10', 'stroke-linejoin': 'round' }, st.hiLayer));
-        if (la.length) Voice.say(q.ask === 'tri' ? '这个不是三角形' : '这个不是正方形', { tag: 'summary' });
+        if (la.length) W4U.note(st, q.ask === 'tri' ? '这个不是三角形' : '这个不是正方形');
       } else {
         const big = this.bigOnes(q);
         big.forEach(p => { const h = svg('polygon', { points: st.P(p), fill: 'rgba(255,201,60,.4)', stroke: '#E8A100', 'stroke-width': 14, 'stroke-linejoin': 'round' }, st.hiLayer); st.scope.anim(h, [{ opacity: 0.25 }, { opacity: 1 }, { opacity: 0.25 }, { opacity: 1 }], { duration: 1000, fill: 'forwards' }); });
-        if (big.length) Voice.say('大的也算一个', { tag: 'summary' });
+        if (big.length) W4U.note(st, '大的也算一个');
       }
       await st.scope.wait(1000); if (!alive()) return;
       W4U.gold(st, W4U.cardOf(st, q.answer)); Sfx.reveal();
-      st.summary = '有' + CNQ(q.n) + '个' + (q.ask === 'tri' ? '三角形' : '正方形') + '！'; Voice.say(st.summary, { tag: 'summary' });
+      st.summary = '有' + CNQ(q.n) + '个' + (q.ask === 'tri' ? '三角形' : '正方形') + '！'; W4U.sum(st, st.summary);
       await st.scope.wait(1100);
     },
     rightEls(st) { return rightCard(st); },
@@ -1228,7 +1235,7 @@ const W4U = {
       const q = st.q, c = st.cards[q.answer];
       W4U.gold(st, c); K.hop(st, c, 16); Sfx.reveal(); this.cheerAll(st);
       st.summary = CN[q.a] + '减' + CN[q.b] + '等于' + CN[q.c] + '！';
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
+      W4U.sum(st, st.summary); await st.scope.wait(1300);
     },
     whyLine(q, p) { return p.n !== q.a ? '这幅一共' + CNQ(p.n) + '个' : (q.act ? '这幅飞走' : '这幅划掉') + CNQ(p.x) + '个'; },
     async feedback(st, ans) {
@@ -1246,7 +1253,7 @@ const W4U = {
       for (let i = 0; i < part.length; i++) {
         const im = part[i], s = im.ownerSVGElement, w = +im.getAttribute('width'), x = +im.getAttribute('x') + w / 2, y = +im.getAttribute('y') + w / 2;
         svg('circle', { cx: x, cy: y, r: w * 0.56, fill: 'rgba(79,179,255,.22)', stroke: '#2E8FE0', 'stroke-width': 5 }, s);
-        await Count.beat(st.scope, 300, i + 1); if (!Session.alive(my)) return;
+        await W4U.beat(st, 300, i + 1); if (!Session.alive(my)) return;
       }
       await st.scope.wait(450); if (!Session.alive(my)) return;
       await this.reveal(st);
@@ -1337,10 +1344,10 @@ const W4U = {
       if (q.mode !== 'see') { await st.scope.wait(400); if (!Session.alive(my)) return; }
       const list = q.mode === 'told' ? st.items.filter(o => o.a).map(o => o.a) : st.items.filter(o => !o.a).map(o => o.s);
       Sfx.reveal();
-      for (let i = 0; i < list.length; i++) { if (!Session.alive(my)) return; K.hop(st, list[i], 16); await Count.beat(st.scope, 380, i + 1); }
+      for (let i = 0; i < list.length; i++) { if (!Session.alive(my)) return; K.hop(st, list[i], 16); await W4U.beat(st, 380, i + 1); }
       this.cheerAll(st);
       st.summary = q.mode === 'told' ? '坐了' + CNQ(q.m) + '个！' : '空' + CNQ(q.e) + '个座位！';
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+      W4U.sum(st, st.summary); await st.scope.wait(1100);
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '个'); await st.scope.wait(600); },
     /* his card ringed blue; the seats open and the empty ones (L5: the ones sitting) are counted; the right card gold */
@@ -1504,11 +1511,11 @@ const W4U = {
       const q = st.q, my = st, p = q.groups[k], P = st.P[k][p.win];
       W4U.gold(st, P.el); Sfx.reveal();
       if (q.mode === 'tag') { Sfx.whoosh(0.3); await Promise.all(st.P[k].map(X => this.flyOff(st, X))); if (!Session.alive(my)) return; }
-      if (q.mode === 'see' || q.mode === 'tag') { const left = P.bl.slice(0, P.n - P.gone); for (let i = 0; i < left.length; i++) { if (!Session.alive(my)) return; K.hop(st, left[i], 14); await Count.beat(st.scope, quick ? 260 : 330, i + 1); } }
+      if (q.mode === 'see' || q.mode === 'tag') { const left = P.bl.slice(0, P.n - P.gone); for (let i = 0; i < left.length; i++) { if (!Session.alive(my)) return; K.hop(st, left[i], 14); await W4U.beat(st, quick ? 260 : 330, i + 1); } }
       else { this.showRest(st, k); await st.scope.wait(500); }
       if (!Session.alive(my)) return;
       st.summary = q.mode === 'diff' ? '多' + CNQ(q.answer) + '个！' : this.name[P.id] + '剩' + CNQ(p.r[p.win]) + '个！';
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(quick ? 800 : 1000);
+      W4U.sum(st, st.summary); await st.scope.wait(quick ? 800 : 1000);
     },
     async reveal(st) {
       const q = st.q, my = st;
@@ -1526,14 +1533,27 @@ const W4U = {
       }
       await st.scope.wait(600);
     },
-    /* every pair he got wrong: his pick ringed blue, then the pair made plain (the one with more gold, counted) */
+    /* the picks' marks go (a green tick reads "right": only the blue and gold rings stay); his wrong pick(s) ringed blue and,
+       at the same time, what happened made plain for both pairs at once - the tags come true (the balloons fly off) or the
+       boards get "= rest"; then in every pair he got wrong the one with more is ringed gold, his balloons hop, "猫小子剩三个！".
+       No balloon-by-balloon counting here: the step stays short (review OX1). */
     async explain(st, ans) {
       const q = st.q, my = st;
       if (q.mode === 'diff') return W4U.chosenThenReveal(this, st, ans);
       const a = String(ans).split(',').map(Number), bad = this.bad(st, ans);
-      W4U.blue(st, bad.map(k => this.choices(st, k)[a[k]]));          /* both wrong picks at once: the step stays short */
-      await st.scope.wait(700); if (!Session.alive(my)) return;
-      for (const k of bad) { await this.showPair(st, k, bad.length > 1); if (!Session.alive(my)) return; }
+      [0, 1].forEach(k => this.choices(st, k).forEach(e => mark(e, false)));
+      W4U.blue(st, bad.map(k => this.choices(st, k)[a[k]]));
+      if (q.mode === 'tag') { Sfx.whoosh(0.3); await Promise.all([].concat(...st.P).map(P => this.flyOff(st, P))); }
+      else if (q.mode === 'num') { [0, 1].forEach(k => this.showRest(st, k)); await st.scope.wait(700); }
+      else await st.scope.wait(700);
+      if (!Session.alive(my)) return;
+      bad.forEach((k, j) => {
+        const p = q.groups[k], P = st.P[k][p.win];
+        W4U.gold(st, P.el); P.bl.slice(0, P.n - P.gone).forEach((b, i) => st.scope.timeout(() => K.hop(st, b, 14), 110 * i));
+        if (!j && !st.ff) W4U.sum(st, this.name[P.id] + '剩' + CNQ(p.r[p.win]) + '个！');          /* one sentence: both pairs wrong is shown, the first one said */
+      });
+      Sfx.reveal();
+      await st.scope.wait(900);
     },
     rightEls(st, ans) { return st.q.mode === 'diff' ? [W4U.cardOf(st, st.q.answer)] : this.bad(st, ans).map(k => st.P[k][st.q.groups[k].win].el); },
     next(st, strat) {
@@ -1683,7 +1703,7 @@ const W4U = {
       const q = st.q, my = st, c = st.cards[q.answer];
       await this.open(st); if (!Session.alive(my)) return;
       W4U.gold(st, c); K.hop(st, c, 16); Sfx.reveal(); this.cheerAll(st);
-      st.summary = '打开是这样！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      st.summary = '打开是这样！'; W4U.sum(st, st.summary); await st.scope.wait(1200);
     },
     async feedback(st, ans) {
       const q = st.q, p = q.pics[ans]; if (st.cards[ans]) K.wiggle(st, st.cards[ans]);
@@ -1699,10 +1719,10 @@ const W4U = {
       await this.open(st); if (!Session.alive(my)) return;
       const extra = p.h.filter(x => !has(q.open, x)), miss = q.open.filter(x => !has(p.h, x));
       if (s) extra.concat(miss).forEach(([c, r], i) => { const ring = svg('circle', { cx: 4 + (c + 0.5) * 23, cy: 4 + (r + 0.5) * 23, r: 11.5, fill: 'rgba(79,179,255,.32)', stroke: '#1F7AD6', 'stroke-width': 4.2, 'stroke-dasharray': i >= extra.length ? '4 3' : 'none' }, s); st.scope.anim(ring, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 120 * i }); });
-      Voice.say('这里不一样', { tag: 'summary' });
+      W4U.note(st, '这里不一样');
       await st.scope.wait(1300); if (!Session.alive(my)) return;
       const c = st.cards[q.answer]; W4U.gold(st, c); K.hop(st, c, 16); Sfx.reveal();
-      st.summary = '打开是这样！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
+      st.summary = '打开是这样！'; W4U.sum(st, st.summary); await st.scope.wait(1000);
     },
     rightEls(st) { return [st.cards[st.q.answer]]; },
     next(st, strat) { if (st.picked || !st.cards) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % 5 : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
@@ -1813,17 +1833,18 @@ const W4U = {
       Sfx.reveal();
       for (const i of want) { if (!Session.alive(my)) return; W4U.gold(st, st.dom[i], 4); K.hop(st, st.dom[i], 14); await st.scope.wait(260); }
       this.cheerAll(st);
-      st.summary = CN[q.N] + '可以这样分！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+      st.summary = CN[q.N] + '可以这样分！'; W4U.sum(st, st.summary); await st.scope.wait(1100);
     },
     /* the wrong cards he picked ringed blue (the second one worked out: "三和五是八") and put back; or, when he missed some, the
        missed ones ringed blue; then every right card is picked and ringed gold, one by one */
     async explain(st, ans) {
       const q = st.q, my = st, sel = String(ans).split(',').filter(Boolean).map(Number);
       const bad = sel.filter(i => !q.cards[i].ok), miss = q.cards.map((c, i) => (c.ok && !sel.includes(i) ? i : -1)).filter(i => i >= 0);
+      bad.forEach(i => mark(st.dom[i], false));          /* a wrong card keeps no tick (a green tick reads "right"): only the blue ring */
       W4U.blue(st, (bad.length ? bad : miss).map(i => st.dom[i]));
-      if (bad.length > 1) { const p = q.cards[bad[1]].p; Voice.say(CN[p[0]] + '和' + CN[p[1]] + '是' + CN[p[0] + p[1]], { tag: 'summary' }); }
+      if (bad.length > 1) { const p = q.cards[bad[1]].p; W4U.note(st, CN[p[0]] + '和' + CN[p[1]] + '是' + CN[p[0] + p[1]]); }
       await st.scope.wait(bad.length > 1 ? 1500 : 1000); if (!Session.alive(my)) return;
-      bad.forEach(i => mark(st.dom[i], false)); Sfx.back();
+      Sfx.back();
       await st.scope.wait(300); if (!Session.alive(my)) return;
       q.cards.forEach((c, i) => { if (c.ok) mark(st.dom[i], true); });
       await this.reveal(st);
@@ -1908,10 +1929,10 @@ const W4U = {
       W4U.gold(st, [st.nc[i], st.nc[j]], 8); Sfx.reveal();
       await st.scope.anim(st.rk, [{ transform: 'translateY(0)' }, { transform: 'translateY(-26px) rotate(-3deg)' }, { transform: 'translateY(0)' }], { duration: 600, easing: EASE.pop });
       this.cheerAll(st);
-      st.summary = CN[Math.min(a, b)] + '和' + CN[Math.max(a, b)] + '是' + CN[q.N] + '！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+      st.summary = CN[Math.min(a, b)] + '和' + CN[Math.max(a, b)] + '是' + CN[q.N] + '！'; W4U.sum(st, st.summary); await st.scope.wait(1100);
     },
     /* the two he picked ringed blue (the feedback said what they make); then the right two gold, the rocket lifts */
-    explain(st, ans) { return W4U.chosenThenReveal(this, st, ans, String(ans).split(',').map(i => this.card(st, +i))); },
+    explain(st, ans) { const two = String(ans).split(',').map(i => this.card(st, +i)); two.forEach(e => mark(e, false)); return W4U.chosenThenReveal(this, st, ans, two); },          /* the picks lose their ticks: only the rings stay */
     card(st, i) { return st.nc[i]; },
     rightEls(st) { return st.q.answer.split(',').map(i => st.nc[+i]); },
     rightCount(q) { let n = 0; for (let i = 0; i < q.vals.length; i++) for (let j = i + 1; j < q.vals.length; j++) if (q.vals[i] + q.vals[j] === q.N) n++; return n === 1 && q.vals.length >= 5 ? 1 : 0; },
@@ -1995,7 +2016,7 @@ const W4U = {
       W4U.gold(st, st.cards[st.opts.indexOf(q.answer)]); Sfx.reveal();
       for (let i = 0; i < st.rowEls.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.rowEls[i], 10); await st.scope.wait(180); }
       this.cheerAll(st);
-      st.summary = CN[A[0]] + '加' + CN[A[1]] + '等于' + CN[q.N] + '！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1100);
+      st.summary = CN[A[0]] + '加' + CN[A[1]] + '等于' + CN[q.N] + '！'; W4U.sum(st, st.summary); await st.scope.wait(1100);
     },
     async feedback(st, ans) {
       const i = st.opts.indexOf(ans), p = st.q.pairs[i]; if (st.cards[i]) K.wiggle(st, st.cards[i]);
@@ -2112,7 +2133,7 @@ const W4U = {
       K.ring(st, [box(st.bd)], 8, '#FFC93C'); Sfx.reveal();
       for (let i = 0; i < st.gapEls.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.gapEls[i], 14); await st.scope.wait(200); }
       this.cheerAll(st);
-      st.summary = '每行每列都不一样！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      st.summary = '每行每列都不一样！'; W4U.sum(st, st.summary); await st.scope.wait(1200);
       void q;
     },
     /* a shape twice in a row (or a column) - said of the first place where that happens */
@@ -2140,7 +2161,7 @@ const W4U = {
       await st.scope.wait(1200); if (!Session.alive(my)) return;
       W4U.hide(blues); wrong.forEach(i => { const [r, c] = q.gaps[i]; st.fill[i] = q.g[r][c]; }); this.paint(st); wrong.forEach(i => K.pop(st, st.gapEls[i]));
       W4U.gold(st, wrong.map(i => st.gapEls[i])); Sfx.place();
-      Voice.say('每行每列都不一样！', { tag: 'summary' }); await st.scope.wait(1500);
+      W4U.sum(st, '每行每列都不一样！'); await st.scope.wait(1500);
     },
     rightEls(st, ans) { const q = st.q, f = String(ans).split(',').map(Number); return q.gaps.map(([r, c], i) => (f[i] !== q.g[r][c] ? st.gapEls[i] : null)).filter(Boolean); },
     /* right: the right shape into each place, one by one (a wrong one is taken back first); wrong: the first place gets another shape */
@@ -2312,10 +2333,10 @@ const W4U = {
       q.n.forEach((n, i) => { for (let j = 0; j < n; j++) { const s = el('div', '', win); Object.assign(s.style, { width: '30px', height: '34px', justifySelf: 'center' }); s.innerHTML = seedSvg(SEEDC[i]); seeds.push(s); } });
       this.place(st); popIn(st, win); Sfx.reveal();
       await st.scope.wait(300);
-      for (let k = 0; k < seeds.length; k++) { if (!Session.alive(my)) return; K.hop(st, seeds[k], 10); if (quick) { Sfx.count(k + 1); await st.scope.wait(170); } else await Count.beat(st.scope, 260, k + 1); }          /* quick (the explain step): a tick a seed */
+      for (let k = 0; k < seeds.length; k++) { if (!Session.alive(my)) return; K.hop(st, seeds[k], 10); if (quick) { Sfx.count(k + 1); await st.scope.wait(170); } else await W4U.beat(st, 260, k + 1); }          /* quick (the explain step): a tick a seed */
       this.cheerAll(st);
       st.summary = q.eq ? plusLine(q.n, q.s) : '一共' + CNQ(q.s) + '颗！';
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      W4U.sum(st, st.summary); await st.scope.wait(1200);
     },
     async feedback(st, ans) {
       const q = st.q, i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]);
@@ -2481,25 +2502,27 @@ const W4U = {
     },
     async reveal(st) {
       const q = st.q, my = st; let s = 0;
-      for (const [r, c] of st.stepped) { if (!Session.alive(my)) return; s += q.v[r][c]; K.hop(st, st.stones[r][c].e, 14); if (s > 0) await Count.beat(st.scope, 320, s); else await st.scope.wait(320); }
+      for (const [r, c] of st.stepped) { if (!Session.alive(my)) return; s += q.v[r][c]; K.hop(st, st.stones[r][c].e, 14); if (s > 0) await W4U.beat(st, 320, s); else await st.scope.wait(320); }
       K.ring(st, [box(st.planet)], 6, '#FFC93C'); K.hop(st, st.planet, 16); Sfx.reveal(); this.cheerAll(st);
       st.summary = '加起来正好是' + CN[q.N] + '！';
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      W4U.sum(st, st.summary); await st.scope.wait(1200);
     },
     async feedback(st, ans) { K.wiggle(st, st.planet); W3X.say('这条加起来是' + CN[ans]); await st.scope.wait(600); },
     /* his way: every stone he stepped on ringed blue and summed again; then the right way: its stones ringed gold one by one,
        summed to N, the planet gold - "加起来正好是七！" */
     async explain(st, ans) {
       const q = st.q, my = st, g = this.geo(st), alive = () => Session.alive(my);
-      const blues = W4U.blue(st, st.stepped.map(([r, c]) => st.stones[r][c].e));          /* "这条加起来是八" was said */
-      for (const [r, c] of st.stepped) { K.hop(st, st.stones[r][c].e, 12); await st.scope.wait(160); if (!alive()) return; }
+      const his = st.stepped.slice(); st.stepped = []; this.drawLinks(st, g); this.mark(st);          /* his way loses its gold arrows and yellow stones: only blue rings */
+      st.stones.forEach(row => row.forEach(o => { o.e.style.boxShadow = ''; }));
+      const blues = W4U.blue(st, his.map(([r, c]) => st.stones[r][c].e));          /* "这条加起来是八" was said */
+      for (const [r, c] of his) { K.hop(st, st.stones[r][c].e, 12); await st.scope.wait(160); if (!alive()) return; }
       await st.scope.wait(450); if (!alive()) return;
       W4U.hide(blues);
       st.stepped = q.right.slice(); st.at = q.right[q.right.length - 1]; this.drawLinks(st, g); this.mark(st);
       let s = 0;
       for (const [r, c] of q.right) { s += q.v[r][c]; const e = st.stones[r][c].e; W4U.gold(st, e, 4); K.hop(st, e, 14); Sfx.count(Math.max(1, s)); await st.scope.wait(230); if (!alive()) return; }
       W4U.gold(st, st.planet); K.hop(st, st.planet, 16); Sfx.reveal();
-      st.summary = '加起来正好是' + CN[q.N] + '！'; Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      st.summary = '加起来正好是' + CN[q.N] + '！'; W4U.sum(st, st.summary); await st.scope.wait(900);
     },
     rightEls(st) { return st.q.right.map(([r, c]) => st.stones[r][c].e); },
     next(st, strat) {
@@ -2588,7 +2611,7 @@ const W4U = {
       K.ring(st, [box(st.blocks[0][0].e), box(st.blocks[1][0].e), box(st.blocks[1][1].e)], 10, '#FFC93C');
       Sfx.reveal(); this.cheerAll(st);
       st.summary = plusLine([q.rows[1][0], q.rows[1][1]], q.rows[0][0]);
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      W4U.sum(st, st.summary); await st.scope.wait(1200);
     },
     async feedback(st, ans) {
       const q = st.q, i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]);
@@ -2669,7 +2692,7 @@ const W4U = {
       for (let i = 0; i < st.cells.length; i++) { if (!Session.alive(my)) return; K.hop(st, st.cells[i], 14); Sfx.count(i + 1); await st.scope.wait(230); }
       K.ring(st, [box(st.cells[q.miss])], 6, '#FFC93C'); Sfx.reveal(); this.cheerAll(st);
       st.summary = { up1: '每次多一个！', dn1: '每次少一个！', up2: '每次多两个！', dn2: '每次少两个！' }[q.kind];
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      W4U.sum(st, st.summary); await st.scope.wait(1200);
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('问号不是' + CN[ans]); await st.scope.wait(600); },
     /* his card ringed blue and his number put in the "?" (blue: the row does not go on evenly); then the right number goes in,
@@ -2842,10 +2865,10 @@ const W4U = {
       const q = st.q, my = st, card = st.cards[q.d === 4 ? q.answer : st.opts.indexOf(q.answer)];
       W4U.gold(st, card);
       fillSlot(st.slot, q.r, 88);
-      if (st.peaches) { const left = st.peaches.filter(p => p.by === null); for (let k = 0; k < left.length; k++) { if (!Session.alive(my)) return; K.hop(st, left[k].e, 14); await Count.beat(st.scope, 280, k + 1); } }
+      if (st.peaches) { const left = st.peaches.filter(p => p.by === null); for (let k = 0; k < left.length; k++) { if (!Session.alive(my)) return; K.hop(st, left[k].e, 14); await W4U.beat(st, 280, k + 1); } }
       Sfx.reveal(); this.cheerAll(st);
       st.summary = subLine(q.two ? [q.a, '-', q.b, '-', q.c] : [q.a, '-', q.b], q.r);
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
+      W4U.sum(st, st.summary); await st.scope.wait(1300);
     },
     async feedback(st, ans) {
       const q = st.q, i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]);
@@ -2939,13 +2962,13 @@ const W4U = {
       Sfx.reveal();
       if (st.leftP) {                     /* count them all: the eaten ones (or their number), then on with the ones left */
         let k = 0;
-        if (st.eaten) for (const p of st.eaten) { if (!Session.alive(my)) return; K.hop(st, p, 12); await Count.beat(st.scope, 260, ++k); }
-        else { K.hop(st, st.eatNum, 12); k = q.b; await Count.beat(st.scope, 420, k); }
-        for (const p of st.leftP) { if (!Session.alive(my)) return; K.hop(st, p, 12); await Count.beat(st.scope, 260, ++k); }
+        if (st.eaten) for (const p of st.eaten) { if (!Session.alive(my)) return; K.hop(st, p, 12); await W4U.beat(st, 260, ++k); }
+        else { K.hop(st, st.eatNum, 12); k = q.b; await W4U.beat(st, 420, k); }
+        for (const p of st.leftP) { if (!Session.alive(my)) return; K.hop(st, p, 12); await W4U.beat(st, 260, ++k); }
       }
       this.cheerAll(st);
       st.summary = '原来有' + CNQ(q.a) + '个！';
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
+      W4U.sum(st, st.summary); await st.scope.wait(1200);
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('原来不是' + CNQ(ans) + '个'); await st.scope.wait(600); },
     /* his card ringed blue; then the eaten ones and the ones left are counted together, the right card gold */
@@ -3036,7 +3059,7 @@ const W4U = {
       await st.scope.wait(500);
       Sfx.reveal(); this.cheerAll(st);
       st.summary = subLine(k.s, q.n);
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1300);
+      W4U.sum(st, st.summary); await st.scope.wait(1300);
     },
     async feedback(st, ans) { const c = st.cards && st.cards[ans]; if (c) K.wiggle(st, c); W3X.say('这把等于' + CN[st.q.keys[ans].r]); await st.scope.wait(600); },
     /* his key ringed blue, what it makes written on it in blue ("= 4": not the door's number); then the right key flies to the
@@ -3196,7 +3219,7 @@ const W4U = {
         if (walk.length < route.length) {          /* the wall: where the next step would go */
           const A = walk[walk.length - 1], B = route[walk.length], g = this.geo(st), cx = g.bx + (A[0] === B[0] ? Math.max(A[1], B[1]) : A[1] + 0.5) * g.cs, cy = g.by + (A[0] === B[0] ? A[0] + 0.5 : Math.max(A[0], B[0])) * g.cs;
           W4U.dot(st, cx, cy, g.cs * 0.42, false);
-          Voice.say('这里有墙', { tag: 'summary' });
+          W4U.note(st, '这里有墙');
         }
         await st.scope.wait(1000); if (!Session.alive(my)) return;
       } else { await st.scope.wait(700); if (!Session.alive(my)) return; }
@@ -3211,7 +3234,7 @@ const W4U = {
       if (!Session.alive(st)) return;
       K.hop(st, st.chest, 22); Sfx.reveal(); this.cheerAll(st);
       st.summary = '能走到宝箱！';
-      Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(quick ? 1000 : 1300);
+      W4U.sum(st, st.summary); await st.scope.wait(quick ? 1000 : 1300);
     },
     async feedback(st, ans) {
       const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]);
@@ -3349,7 +3372,7 @@ const W4U = {
       }
       this.cheerAll(st);
       const full = q.ask.map(t => (t === '?' ? q.answer : t));
-      st.summary = this.line(full); Voice.say(st.summary, { tag: 'summary' });
+      st.summary = this.line(full); W4U.sum(st, st.summary);
       await st.scope.wait(T(1400));
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CN[ans]); await st.scope.wait(T(700)); },
@@ -3468,7 +3491,7 @@ const W4U = {
       await st.scope.wait(T(80 * q.answer + 420)); if (!Session.alive(my)) return;
       this.cheerAll(st);
       st.summary = q.answer ? '车上有' + CNQ(q.answer) + '个人！' : '车上没有人了！';
-      Voice.say(st.summary, { tag: 'summary' });
+      W4U.sum(st, st.summary);
       await st.scope.wait(T(1200));
     },
     async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards && st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(ans === 0 ? '车上还有人' : '不是' + CNQ(ans) + '个人'); await st.scope.wait(T(700)); },
@@ -3584,7 +3607,7 @@ const W4U = {
       Array.from(big.gems.children).slice(lo).forEach((e, i) => { e.style.filter = 'drop-shadow(0 0 7px #FFE36B) drop-shadow(0 0 3px #FFFFFF)'; st.scope.anim(e, [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 420, delay: 140 * i, easing: EASE.pop }); });
       Sfx.reveal(); this.cheerAll(st);
       st.summary = q.cnt ? WHO7[q.more].name + '多' + CNQ(q.diff) + '颗！' : WHO7[q.asked].name + '有' + CNQ(q.answer) + '颗！';
-      Voice.say(st.summary, { tag: 'summary' });
+      W4U.sum(st, st.summary);
       await st.scope.wait(T(1500));
     },
     async feedback(st, ans) {
@@ -3726,7 +3749,7 @@ const W4U = {
       st.clueEls.forEach((e, i) => { if (e._slot) V7.fill(e._slot, q.answer, 1, 54); st.scope.anim(e, [{ transform: 'scale(1)' }, { transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 380, delay: 160 * i, easing: EASE.pop }); });
       if (st.alien) K.hop(st, st.alien, 24);
       Sfx.reveal(); this.cheerAll(st);
-      st.summary = '就是' + CN[q.answer] + '！'; Voice.say(st.summary, { tag: 'summary' });
+      st.summary = '就是' + CN[q.answer] + '！'; W4U.sum(st, st.summary);
       await st.scope.wait(T(1300));
     },
     async feedback(st, ans) {

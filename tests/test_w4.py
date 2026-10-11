@@ -5,7 +5,8 @@
   - targets: every tap target of the question (st.map) on screen, on top, >= 88 CSS px - landscape and portrait, 1024x768
   - mouse: a real mouse click on the right answer (L1 and L5) submits it
   - wrong: answered wrong at every level: named, then the explain step (st.phase 'explain', st.explaining; the game's own
-    explain(st, ans), no page error, the one he chose marked, the RIGHT one ringed gold, no praise, never "错"), then a
+    explain(st, ans), no page error, the one he chose ringed blue and no longer ticked, the RIGHT one ringed gold, no praise,
+    never "错"), then a
     NEW question of the same kind (each question counts by itself)
   - five options (the client, 2026-10-10, docs/OPTIONS-EXPLAIN-SPEC.md): every pick-one question has 5 options (or asks
     two at once - 一题两问 - from 3 cards), exactly one right (rightCount), the right one's place balanced over the five
@@ -15,7 +16,8 @@
 and the progress: the stars open when the sky is all flagged and its rainbow castle has played; the sky's gate turns gold
 ("惊喜来啦！") and leads up ("飞到星空啦！"); one island and one game at a time; the star castle and the space party at the end.
 usage: python tests/test_w4.py [chromium|webkit] [jobs=3]      W4_ONLY=F1,F2 to run some games only (no progress part)
-       W4_TIMING=1: also the explain step's real length (no fast mode; every game at L3: 1-6 s)"""
+       W4_TIMING=1: also the explain step in real time (no fast mode; every game at L3, the long ones at more levels): the
+       explain phase <= 5.5 s; a tap 0.4 s in ends it within 1.6 s"""
 import os, sys
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -54,6 +56,8 @@ XWRAP = """() => {
       const right = (this.rightEls ? this.rightEls(st, ans) : []) || [];
       rec.right = right.length; rec.rightOk = right.length > 0 && right.every(e => e && e.isConnected && gold.some(r => inside(r, e)));
       rec.chosen = (st.xb || []).length;
+      /* review OX1: a wrong pick keeps no selection mark (tick, yellow) during the explain step - only the blue ring */
+      const R = new Set(right); rec.marked = (st.xb || []).filter(e => e && !R.has(e) && (e.classList.contains('hi') || e.querySelector('.n4tick, .m3tick') || ['rgb(255, 229, 138)', 'rgb(255, 233, 168)'].includes(getComputedStyle(e).backgroundColor))).length;
       rec.bad = rec.said.filter(t => (this.praise || []).includes(t) || PRAISE.includes(t) || /错/.test(t));
       if (window.__xhold) await new Promise(r => { window.__xrel = r; });
     };
@@ -175,8 +179,8 @@ def per_game(args):
                         wait_next_question(page, gen, timeout=30000)
                         nq = wait_phase(page, timeout=25000); k1 = page.evaluate(KEY)
                         x = page.evaluate("window.__xr") or {}
-                        okx = x.get('gen') == gen and x.get('phase') == 'explain' and x.get('explaining') and x.get('own') and not x.get('err') and x.get('rightOk') and x.get('chosen', 0) > 0 and not x.get('bad')
-                        out.append((nq and nq.get('retest') and k1 != k0 and okx and not page.errors[before:], '%dx%d %s L%d s%d wrong: named; explain (own %s, right one ringed gold %s/%s, chosen marked %s, said %s); a new question follows (%s), no error %s' % (vw, vh, g, lv, seed, x.get('own'), x.get('rightOk'), x.get('right'), x.get('chosen'), (x.get('said') or [])[:3] + (x.get('bad') or []), k1 != k0, page.errors[before:][:1] or x.get('err') or '')))
+                        okx = x.get('gen') == gen and x.get('phase') == 'explain' and x.get('explaining') and x.get('own') and not x.get('err') and x.get('rightOk') and x.get('chosen', 0) > 0 and not x.get('marked') and not x.get('bad')
+                        out.append((nq and nq.get('retest') and k1 != k0 and okx and not page.errors[before:], '%dx%d %s L%d s%d wrong: named; explain (own %s, right one ringed gold %s/%s, chosen marked %s (still ticked %s), said %s); a new question follows (%s), no error %s' % (vw, vh, g, lv, seed, x.get('own'), x.get('rightOk'), x.get('right'), x.get('chosen'), x.get('marked'), (x.get('said') or [])[:3] + (x.get('bad') or []), k1 != k0, page.errors[before:][:1] or x.get('err') or '')))
                     except Exception as e:
                         out.append((False, '%dx%d %s L%d wrong: %s %s' % (vw, vh, g, lv, str(e)[:160], page.errors[before:][:1])))
                     page.evaluate("gesture('home')"); page.wait_for_timeout(60)
@@ -185,30 +189,49 @@ def per_game(args):
     return out
 
 
+# real time: from the moment the question is in its explain phase until it leaves it (the engine's "again" line included);
+# with skip, a tap ("skip") 0.4 s in
+PHASE = """([gen, skip]) => new Promise(res => {
+  let t0 = null; const t1 = performance.now();
+  const tick = () => { const q = window.__q;
+    if (t0 === null) { if (q && q.gen === gen && q.phase === 'explain') { t0 = performance.now(); if (skip) setTimeout(() => gesture('skip'), 400); } else if (!q || q.gen !== gen || performance.now() - t1 > 30000) return res(-1); }
+    else if (!q || q.gen !== gen || q.phase !== 'explain') return res(performance.now() - t0);
+    setTimeout(tick, 15); };
+  tick(); })"""
+# the longest ones besides L3 (review OX1: M3 L2 was 6.4 s)
+MORE = {'M3': (1, 2, 4, 5), 'I4': (4,), 'I1': (5,), 'F8': (5,), 'M4': (5,), 'O2': (5,), 'F1': (5,), 'F2': (5,)}
+
+
 def timing(args):
-    """the explain step in real time (no fast mode): L3, one wrong answer per game"""
+    """the explain step in real time (no fast mode), every game at L3 (and the long ones at other levels): the explain
+    phase (the engine's "again" line included) at most 5.5 s; a tap 0.4 s in ends it within 1.6 s (st.ff honoured)"""
     ids, = args
     from playwright.sync_api import sync_playwright
-    from harness import serve, new_page, enter, answer_question, wait_next_question, wait_phase
+    from harness import serve, new_page, enter, wait_next_question, wait_phase
     out = []
     with sync_playwright() as p, serve() as base:
         br = getattr(p, ENG).launch()
         page = new_page(br, base, 1180, 820, fast=False, sw='block'); enter(page)
         load_games(page); page.evaluate(XWRAP)
         for w, g in ids:
-            before = len(page.errors)
-            page.evaluate("window.__xr = null")
-            page.evaluate("([w,g]) => window.__go(w, g, 3, {noDemo: true, seed: 19})", [w, g])
-            try:
-                wait_phase(page, timeout=60000)
-                gen = answer_fully(page, 'wrong')
-                wait_next_question(page, gen, timeout=60000)
-                x = page.evaluate("window.__xr") or {}
-                ms = x.get('ms') or 0
-                out.append((1000 <= ms <= 6000 and x.get('rightOk') and not page.errors[before:], '%s L3 explain in real time: %.1f s (1-6 s), right one ringed gold %s %s' % (g, ms / 1000.0, x.get('rightOk'), page.errors[before:][:1])))
-            except Exception as e:
-                out.append((False, '%s L3 explain timing: %s' % (g, str(e)[:160])))
-            page.evaluate("gesture('home')"); page.wait_for_timeout(100)
+            for lv in (3,) + MORE.get(g, ()):
+                for skip in (False, True):
+                    before = len(page.errors)
+                    page.evaluate("window.__xr = null")
+                    page.evaluate("([w,g,l]) => window.__go(w, g, l, {noDemo: true, seed: 19})", [w, g, lv])
+                    try:
+                        wait_phase(page, timeout=60000)
+                        gen = answer_fully(page, 'wrong')
+                        ms = page.evaluate(PHASE, [gen, skip])
+                        wait_next_question(page, gen, timeout=60000)
+                        x = page.evaluate("window.__xr") or {}
+                        if skip:
+                            out.append((0 <= ms <= 1600 and not page.errors[before:], '%s L%d explain skipped by a tap at 0.4 s: over %.1f s later (<= 1.6 s) %s' % (g, lv, ms / 1000.0 - 0.4, page.errors[before:][:1])))
+                        else:
+                            out.append((1000 <= ms <= 5500 and x.get('rightOk') and not page.errors[before:], '%s L%d explain in real time: phase %.1f s (<= 5.5 s; its own part %.1f s), right one ringed gold %s %s' % (g, lv, ms / 1000.0, (x.get('ms') or 0) / 1000.0, x.get('rightOk'), page.errors[before:][:1])))
+                    except Exception as e:
+                        out.append((False, '%s L%d explain timing: %s' % (g, lv, str(e)[:160])))
+                    page.evaluate("gesture('home')"); page.wait_for_timeout(100)
         br.close()
     return out
 

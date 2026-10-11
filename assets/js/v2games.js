@@ -75,7 +75,7 @@ const RQ = {
     gestureHint(st) { if (st.reflashed || !st.flashOnce) { Voice.say(st.q.say, { tag: 'prompt' }); return; } st.reflashed = true; st.flashOnce(1200); },
     reveal(st) { st.revealed = true; if (st.flash) { st.flash.innerHTML = ''; st.flash.appendChild(V2G.dots(st.q.n, { per: 3, g: 46, r: 17 })); } },
     /* after a wrong answer: the dots come back and are counted one by one */
-    async show(st) { RQ.sub.reveal(st); const pts = st.flash ? Array.from(st.flash.querySelectorAll('circle')) : []; for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, i + 1, 34); await Count.beat(st.scope, 320, i + 1); } },
+    async show(st) { RQ.sub.reveal(st); const pts = st.flash ? Array.from(st.flash.querySelectorAll('circle')) : []; for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, i + 1, 34); await W3X.count(st, 320, i + 1); } },
   },
   give: {
     gen(G, c, o) { const n = G.rng.int(2, o.level >= 3 ? 10 : 7); return { k: ['give', n], n, answer: n, say: '给我' + CNQ(n) + '个！' }; },
@@ -106,7 +106,7 @@ const RQ = {
     async explain(st, ans) {
       const my = st, n = st.q.n, inB = () => st.items.filter(o => o.inB);
       W3X.ringAt(st, box(st.basket), W3X.BLUE, 4);
-      const have = inB(); for (let i = 0; i < have.length; i++) { if (!Session.alive(my)) return; const b = box(have[i].e); W3X.badgeAt(st, b.x + b.w / 2, b.y + 14, i + 1, 34); await Count.beat(st.scope, 280, i + 1); }
+      const have = inB(); for (let i = 0; i < have.length; i++) { if (!Session.alive(my)) return; const b = box(have[i].e); W3X.badgeAt(st, b.x + b.w / 2, b.y + 14, i + 1, 34); await W3X.count(st, 280, i + 1); }
       await st.scope.wait(T(700)); if (!Session.alive(my)) return;
       st.els.filter(e => e.classList && (e.classList.contains('ringo') || e.classList.contains('badge'))).forEach(e => e.remove());
       while (inB().length !== n) { if (!Session.alive(my)) return; const add = inB().length < n, o = add ? st.items.find(x => !x.inB) : inB().slice(-1)[0]; if (!o) break; o.inB = add; RQ.give.place(st); K.pop(st, o.e); Sfx.place(); await st.scope.wait(T(260)); }
@@ -177,7 +177,7 @@ const RQ = {
       RQ.numCards(st, q.opts, 1);
     },
     /* after a wrong answer: counting on from the box - the loose ones get a + 1, a + 2 ... */
-    async show(st) { const pts = st.loose ? Array.from(st.loose.querySelectorAll('circle')) : []; for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, st.q.a + i + 1, 40); await Count.beat(st.scope, 340, st.q.a + i + 1); } },
+    async show(st) { const pts = st.loose ? Array.from(st.loose.querySelectorAll('circle')) : []; for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, st.q.a + i + 1, 40); await W3X.count(st, 340, st.q.a + i + 1); } },
   },
   part: {
     gen(G, c, o) { const hi = (SKILLS[c] || {}).hi || 10, w = G.rng.int(3, hi), a = G.rng.int(1, w - 1), ans = w - a; return { k: ['part', w, a], w, a, answer: ans, opts: numOptions(G, ans, 0, hi), say: CN[w] + '分成' + CN[a] + '和几？' }; },
@@ -191,9 +191,9 @@ const RQ = {
     /* after a wrong answer: a full ten, then counting on: eleven, twelve ... */
     async show(st) {
       const fr = st.tens ? st.tens.children : [];
-      if (fr[0]) { const r = W3X.srect(fr[0]); W3X.badgeAt(st, r.x + r.w / 2, r.y - 4, 10, 48); await Count.beat(st.scope, 420, 10); }
+      if (fr[0]) { const r = W3X.srect(fr[0]); W3X.badgeAt(st, r.x + r.w / 2, r.y - 4, 10, 48); await W3X.count(st, 420, 10); }
       const pts = fr[1] ? Array.from(fr[1].querySelectorAll('circle')) : [];
-      for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, 11 + i, 38); await Count.beat(st.scope, 340, 11 + i); }
+      for (let i = 0; i < pts.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(pts[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, 11 + i, 38); await W3X.count(st, 340, 11 + i); }
     },
   },
   /* a picture story -> its number sentence (skill cards add10 / sub10) */
@@ -506,7 +506,7 @@ const MDoor = Object.assign({}, ZB, {
       W3X.badgeAt(st, b.x + b.w * 0.25, b.y + b.h - 6, x.a + x.b, 50); W3X.badgeAt(st, b.x + b.w * 0.75, b.y + b.h - 6, x.c, 50);
       await st.scope.wait(T(700)); if (!Session.alive(my)) return;
       this.sign(st, d, want[k]); W3X.gold(st, st.cards[2 * k + (want[k] === 'eq' ? 0 : 1)], 4, 0);
-      Voice.say(want[k] === 'ne' ? '不一样多！' : '一样多！', { tag: 'summary' });
+      W3X.tell(want[k] === 'ne' ? '不一样多！' : '一样多！');
       await W3X.beat(st, 1200);
     }
   },
@@ -621,7 +621,7 @@ const MUnload = Object.assign({}, ZB, {
     const off = (st.crates || []).filter(o => o.off).length; if (st.explaining && q.kind === 'left' && st.crates && st.crates.length && off < q.b) { st.crates.filter(o => !o.off).slice(-(q.b - off)).forEach(o => { o.off = true; }); Sfx.whoosh(0.2); this.place(st); await st.scope.wait(T(600)); if (!Session.alive(my)) return; }
     this.place(st);
     const cs = (st.crates || []).filter(o => (q.kind === 'left' ? !o.off : o.off));
-    for (let i = 0; i < cs.length && st.explaining; i++) { if (!Session.alive(my)) return; K.hop(st, cs[i].e, 14); await Count.beat(st.scope, 260, i + 1); }
+    for (let i = 0; i < cs.length && st.explaining; i++) { if (!Session.alive(my)) return; K.hop(st, cs[i].e, 14); await W3X.count(st, 260, i + 1); }
   },
   async reveal(st) { await this.show(st); if (!Session.alive(st)) return; Sfx.reveal(); Voice.say('卸货真快！', { tag: 'summary' }); this.cheerAll(st); await st.scope.wait(T(1100)); },
   wrongLine(st, ans) { return ans === 0 ? '不是零' : '不是' + (CNQ(ans) || ans) + '箱'; },

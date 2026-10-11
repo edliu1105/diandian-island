@@ -49,8 +49,11 @@ Object.assign(W3X, {
   badgeAt(st, x, y, n, size) { size = size || 44; const b = UI.badge(n, size); Stage.el.appendChild(b); b.style.position = 'absolute'; place(b, Math.round(x - size / 2), Math.round(y - size / 2)); st.els.push(b); this.up(st, b); st.scope.anim(b, [{ transform: 'scale(0)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 260, easing: EASE.pop }); return b; },
   /* a point of an svg drawing (its viewBox units) in stage px */
   svgPt(s, x, y) { const r = this.srect(s), vb = (s.getAttribute('viewBox') || '0 0 100 100').split(/[\s,]+/).map(Number), k = Math.min(r.w / vb[2], r.h / vb[3]); return { x: r.x + (r.w - vb[2] * k) / 2 + (x - vb[0]) * k, y: r.y + (r.h - vb[3] * k) / 2 + (y - vb[1]) * k, k }; },
-  /* a line of the explanation (tag 'summary': a tap that skips also stops it) */
-  tell(text) { return Voice.say(text, { tag: 'summary' }); },
+  /* a line of the explanation: a tap that skips stops it (its own tag - a skip keeps only 'summary' lines, the reveal's) and
+     after the tap nothing more is said */
+  tell(text) { const st = Session.st; if (st && st.ff) return Promise.resolve(); return Voice.say(text, { tag: 'explain' }); },
+  /* a counted beat (a number said) - after a tap that skips, nothing is counted */
+  count(st, ms, n) { return st.ff ? Promise.resolve() : Count.beat(st.scope, ms, n); },
   /* wait for what is being said (at most ms), or ms */
   async beat(st, ms) { await st.scope.guard(Promise.race([Voice.afterSay(80), st.scope.wait(ms)])); },
   /* a dashed ring / box / line drawn inside an svg (in its own units) */
@@ -167,7 +170,7 @@ const MHalves = {
       W3X.mine(st, e, 6); this.burst(st, o);
       const s = e.querySelector('svg'), lines = this.guides(o, q.ask);
       if (lines && s) { const g = svg('g', { 'clip-path': 'url(#' + o.clip + ')' }, s); lines.forEach(l => W3X.lineIn(g, l[0], l[1], l[2], l[3], W3X.BLUE, 6)); }
-      else if (s) { for (let i = 0; i < o.n; i++) { if (!Session.alive(my)) return; const p = this.mid(o, i), P = W3X.svgPt(s, p[0], p[1]); W3X.badgeAt(st, P.x, P.y, i + 1, 40); await Count.beat(st.scope, 300, i + 1); } }
+      else if (s) { for (let i = 0; i < o.n; i++) { if (!Session.alive(my)) return; const p = this.mid(o, i), P = W3X.svgPt(s, p[0], p[1]); W3X.badgeAt(st, P.x, P.y, i + 1, 40); await W3X.count(st, 300, i + 1); } }
       await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
     }
     this.burst(st, ok); W3X.gold(st, st.cakes[q.answer], 6); Sfx.reveal();
@@ -717,7 +720,7 @@ const MGroups = {
       if (!Session.alive(my)) return;
       st.items.filter(o => o.b === b).forEach(o => K.hop(st, o.e, 14));
       K.badge(st, st.boxEls[b], (b + 1) * q.per, 0, -10, 46);
-      await Count.beat(st.scope, 420, (b + 1) * q.per);
+      await W3X.count(st, 420, (b + 1) * q.per);
     }
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(W2Say.notN(ans)); await st.scope.wait(400); },
@@ -1121,20 +1124,17 @@ const MOverlay = {
     /* which two: his two slide onto the picture (the places that differ: blue), go back; the right two slide on (gold) */
     const sel = String(ans).split('-').map(Number), right = q.answer.split('-').map(Number), T0 = st.tgt, bt = box(T0), ts = T0.querySelector('svg');
     const onto = async (idx) => { await Promise.all(idx.map(i => { const e = st.optEls[i], b = box(e); e.style.zIndex = 9; e._moved = true; return K.flyTo(st, e, bt.x + bt.w / 2 - b.w / 2, bt.y + bt.h / 2 - b.h / 2, 650, 30, bt.w / b.w); })); };
-    sel.forEach(i => W3X.mine(st, st.optEls[i], 6));
-    await st.scope.wait(T(600)); if (!Session.alive(my)) return;
-    st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove());
-    await onto(sel); if (!Session.alive(my)) return;
+    /* his two slide onto the picture at once, the places that differ ringed blue while they slide (R OX1: shorter) */
     const a = q.cardsC[sel[0]].c, b = q.cardsC[sel[1]].c, both = Object.keys(a).filter(x => b[x]).map(Number);
     const g = svg('g', {}, ts), dif = this.diff(q.target, Object.assign({}, a, b)).concat(both).filter((x, i, l) => l.indexOf(x) === i);
-    dif.forEach(i => this.cellRing(g, i, W3X.BLUE));
+    dif.forEach(i => this.cellRing(g, i, W3X.BLUE)); W3X.ringAt(st, bt, W3X.BLUE, 10);
     W3X.tell(dif.length > 1 ? '这几格不一样。' : '这一格不一样。');
-    await st.scope.wait(T(1800)); if (!Session.alive(my)) return;
-    g.remove(); sel.forEach(i => { st.optEls[i].style.zIndex = 5; }); this.place(st);
-    await st.scope.wait(T(300)); if (!Session.alive(my)) return;
+    await onto(sel); if (!Session.alive(my)) return;
+    await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+    g.remove(); st.els.filter(e => e.classList && e.classList.contains('ringo')).forEach(e => e.remove()); sel.forEach(i => { st.optEls[i].style.zIndex = 5; }); this.place(st);
     await onto(right); if (!Session.alive(my)) return;
     W3X.gold(st, T0, 10, 0); Sfx.reveal(); W3X.tell('叠起来就是它！');
-    await W3X.beat(st, 1800);
+    await W3X.beat(st, 1300);
   },
   async feedback(st, ans) {
     const q = st.q;
@@ -1587,7 +1587,7 @@ const MSums = {
   async reveal(st) {
     const q = st.q, c = st.cards[q.answer], here = st.items.filter(o => !o.gone), my = st;
     K.ring(st, [box(c)], 6, '#FFC93C'); Sfx.reveal();
-    for (let i = 0; i < here.length; i++) { if (!Session.alive(my)) return; K.hop(st, here[i].e, 12); await Count.beat(st.scope, 260, i + 1); }
+    for (let i = 0; i < here.length; i++) { if (!Session.alive(my)) return; K.hop(st, here[i].e, 12); await W3X.count(st, 260, i + 1); }
     this.cheerAll(st);
     st.summary = q.kind === 'two' ? '等于' + CN[q.res] + '！' : CN[q.a] + (q.kind === '+' ? '加' : '减') + CN[q.b] + '等于' + CN[q.res] + '！';
     Voice.say(st.summary, { tag: 'summary' }); await st.scope.wait(1200);
@@ -1609,7 +1609,7 @@ const MSums = {
     if (o && c) { W3X.mine(st, c, 4); const toks = c.firstChild ? c.firstChild.children : []; o.s.forEach((t, i) => { if (t !== ok.s[i] && toks[i]) W3X.ringAt(st, W3X.srect(toks[i]), W3X.BLUE, 5); }); }
     await st.scope.wait(T(1000)); if (!Session.alive(my)) return;
     const here = st.items.filter(x => !x.gone);
-    for (let i = 0; i < here.length; i++) { if (!Session.alive(my)) return; K.hop(st, here[i].e, 12); await Count.beat(st.scope, 200, i + 1); }
+    for (let i = 0; i < here.length; i++) { if (!Session.alive(my)) return; K.hop(st, here[i].e, 12); await W3X.count(st, 200, i + 1); }
     W3X.gold(st, st.cards[q.answer], 4, 0); Sfx.reveal();
     W3X.tell(q.kind === 'two' ? '等于' + CN[q.res] + '！' : CN[q.a] + (q.kind === '+' ? '加' : '减') + CN[q.b] + '等于' + CN[q.res] + '！');
     await W3X.beat(st, 1700);
@@ -2221,9 +2221,9 @@ const MAbacus = {
     let run = 0;
     for (let i = 0; i < st.rods.length; i++) {
       const r = st.rods[i], tens = st.rods.length === 2 && i === 0;
-      if (tens) { for (let j = 0; j < r.l; j++) { if (!Session.alive(my)) return; K.hop(st, r.lows[j], 12); run += 10; await Count.beat(st.scope, 380, run); } continue; }
-      if (r.u) { if (!Session.alive(my)) return; K.hop(st, r.up, 12); run += 5; await Count.beat(st.scope, 380, run); }
-      for (let j = 0; j < r.l; j++) { if (!Session.alive(my)) return; K.hop(st, r.lows[j], 12); run += 1; await Count.beat(st.scope, 330, run); }
+      if (tens) { for (let j = 0; j < r.l; j++) { if (!Session.alive(my)) return; K.hop(st, r.lows[j], 12); run += 10; await W3X.count(st, 380, run); } continue; }
+      if (r.u) { if (!Session.alive(my)) return; K.hop(st, r.up, 12); run += 5; await W3X.count(st, 380, run); }
+      for (let j = 0; j < r.l; j++) { if (!Session.alive(my)) return; K.hop(st, r.lows[j], 12); run += 1; await W3X.count(st, 330, run); }
     }
   },
   async feedback(st, ans) {
@@ -2950,7 +2950,7 @@ const MSuits = {
     all.forEach(c => { const e = W2X.thing(st, 62, 80, 6, ''); Object.assign(e.style, { background: '#FFF8EC', borderRadius: '8px', boxShadow: '0 0 0 3px #2B2118' }); e.appendChild(this.suit(SUIT_COL[q.hc[c.h]], SUIT_COL[q.bc[c.b]], q.F ? SUIT_COL[q.fc[c.f]] : null, '100%')); st.photos.push({ k: this.comboKey(c), e }); });
     this.place(st);
     st.photos.forEach(o => { o.e.style.visibility = 'hidden'; o.e.style.zIndex = 9; });
-    for (let i = 0; i < st.photos.length; i++) { if (!Session.alive(my)) return; st.photos[i].e.style.visibility = ''; K.pop(st, st.photos[i].e); await Count.beat(st.scope, 400, i + 1); }
+    for (let i = 0; i < st.photos.length; i++) { if (!Session.alive(my)) return; st.photos[i].e.style.visibility = ''; K.pop(st, st.photos[i].e); await W3X.count(st, 400, i + 1); }
   },
   async feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say('不是' + CNQ(ans) + '种'); await st.scope.wait(500); },
   next(st, strat) { return st.picked ? null : K.cardNext(st, strat); },

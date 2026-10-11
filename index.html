@@ -2545,7 +2545,9 @@ const Session = {
    One thing at a time: a cue first, its hint only after it and only if the child has not acted meanwhile.
    Before the first hint (the child is thinking) a friend now and then glances at the child - never the host.
    Every one of them marks the question as assisted (it can never count as mastery evidence). */
-const AGAIN = ['再想一想！', '再试一次！', '你可以的，再来！'];
+/* said after the explanation of a wrong answer: the NEXT question is a new one (2026-10-10), so the line announces a new
+   question - not "try again" (the same question never comes back) */
+const AGAIN = ['再来一题！', '下一题来啦！', '再来一个！'];
 const CHEER = ['慢慢想，不着急', '你能行的！', '再看一看！', '我们等你哦！'];
 const Hints = {
   arm(st) { this.reset(st); st.hintTimer = st.scope.interval(() => this.tick(st), 100); },
@@ -2661,7 +2663,27 @@ function gesture(name, p, meta) {
 }
 window.__gesture = (n, p) => gesture(n, p);
 /* an error nobody awaits (a timer, an un-awaited async step) must not leave a question stuck without cards or hints */
-window.addEventListener('unhandledrejection', ev => { if (Session.crash(ev.reason)) ev.preventDefault(); });
+/* a rejection the platform makes (service worker update offline, fetch on flaky Wi-Fi, audio play() refused after an iOS
+   interruption: a DOMException, or a TypeError from the network) never means the question is broken - it is noted and
+   dropped. Only an error of the app's own code ends a live question (Session.crash) */
+function platformRejection(r) {
+  if (!r || typeof r !== 'object') return true;                                   /* not an Error at all: not ours */
+  if ((typeof DOMException !== 'undefined' && r instanceof DOMException) || /^(NotAllowed|Abort|InvalidState|NotSupported|Network|Security|QuotaExceeded|Timeout|Encoding|NotFound|Unknown|Data|Operation|NotReadable|InvalidAccess)Error$/.test(r.name || '')) return true;
+  if (r.name === 'TypeError') {                                                  /* the network's TypeErrors, not a bug's */
+    const m = r.message || '';
+    if (/^(cannot (read|set)|undefined is not|null is not)|is not (a function|iterable|an object|defined)/i.test(m)) return false;
+    if (/fetch|load failed|network|service ?worker|internet connection/i.test(m)) return true;
+  }
+  return !(r instanceof Error);
+}
+window.addEventListener('unhandledrejection', ev => {
+  if (platformRejection(ev.reason)) {
+    const r = ev.reason, L = window.__ignoredRejections || (window.__ignoredRejections = []);
+    L.push((r && r.name) + ': ' + (r && r.message)); if (L.length > 20) L.shift();
+    console.info('platform rejection ignored', L[L.length - 1]); ev.preventDefault(); return;
+  }
+  if (Session.crash(ev.reason)) ev.preventDefault();
+});
 window.addEventListener('error', ev => { if (ev.error && Session.st) Session.crash(ev.error); });
 window.__next = (strategy) => {
   const st = Session.st; if (!st || st.scope.dead || !['act', 'ready', 'input', 'pairing'].includes(st.phase)) return null;
@@ -3492,7 +3514,7 @@ const SWU = {
     /* the first install claiming a page that had no worker is NOT a version switch (same release as this page) */
     this.hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.switching) { location.reload(); return; } if (this.hadController) { this.stale = true; this.reloadIfSafe(); } this.hadController = true; });
-    try { reg.update(); } catch (e) {}
+    try { const p = reg.update(); if (p && p.catch) p.catch(() => {}); } catch (e) {}      /* offline / flaky Wi-Fi: the check fails, nothing else */
     this.maybe();
   },
   safe() { return Screens.cur === 'entry' || document.hidden; },
@@ -4008,10 +4030,17 @@ const Two = {
   KEEP: new Set(['gen', 'id', 'G', 'game', 'q', 'kind', 'level', 'phase', 'hinted', 'guided', 'demo', 'retest', 'probe', 'evidence', 'again', 'err', 'scope', 'els', 'map', 'ops', 'childOps', 'assists',
     'submitted', 'idleFrom', 'hintLv', 'nextAuto', 'budget', 'ff', 'childTook', 'answerP', 'answerRes', 'answerRej', 'prompt', 'lead', 'hintTimer', 'glanceAt', 'cheers', 'assistT', 'autoDue',
     'noEvidence', 'evKind', 'sub1', 'sub2', 'twoBusy', 'lastAt', 'rv', 'sup', 'supProbe', 'pass', 'missQ', 'bound']),
-  pips(st, t) {           /* two small dots on the task card: which of the two asks this is */
+  /* two dots on the task card: which of the two asks this is. The current one is big (30 px, yellow), a done one green,
+     the next one small and white; when the second ask starts its dot pulses (review OX1 P6: 18 px dots were easy to miss) */
+  pips(st, t) {
     if (!st.q || !(st.q.q2 || st.sub2)) return;
-    const d = el('div', 'twopips', t); Object.assign(d.style, { display: 'flex', gap: '6px', marginLeft: '6px', alignItems: 'center' });
-    [0, 1].forEach(i => { const p = el('span', '', d); Object.assign(p.style, { width: '18px', height: '18px', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118', background: (st.sub2 ? i === 0 : false) ? '#5CC46E' : (st.sub2 ? i === 1 : i === 0) ? '#FFC93C' : '#fff' }); });
+    const d = el('div', 'twopips', t); Object.assign(d.style, { display: 'flex', gap: '8px', marginLeft: '8px', alignItems: 'center' });
+    [0, 1].forEach(i => {
+      const done = st.sub2 && i === 0, cur = st.sub2 ? i === 1 : i === 0, s = cur ? 30 : 18;
+      const p = el('span', cur ? 'cur' : '', d);
+      Object.assign(p.style, { width: s + 'px', height: s + 'px', flex: '0 0 auto', borderRadius: '50%', boxShadow: '0 0 0 3px #2B2118', background: done ? '#5CC46E' : cur ? '#FFC93C' : '#fff' });
+      if (cur && st.sub2) st.scope.anim(p, [{ transform: 'scale(1)' }, { transform: 'scale(1.45)' }, { transform: 'scale(1)' }, { transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 900, delay: 300, easing: 'ease-in-out' });
+    });
   },
   answer(st, v) {
     if (!st || st.submitted || st.twoBusy) return;

@@ -11,19 +11,25 @@
  L  layout: every choice game x level x 1180x820 / 820x1180 / 1024x768: every option >= 88 CSS px, on screen, on top (8
     of 9 points hit it), not under the home button, the host, the star tray, the question pill or a character
  S  screenshots in tests/logs/opt3/: every game with its five options and its explanation (landscape and portrait), the
-    review types; the explanation's length is logged (2-5 s asked; > 6.5 s fails)
-usage: python tests/test_opt3.py [jobs=3] [G,E,R,L,S]"""
+    review types; the explanation's length is logged (2-5 s asked; > 6 s fails)
+ T  timing at real speed (review OX1): every game of the sky and the arithmetic island at one level (U4 at levels 2 and 4)
+    and the review types: the explanation lasts <= 6 s, and a tap 0.4 s into it ends it within 2 s
+The list of new sentences (raw/js/w4/w3explain.voice.txt) is a source file: where it is not delivered every sentence said
+in an explanation must be in the voice bank.
+usage: python tests/test_opt3.py [jobs=3] [G,E,R,L,S,T]"""
 import os, sys, json, re, time
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import Log, ROOT
 
 JOBS = int(sys.argv[1]) if len(sys.argv) > 1 else 3
-PARTS = sys.argv[2].split(',') if len(sys.argv) > 2 else ['G', 'E', 'R', 'L', 'S']
+PARTS = sys.argv[2].split(',') if len(sys.argv) > 2 else ['G', 'E', 'R', 'L', 'S', 'T']
 SHOTS = os.path.join(ROOT, 'tests', 'logs', 'opt3')
 os.makedirs(SHOTS, exist_ok=True)
-NEW = [l.strip() for l in open(os.path.join(ROOT, 'raw', 'js', 'w4', 'w3explain.voice.txt'), encoding='utf-8') if l.strip()]
-NOISE = ('ERR_NO_BUFFER_SPACE', 'ERR_INSUFFICIENT_RESOURCES', 'ERR_ADDRESS_IN_USE')
+_NEWF = os.path.join(ROOT, 'raw', 'js', 'w4', 'w3explain.voice.txt')          # not in a delivered copy (raw/ is not published): then the bank alone
+NEW = [l.strip() for l in open(_NEWF, encoding='utf-8') if l.strip()] if os.path.exists(_NEWF) else []
+# the machine (socket buffers) and other builds running at the same time (sw.js rewritten while a real-speed page updates it)
+NOISE = ('ERR_NO_BUFFER_SPACE', 'ERR_INSUFFICIENT_RESOURCES', 'ERR_ADDRESS_IN_USE', 'Failed to update a ServiceWorker')
 CARDS = ['sub5', 'give10', 'cmp10', 'cmp20', 'next10', 'next20', 'on10', 'on20', 'part5', 'part10', 'ten20', 'add10', 'sub10', 'F+3+4', 'F-8-3']
 OPEN = "() => { Store.s.w2all = true; Store.s.w3 = true; ORDER.concat(ORDER2, ORDER3).forEach(id => { const ws = Store.w(id); ws.unlocked = true; ws.demo = {}; WORLDS[id].games.forEach(g => { ws.demo[g] = true; }); }); Store.save(); }"
 GO = "([g, l, s, c]) => { const w = Object.keys(WORLDS).find(x => (WORLDS[x].games || []).includes(g)); window.__go(w, g, l, c ? { seed: s, test: true, keyItems: [c], noDemo: true } : { seed: s, noDemo: true }); }"
@@ -216,10 +222,42 @@ def shot_job(args):
                 page.screenshot(path=os.path.join(SHOTS, name + '_explain.png'))
                 page.wait_for_function("() => !window.__q || window.__q.phase !== 'explain'", timeout=30000, polling=40)
                 secs = time.time() - t0
-                out.append((secs <= 6.5 and not errs(page, before), 'S %s: options and explanation shot, explanation %.1f s %s' % (name, secs, errs(page, before)[:1])))
+                out.append((secs <= 6.0 and not errs(page, before), 'S %s: options and explanation shot, explanation %.1f s %s' % (name, secs, errs(page, before)[:1])))
             except Exception as e:
                 out.append((False, 'S %s: %s %s' % (name, str(e)[:160], errs(page, before)[:1])))
             page.evaluate("gesture('home')"); page.wait_for_timeout(250)
+        br.close()
+    return out
+
+
+def timing_job(args):
+    ids, vw, vh = args
+    from playwright.sync_api import sync_playwright
+    from harness import serve, new_page, enter, answer_question, wait_phase
+    out = []
+    PH = "(gen) => { const q = window.__q; return !q || q.gen !== gen || q.phase !== 'explain'; }"
+    with sync_playwright() as p, serve() as base:
+        br = p.chromium.launch(); page = new_page(br, base, vw, vh, fast=False); enter(page)
+        ready(page); page.evaluate(OPEN)
+        for g, lv, c in ids:
+            tag = '%s%s L%d %dx%d' % (g, (' ' + c) if c else '', lv, vw, vh)
+            res = []
+            for skip in (False, True):
+                before = len(page.errors)
+                try:
+                    page.evaluate(GO, [g, lv, 5, c]); wait_phase(page, timeout=60000); page.wait_for_timeout(600)
+                    gen, snap = answer_question(page, 'wrong', max_steps=200, timeout=40000)
+                    page.wait_for_function("(gen) => { const q = window.__q; return q && q.gen === gen && q.phase === 'explain'; }", arg=gen, timeout=40000, polling=10)
+                    t0 = time.time()
+                    if skip: page.wait_for_timeout(400); t0 = time.time(); page.evaluate("gesture('skip')")
+                    page.wait_for_function(PH, arg=gen, timeout=20000, polling=20)
+                    res.append(round(time.time() - t0, 1))
+                except Exception as e:
+                    res.append(None); out.append((False, 'T %s: %s %s' % (tag, str(e)[:140], errs(page, before)[:1])))
+                page.evaluate("gesture('home')"); page.wait_for_timeout(250)
+            if None not in res:
+                out.append((res[0] <= 6.0 and res[1] <= 2.0, 'T %s: the explanation %.1f s (<= 6), a tap at 0.4 s ends it in %.1f s (<= 2)' % (tag, res[0], res[1])))
+        out.append((not errs(page, 0), 'T %dx%d no page errors %s' % (vw, vh, errs(page, 0)[:2])))
         br.close()
     return out
 
@@ -243,6 +281,11 @@ def main():
         if 'L' in PARTS:
             jobs = [(games + review, vw, vh) for vw, vh in ((1180, 820), (820, 1180), (1024, 768))]
             for part in pool.map(layout_job, jobs):
+                for ok, msg in part: log.check(ok, msg)
+        if 'T' in PARTS:
+            items = [(g, SHOT_LV.get(g, 3), None) for g, _ in games] + [x for x in [('U4', 4, None), ('R4', 3, None)] if any(g == x[0] for g, _ in games)]
+            items += [] if (only and 'review' not in only.split(',')) else [('P2', 2, c) for c in ('sub5', 'give10', 'cmp10', 'next10', 'on10', 'part10', 'ten20', 'add10', 'F+3+4')]
+            for part in pool.map(timing_job, [(items[i::JOBS], 1180, 820) for i in range(JOBS)]):
                 for ok, msg in part: log.check(ok, msg)
         if 'S' in PARTS:
             pick = games + [x for x in [('P2', c) for c in ('sub5', 'give10', 'cmp10', 'next10', 'on10', 'part10', 'ten20', 'add10', 'F+3+4')] if not only or 'review' in only.split(',')]

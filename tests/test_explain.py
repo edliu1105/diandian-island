@@ -6,7 +6,9 @@
    (nothing covers them), clear of the HUD (home / avatar / tray), of the task card and of the characters - at
    1180x820, 820x1180 and 1024x768
 2. every game x every level: one WRONG answer -> phase 'explain' runs, ends with a gold mark on the right option
-   (window.__xlog), no page error, then a NEW question comes (retest)
+   (window.__xlog), no page error, then a NEW question comes (retest); and every line said in the feedback, the
+   explanation or a second ask has a recording (Bank.has: in recordings mode a line without one is silent - review OX1
+   P1; tests/harvest_w12explain.py sweeps many seeds and lists the missing ones)
 3. generators (Session.genQ, no UI): >= 5 options, exactly one right, options distinct, the right answer's place among
    the five balanced (each place 14-26 %; the rank of a right NUMBER among the five is reported when one rank > 50 %)
 usage: python tests/test_explain.py [part=all|gen|layout|explain] [worlds=w1,w2] [jobs=3]
@@ -32,6 +34,14 @@ TWO = {'B1', 'B3', 'C2', 'Q2', 'Y2'}
 PAIRS = {'Q4'}
 CHOICE = {'H1': r'^g\d$', 'X2': r'^c\d+$', 'Q2': r'^sp_', 'Q4': r'^k\d$', 'C4': r'^f\d$', 'J2': r'^b\d$', 'G1': r'^(s\d|card\d)$', 'C2': r'^(col\d|card\d)$',
           'B1': r'^(bluey|bingo|same)$', 'B3': r'^(bluey|bingo|same)$'}
+# every Voice.say (sayNow goes through it) while a question is in its feedback or explanation, or with the tags of those
+# lines / of a second ask: [text, game, level, phase, tag] in window.__xsaid (count-fallback: a number word, not a line)
+SAYHOOK = """() => { if (window.__xsaid) return; window.__xsaid = [];
+  const o = Voice.say.bind(Voice);
+  Voice.say = (t, opt) => { const st = Session.st, tag = (opt && opt.tag) || '';
+    if (t && st && tag !== 'count-fallback' && (st.phase === 'correcting' || st.explaining || tag === 'two' || tag === 'wrong' || tag === 'explain' || st.sub2))
+      window.__xsaid.push([t, (st.G && st.G.id) || '', st.level, st.phase, tag]);
+    return o(t, opt); }; }"""
 NOREV = "(() => { try { if (typeof V2D !== 'undefined') { V2D.slot = () => null; V2D.plan = () => ({ pos: [] }); } } catch (e) {} })()"
 
 # the options of the current question as the child sees them: [{id, right, x, y, w, h, covered}] in stage px + scale
@@ -179,11 +189,11 @@ def explain_job(ids):
     from harness import serve, new_page, enter, answer_question, wait_next_question, q
     res = []
     with sync_playwright() as p, serve() as base:
-        br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True); enter(page); page.evaluate(NOREV)
+        br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True); enter(page); page.evaluate(NOREV); page.evaluate(SAYHOOK)
         for w, g, lv in ids:
             r = {'g': g, 'lv': lv, 'bad': []}
             try:
-                page.evaluate("window.__xlog = []; window.__phases = [];")
+                page.evaluate("window.__xlog = []; window.__phases = []; window.__xsaid.length = 0;")
                 page.evaluate("([w,g,l]) => window.__go(w, g, l, {noDemo: true, seed: 31 + l})", [w, g, lv])
                 # the right option at the moment of the (wrong) answer, from the game's own next('right')
                 page.evaluate("""() => { if (Session.__xs) return; Session.__xs = Session.submit; Session.submit = function (st, v) { try { const s = st.game.next(st, 'right'); window.__rightAt = s && s.p && (s.p.id || s.p.at); } catch (e) { window.__rightAt = null; } return Session.__xs.call(Session, st, v); }; }""")
@@ -199,6 +209,10 @@ def explain_job(ids):
                     r['bad'].append('the gold mark is not on the right option %s vs %s' % ([e['id'] for e in golds], right))
                 if not (nq and nq.get('retest')):
                     r['bad'].append('no new question after the explanation')
+                silent = page.evaluate("() => (Bank.set && Bank.set.size) ? [...new Set(window.__xsaid.map(x => x[0]))].filter(t => !Bank.has(t)) : ['(the recordings list is not loaded)']")
+                if silent:
+                    r['bad'].append('said without a recording (silent in recordings mode): %s' % silent)
+                r['said'] = len(set(x[0] for x in page.evaluate("window.__xsaid")))
                 r['xl'] = [e['what'] for e in xl]
             except Exception as e:
                 r['bad'].append('error %s' % str(e)[:160])
@@ -284,7 +298,7 @@ def main():
         with Pool(JOBS) as pool:
             for part in pool.map(explain_job, [ids[i::JOBS] for i in range(JOBS)]):
                 for r in part:
-                    log.check(not r['bad'] and not r['pe'], '%s L%d: wrong -> explain (%s) -> gold on the right one -> a new question %s %s' % (r['g'], r['lv'], ','.join(r.get('xl', [])), r['bad'][:2], r['pe']))
+                    log.check(not r['bad'] and not r['pe'], '%s L%d: wrong -> explain (%s) -> gold on the right one -> a new question; %d lines said, all recorded %s %s' % (r['g'], r['lv'], ','.join(r.get('xl', [])), r.get('said', 0), r['bad'][:2], r['pe']))
     return log.close()
 
 
