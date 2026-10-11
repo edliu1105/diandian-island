@@ -44,7 +44,7 @@ def main():
     req = urllib.request.Request(URL, headers={'Accept-Encoding': 'gzip', 'User-Agent': 'Mozilla/5.0 (iPad) smoke'})
     with urllib.request.urlopen(req, timeout=30) as r:
         enc, raw = r.headers.get('Content-Encoding', ''), r.read()
-    log.check(enc == 'gzip' and len(raw) <= 210 * 1024,   # the budget is the first-screen TOTAL <= 450 KB (tests/test_boot.py: 449 KB with v2's memory in the page); this is a coarse guard (200 -> 210 KB with v2)
+    log.check(enc == 'gzip' and len(raw) <= 226 * 1024,   # the budget is the first-screen TOTAL <= 450 KB (tests/test_boot.py); the other first-screen responses are 223.8 KB (2026-10-11), so index.html may take 226 KB on the wire (GitHub's gzip is ~4 KB bigger than test_boot's gzip -6 estimate)
               'index.html travels compressed: Content-Encoding %s, %.1f KB on the wire' % (enc or 'none', len(raw) / 1024))
     st2, _, _, sw = get(URL + 'sw.js')
     sw = sw.decode('utf-8')
