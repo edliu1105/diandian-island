@@ -10,6 +10,14 @@ import os, re, sys, json, hashlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_DIRS = {'splash'}
+# Only files git tracks (staged ones included) are published, so only they may be precached: a stray local file
+# (a leftover recording, a scratch copy) would 404 on the live site and the service worker's install would fail.
+# `git add` new assets BEFORE running this. Without git (a copied snapshot), every file under assets/ is listed.
+try:
+    import subprocess
+    TRACKED = set(subprocess.run(['git', '-c', 'core.quotepath=off', 'ls-files', '-z', 'assets'], cwd=ROOT, capture_output=True, check=True).stdout.decode('utf-8').split('\0')) - {''}
+except Exception:
+    TRACKED = None
 files = []
 for base, dirs, names in os.walk(os.path.join(ROOT, 'assets')):
     rel = os.path.relpath(base, ROOT).replace('\\', '/')
@@ -17,6 +25,8 @@ for base, dirs, names in os.walk(os.path.join(ROOT, 'assets')):
         continue
     for n in sorted(names):
         if n.endswith('.json') and n != 'bank.json':      # the voice bank list is part of the version (offline voice)
+            continue
+        if TRACKED is not None and rel + '/' + n not in TRACKED:
             continue
         files.append('./' + rel + '/' + n)
 files.sort()

@@ -12,5 +12,5 @@ python raw/js/w4_core_patch.py
 python raw/js/build_w4.py
 grep -q "assets/js/v2games.js" index.html || { echo "BUILD BROKEN: v2games.js not loaded"; exit 1; }
 for f in assets/js/w3games.js assets/js/w4games.js assets/js/v2games.js; do node --check "$f"; done
-python tools/gen_sw_list.py
+python tools/gen_sw_list.py        # precaches only git-tracked assets: `git add` new recordings first, then rerun it
 echo "build ok $(md5sum index.html | cut -c1-10)"
