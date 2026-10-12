@@ -2322,7 +2322,7 @@ const Session = {
         /* client rule (2026-10-08): each question by itself - a wrong answer earns nothing, the next question answered
            right at its first try earns its star; v2: none after the 2nd hint (A.12); a review star beyond two in a game
            goes to the gems (A.9) */
-        if (!helped(st)) { const to = V2D.starTo(G, st); if (to === 'game') await this.reward(G, st); else Gems.turn('star'); }
+        if (!helped(st)) { const to = V2D.starTo(G, st); if (to === 'game') await this.reward(G, st); }          /* an extra review star: nothing (it still counts for memory) */
         return 'ok';
       }
       /* client rule (2026-10-08): a wrong answer earns nothing and the session goes straight on - the next question is the
@@ -3164,8 +3164,8 @@ const MapView = {
     const n = Store.s.flags.length;
     Voice.say(n === 1 ? '插上旗子啦！' : CNQ(n) + '面旗子啦！', { tag: 'unlock' });
     await new Promise(r => setTimeout(r, T(1500)));
-    Store.s.flagDays.push(DAY()); Store.save(); Gems.turn('flag');
-    if (!fast()) await new Promise(r => setTimeout(r, T(2400)));
+    Store.s.flagDays.push(DAY()); Store.save();
+    await Gems.turn('flag');                  /* a flag opens a hero card; the next island waits for it */
   },
   async openShow(id, line) {
     const J = this.isl[id];
@@ -11136,8 +11136,8 @@ const Gems = {
     Mem.today().keyGo++; Store.save();
     W3.load().then(() => Session.start(isl, g, { key: true, keyItems: due.slice(0, n), noDemo: true }));
   },
-  grant(why) { const k = Store.s.key; k.day = DAY(); k.got = (k.got || 0) + 1; Store.save(); this.turn(why || 'key'); },
-  turn(src) { const a = Store.s.gems; if (a.n >= 9999) return; a.n++; a.src.push(src); Store.save(); if (!fast() && this.reveal) this.reveal(a.n); },
+  grant(why) { const k = Store.s.key; k.day = DAY(); k.got = (k.got || 0) + 1; Store.save(); return this.turn(why || 'key'); },
+  turn(src) { if (this.card) return this.card(src); (this.q = this.q || []).push(src); return Promise.resolve(); },
   album() {},
 };
 const V2Mig = {

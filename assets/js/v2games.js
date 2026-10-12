@@ -674,40 +674,78 @@ w3GameV2(MUnload, { id: 'Z3', world: 'trans3', bg: 'trans_dock', chars: ['bumble
 w3GameV2(MFamily, { id: 'Z4', world: 'trans3', bg: 'trans_control', chars: ['optimus', 'bumblebee'], host: 'optimus', iconSrc: ICZ.family });
 function w3GameV2(rule, spec) { const g = defGame(Object.assign({}, W2Base, rule, spec)); g.props = (spec.props || []).filter((p, i, a) => a.indexOf(p) === i); return g; }
 
-/* ---------------------------------------------------------------- the daily key and the gems (A.13): the first visit of a day
-   "找回老朋友" (up to 5 due cards; done = the key, right or not; skippable; nothing due -> the key at once); a key, a flag,
-   a boss or an extra review star turns the next gem; 6 gems call a hero. One order, no chance, nothing lost. */
-const GEMC = ['#FF6B5B', '#FFC93C', '#5CC46E', '#4FB3FF', '#B57BFF', '#FF9F43'];
-const HEROES6 = ['optimus', 'bumblebee', 'ultraman', 'zero', 'kaiju1', 'kaiju2'];
+/* ---------------------------------------------------------------- the daily key and the hero cards (A.13; client 2026-10-11:
+   like 字字岛's - the gems are gone). The first visit of a day "找回老朋友" (up to 5 due cards; done = the key, right or
+   not; skippable; nothing due -> the key at once): the key opens the next hero card at once; planting an island's flag
+   opens one too (the flag waits for it). One fixed order, no chance, nothing lost; all out -> the key opens the album.
+   The cards are the client's own character pictures (assets/chars), favourites spread out. Store.s.gems.n = cards out. */
+const CARDS = ['optimus', 'ultraman', 'ironman', 'chase', 'bumblebee', 'spiderman', 'wukong', 'zero', 'captain', 'catboy',
+  'hulk', 'gourd1', 'kaiju1', 'thor', 'marshall', 'owlette', 'panther', 'gourd2', 'skye', 'miles', 'kaiju2', 'gekko', 'gourd3',
+  'widow', 'rubble', 'bajie', 'hawkeye', 'gourd7', 'zuma', 'dragon_horse', 'pj_robot', 'rocky', 'shaseng', 'bluey', 'peppa',
+  'ryder', 'bingo', 'george'];
 Object.assign(Gems, {
-  gemSvg(i, on, size) { const c = GEMC[i % 6]; return '<svg viewBox="0 0 60 60" width="' + size + '" height="' + size + '"><path d="M14 8H46L56 24L30 54L4 24Z" fill="' + (on ? c : 'rgba(255,255,255,.18)') + '" stroke="#2B2118" stroke-width="3.5" stroke-linejoin="round"/>' + (on ? '<path d="M4 24H56M14 8L22 24L30 54L38 24L46 8" fill="none" stroke="rgba(255,255,255,.65)" stroke-width="2.5"/>' : '') + '</svg>'; },
-  reveal(n) {
-    const ov = el('div', '', document.body); ov.id = 'gemshow';
-    Object.assign(ov.style, { position: 'fixed', inset: 0, zIndex: 70, background: 'radial-gradient(circle,#FFF6C8 0%,#B57BFF 55%,#4B2F9E 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '20px' });
-    const hero = n % 6 === 0, g = el('div', '', ov); g.innerHTML = hero ? '' : this.gemSvg(n - 1, true, 220);
-    if (hero) { const im = img('assets/chars/' + HEROES6[(n / 6 - 1) % 6] + '.png', '', g); im.style.height = '320px'; }
-    g.animate([{ transform: 'scale(.2) rotate(-30deg)', opacity: 0 }, { transform: 'scale(1.1) rotate(0)', opacity: 1, offset: 0.7 }, { transform: 'scale(1)', opacity: 1 }], { duration: T(800) + 1, easing: EASE.pop });
-    Sfx.fanfare(); Fx.confetti(30); Voice.sayNow(hero ? '新英雄来啦！' : '能量宝石！', { tag: 'card' }); if (n % 36 === 0) Voice.say('宝石册满啦！', { tag: 'card' });
-    const off = () => { ov.remove(); MapView.update && MapView.update(); };
-    tapify(ov, off); setTimeout(() => { if (ov.isConnected) off(); }, T(3200) + 200);
+  card(src) {
+    this.migrate();
+    const a = Store.s.gems;
+    if (a.n >= CARDS.length) { if (!fast() && src === 'key') this.album(); else if (src === 'flag') Voice.say('卡册满啦！', { tag: 'card' }); return Promise.resolve(); }
+    a.n++; a.src.push(src); Store.save();
+    return fast() ? Promise.resolve() : this.reveal(CARDS[a.n - 1]);
   },
+  /* a save from the gems: 6 gems were a hero - the heroes shown stay, a started hero's gems open the next card now (shown
+     once on the next map visit) */
+  migrate() {
+    const a = Store.s.gems; if (a.src.includes('@cards')) return;
+    const old = a.n, heroes = Math.floor(old / 6);
+    a.n = Math.min(CARDS.length, heroes + (old % 6 > 0 ? 1 : 0)); a.src = a.src.filter(x => !/^@/.test(x)).slice(-150); a.src.push('@cards');
+    if (a.n > heroes) a.src.push('@show');
+    Store.save();
+  },
+  /* on the map: the card the move to cards opened, shown once */
+  pending() {
+    this.migrate();
+    const a = Store.s.gems, i = a.src.indexOf('@show');
+    if (i < 0 || fast() || Screens.cur !== 'map' || Session.G || document.getElementById('cardshow')) return;
+    a.src.splice(i, 1); Store.save();
+    if (a.n > 0) this.reveal(CARDS[Math.min(a.n, CARDS.length) - 1]);
+  },
+  reveal(id) {
+    const ov = el('div', '', document.body); ov.id = 'cardshow';
+    Object.assign(ov.style, { position: 'fixed', inset: 0, zIndex: 70, background: 'radial-gradient(circle,#FFF6C8 0%,#FFC93C 45%,#E8862E 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+    const c = el('div', '', ov); Object.assign(c.style, { width: '300px', height: '400px', borderRadius: '28px', background: '#fff', boxShadow: '0 0 0 6px #2B2118, 0 0 0 16px #FFE08A, 0 20px 50px rgba(0,0,0,.35)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden' });
+    const im = img('assets/chars/' + id + '.png', '', c); Object.assign(im.style, { height: '92%', maxWidth: '96%', objectFit: 'contain' });
+    c.animate([{ transform: 'rotateY(90deg) scale(.4)' }, { transform: 'rotateY(0) scale(1.08)', offset: 0.7 }, { transform: 'rotateY(0) scale(1)' }], { duration: T(900) + 1, easing: EASE.pop });
+    Sfx.fanfare(); Fx.confetti(40); Voice.sayNow('新朋友来啦！', { tag: 'card' });
+    return new Promise(res => {
+      const off = () => { if (ov.isConnected) { ov.remove(); MapView.update && MapView.update(); } res(); };
+      tapify(ov, off);
+      setTimeout(off, T(3600) + 200);
+    });
+  },
+  /* the album (the map's chest): every card, those out in colour, the rest dark silhouettes; the key starts from here */
   album() {
+    this.migrate();
     const ov = el('div', '', document.body); ov.id = 'gems';
     Object.assign(ov.style, { position: 'fixed', inset: 0, zIndex: 55, background: 'linear-gradient(#2B3E8C,#4B2F9E)', overflowY: 'auto', padding: '120px 20px 40px', boxSizing: 'border-box' });
     const home = el('button', 'btn', ov); Object.assign(home.style, { position: 'fixed', left: 'calc(14px + var(--sl))', top: 'calc(14px + var(--st))', width: '96px', height: '96px', background: '#FFE08A' }); img('assets/props/ui_home.png', '', home).style.width = '74%'; tapify(home, () => ov.remove());
-    if (this.avail()) { const go = el('button', 'btn', ov); Object.assign(go.style, { position: 'fixed', right: 'calc(14px + var(--sr))', top: 'calc(14px + var(--st))', width: '140px', height: '96px', background: '#5CC46E' }); img('assets/props/chest.png', '', go).style.height = '80%'; tapify(go, () => { ov.remove(); this.start(); }); go.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 1200, iterations: Infinity }); }
-    /* the current book: 36 gems each; after the first book the next one starts (the heroes come again) */
-    const all = Store.s.gems.n, book = all > 0 ? Math.floor((all - 1) / 36) : 0, n = all - book * 36;
-    if (book > 0) { const t = el('div', '', ov); t.textContent = '第 ' + (book + 1) + ' 册'; Object.assign(t.style, { color: '#FFE08A', font: '900 28px system-ui,sans-serif', textAlign: 'center', margin: '0 0 12px' }); }
-    HEROES6.forEach((h, r) => {
-      const row = el('div', '', ov); Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', margin: '0 auto 14px', maxWidth: '900px' });
-      for (let i = 0; i < 5; i++) { const k = r * 6 + i, c = el('div', '', row); c.innerHTML = this.gemSvg(k, k < n, 76); }
-      const hc = el('div', '', row); Object.assign(hc.style, { width: '110px', height: '120px', borderRadius: '18px', background: n >= (r + 1) * 6 ? '#fff' : 'rgba(255,255,255,.18)', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden' });
-      const im = img('assets/chars/' + h + '.png', '', hc); Object.assign(im.style, { height: '92%', objectFit: 'contain', filter: n >= (r + 1) * 6 ? '' : 'brightness(0) opacity(.5)' });
+    if (this.avail()) {
+      const go = el('button', 'btn', ov); Object.assign(go.style, { position: 'fixed', right: 'calc(14px + var(--sr))', top: 'calc(14px + var(--st))', width: '140px', height: '96px', background: '#5CC46E' });
+      img('assets/props/chest.png', '', go).style.height = '80%';
+      tapify(go, () => { ov.remove(); this.start(); });
+      go.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 1200, iterations: Infinity });
+    }
+    const grid = el('div', '', ov); Object.assign(grid.style, { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: '16px', maxWidth: '980px', margin: '0 auto' });
+    const n = Store.s.gems.n;
+    CARDS.forEach((id, k) => {
+      const c = el('div', '', grid); c.className = 'acard' + (k < n ? ' on' : '');
+      Object.assign(c.style, { height: '160px', borderRadius: '18px', background: k < n ? '#fff' : 'rgba(255,255,255,.18)', boxShadow: '0 0 0 3px #2B2118', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden' });
+      const im = img('assets/chars/' + id + '.png', '', c); Object.assign(im.style, { height: '90%', maxWidth: '94%', objectFit: 'contain', filter: k < n ? '' : 'brightness(0) opacity(.5)' });
     });
-    Voice.sayNow(this.avail() ? '找回老朋友！' : '能量宝石！', { tag: 'map' });
+    Voice.sayNow(this.avail() ? '找回老朋友！' : '我的英雄卡！', { tag: 'map' });
   },
 });
+/* the cards are here (this file comes a second after the entry tap): a save from the gems moves over; a card asked for
+   before (core Gems.turn queued it) is opened now */
+Gems.migrate(); (Gems.q || []).splice(0).forEach(src => Gems.card(src));
 
 /* ---------------------------------------------------------------- the map: the gem chest (top right), the parent's red dot, the
    first map of the day says "找回老朋友！" */
@@ -715,13 +753,14 @@ Object.assign(MapV2, {
   ensure() {
     if ($('#gemchest')) return;
     const s = el('style', '', document.head); s.textContent = '#gear.dot::after{content:"";position:absolute;right:12px;top:12px;width:22px;height:22px;border-radius:50%;background:#E8414B;box-shadow:0 0 0 3px #fff}';
-    const b = el('button', 'btn', $('#map')); b.id = 'gemchest'; b.setAttribute('aria-label', '能量宝石');
+    const b = el('button', 'btn', $('#map')); b.id = 'gemchest'; b.setAttribute('aria-label', '英雄卡');
     Object.assign(b.style, { position: 'absolute', right: 'calc(14px + var(--sr))', top: 'calc(14px + var(--st))', width: '104px', height: '104px', background: '#FFF3C4', borderRadius: '28px', zIndex: 12 });
     const i = img('assets/props/chest.png', '', b); Object.assign(i.style, { width: '84%', height: '84%', objectFit: 'contain' });
     tapify(b, () => { MapView.closePanel(true); Gems.album(); });                 /* the album first; its chest button starts the key round (R2-L5) */
   },
   update() {
     this.ensure();
+    if (Screens.cur === 'map' && !Session.G) setTimeout(() => Gems.pending(), 400);       /* a card the move to cards opened: shown once */
     const c = $('#gemchest'), on = Gems.avail();
     if (on && !c._pulse) c._pulse = c.animate([{ transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(255,201,60,0)' }, { transform: 'scale(1.08)', boxShadow: '0 0 0 12px rgba(255,201,60,.85)' }, { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(255,201,60,0)' }], { duration: 1400, iterations: Infinity });
     if (!on && c._pulse) { c._pulse.cancel(); c._pulse = null; }
@@ -816,7 +855,7 @@ const ParentV2 = {
     const mt = el('button', 'pbtn', sh, { text: MonthTest.part().length ? '接着做月测' : '开始月测' }); mt.addEventListener('click', () => MonthTest.start());
     el('h3', '', sh, { text: '进度报告 · 存档' });
     let pre = null; try { pre = localStorage.getItem('ddi.pre-v2'); } catch (e) {}
-    if (pre) { const rb = el('button', 'pbtn', sh, { text: '恢复到升级前的存档' }); rb.addEventListener('click', () => { if (!confirm('回到升级 v2 之前的存档？现在的复习记录和宝石会丢掉。')) return; try { localStorage.setItem(KEY, pre); } catch (e) {} location.reload(); }); }
+    if (pre) { const rb = el('button', 'pbtn', sh, { text: '恢复到升级前的存档' }); rb.addEventListener('click', () => { if (!confirm('回到升级 v2 之前的存档？现在的复习记录和英雄卡会丢掉。')) return; try { localStorage.setItem(KEY, pre); } catch (e) {} location.reload(); }); }
     const rep = el('button', 'pbtn', sh, { text: '复制进度报告' }), ta = el('textarea', '', sh); Object.assign(ta.style, { width: '100%', height: '120px', display: 'none', fontSize: '14px' });
     rep.addEventListener('click', () => { ta.style.display = ''; ta.value = Report.text(); ta.select(); try { navigator.clipboard.writeText(ta.value); rep.textContent = '已复制，可以直接粘贴给 Claude'; } catch (e) { rep.textContent = '请长按下面的文字全选复制'; } });
     const ex = el('button', 'pbtn', sh, { text: '导出存档' }), im = el('button', 'pbtn', sh, { text: '恢复存档' });
