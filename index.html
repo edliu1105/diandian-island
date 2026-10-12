@@ -1893,6 +1893,7 @@ const SILENT_ALT = { giveN: 'giveNvis' };
 const Mastery = {
   gs(ws, g) { ws.g = ws.g || {}; return ws.g[g] || (ws.g[g] = { n: 0, c: 0, bits: [], k: {} }); },
   record(G, st, ok) {
+    if (G.teach) return false;                          /* 教一教: answers at a lowered level are no evidence, right or wrong */
     const ws = G.ws;
     ws.log = ws.log || [];
     ws.log.push({ g: G.id, k: st.evKind || st.kind, ok: ok ? 1 : 0, ev: st.evidence && !st.hinted ? 1 : 0, h: st.hinted ? 1 : 0, gd: st.guided ? 1 : 0, pr: st.probe ? 1 : 0, lv: st.level, t: Date.now() });
@@ -1932,6 +1933,7 @@ const Mastery = {
     if (ws.guidedRun >= 3) { ws.guidedRun = 0; if (ws.level > ws.floor) { ws.level--; ws.win = []; } }
   },
   sessionEnd(G) {
+    if (G.teach) return;
     const ws = G.ws;
     if (G.ev.length >= 4 && G.ev.reduce((s, x) => s + x, 0) / G.ev.length >= 0.75) ws.windows++;
     this.checkGate(G.world);
@@ -2101,6 +2103,39 @@ const Step = {
   next(st) { const r = st.stepRes; st.stepRes = null; const b = document.getElementById('stepbox'); if (b) b.style.opacity = '0.45'; Sfx.touch(); if (r) r(); },
   skip(st) { st.stepMode = false; this.hide(); const r = st.stepRes; st.stepRes = null; if (r) r(); Session.fastForward(); },
 };
+/* ================================================================ 教一教 TEACH MODE (client 2026-10-11)
+   From the parent panel: this game (open now, or the last one played) one or two levels lower ("降一级来教" /
+   "降两级来教", never below L1) until the parent turns it off or the game is left. While it is on: questions of the
+   lowered level, no review cards, no star (the tray shows no new ones), so no ✓ / unlock / gem; no memory-box move and
+   no mastery record either way (the game's own level is untouched, wrong answers are not recorded as mistakes) - and
+   nothing earned before is taken away. The explanation follows the parent's setting. A "教" badge beside the tray. */
+const Teach = {
+  on: null, last: null,                                    /* on: { w, g, down }; last: the last game started { w, g } */
+  /* a session starts: teach mode applies when it was set for this game */
+  start(G) { this.last = { w: G.world, g: G.id }; if (this.on && this.on.g === G.id && !G.key && !G.test) this.apply(G, this.on.down); },
+  apply(G, down) {
+    if (G.teachBase == null) G.teachBase = G.level;
+    G.teach = down; G.level = Math.max(1, G.teachBase - down); G.carry = null; G.rv = { pos: [] }; G.miss = [];
+    this.badge(G);
+  },
+  set(down) {
+    const G = Session.G && !Session.G.dead ? Session.G : null, t = G ? { w: G.world, g: G.id } : this.last;
+    if (!t) return false;
+    if (!down) { this.on = null; if (G && G.teach) { G.teach = 0; G.level = G.teachBase; G.carry = null; this.badge(G); } return true; }
+    this.on = { w: t.w, g: t.g, down };
+    if (G) this.apply(G, down);
+    return true;
+  },
+  /* the game is left: teach mode ends with it */
+  end(G) { if (G && G.teach && this.on && this.on.g === G.id) this.on = null; },
+  badge(G) {
+    const tr = $('#tray'); if (!tr) return;
+    const old = tr.querySelector('.teachb'); if (old) old.remove();
+    if (!G.teach) return;
+    const b = el('span', 'teachb', tr, { text: '教' });
+    Object.assign(b.style, { position: 'absolute', left: '-50px', top: '50%', transform: 'translateY(-50%)', width: '42px', height: '42px', borderRadius: '50%', background: '#FF9F43', color: '#fff', font: '800 22px/42px system-ui', textAlign: 'center', boxShadow: '0 0 0 3px #2B2118' });
+  },
+};
 const Session = {
   G: null, st: null, qn: 0,
   alive(st) { return !!st && this.st === st && !st.scope.dead && this.G === st.G && !st.G.dead; },
@@ -2128,6 +2163,7 @@ const Session = {
     ws.visits++; ws.sessions++; Store.save();
     { const gl = W.games; G.nx = gl[gl.indexOf(gameId) + 1] || null; G.nxWas = G.nx ? W2.gameOpen(worldId, G.nx) : true; }
     G.wasDone = W2.gameDone(worldId, gameId);          /* the 5th star in this session is a moment (R9-1) */
+    Teach.start(G);                                     /* 教一教: the parent lowered this game for teaching */
     Voice.enter('game');
     MapView.closePanel(true);
     await Loader.run(G);
@@ -2187,7 +2223,7 @@ const Session = {
     a.onfinish = () => b.remove();
     sc.add(() => b.remove());
     const story = Story.intro(G);                /* visit 3 / 5 / 10: a small story that stays on the island */
-    Voice.say(story.line || g.intro, { tag: 'intro', owner: G });
+    Voice.say(G.teach ? '我们一起学！' : story.line || g.intro, { tag: 'intro', owner: G });
     await sc.wait(700);
     if (story.play) await sc.guard(story.play());
     if (g.gestureDemo && !G.dead) await sc.guard(g.gestureDemo(G));
@@ -2385,6 +2421,7 @@ const Session = {
     this.lastPraise = p; return p;
   },
   async reward(G, st) {
+    if (G.teach) return;                                /* 教一教: no star (nothing taken away either) */
     G.stars++; G.ws.stars++;
     { const gs = G.ws.gstars || (G.ws.gstars = {}); gs[G.id] = (gs[G.id] || 0) + 1; }
     Store.save();
@@ -2513,7 +2550,7 @@ const Session = {
     Mastery.sessionEnd(G);
     const wid = G.world, stars = G.stars, lvUp = !!G.levelUp;
     let newGame = null;
-    (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through (a record only: a game is done with 5 stars) */
+    if (!G.teach) (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through (a record only: a game is done with 5 stars) */
     if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (its 5th star) */
     Progress.check(true);
     Store.save();
@@ -2529,6 +2566,7 @@ const Session = {
   /* tears down exactly the session it is given; an old flow can never destroy the current one */
   teardown(G) {
     G = G || this.G; if (!G) return;
+    Teach.end(G);                                       /* 教一教 ends with the game */
     G.dead = true;
     if (this.G !== G) { G.scope.dispose(); return; }
     Input.abort();
@@ -3339,6 +3377,16 @@ const Parent = {
       } catch (e) { off.textContent = '这个浏览器不能离线使用。'; }
     })();
     /* settings */
+    /* 教一教: this game (open now, or the last one played) one or two levels lower, no stars, until turned off / left */
+    { const G = Session.G && !Session.G.dead ? Session.G : null, t = G ? { w: G.world, g: G.id } : Teach.last;
+      el('h3', '', sh, { text: '教一教（暂时降低难度，陪孩子学）' });
+      if (!t) el('div', 'mut', sh, { text: '先让孩子玩一个小游戏，再来这里。' });
+      else {
+        const row = el('div', '', sh), on = Teach.on && Teach.on.g === t.g ? Teach.on.down : 0;
+        el('span', '', row, { text: t.g + '（' + WORLDS[t.w].name + '）' + (G ? '正在玩' : '刚玩过') + '：' });
+        [[1, '降一级来教'], [2, '降两级来教'], [0, '关掉']].forEach(([d, txt]) => { const b = el('button', 'pbtn', row, { text: txt }); if (d === on) b.style.background = '#FFC93C'; b.addEventListener('click', () => { Teach.set(d); this.close(); MapView.update && MapView.update(); }); });
+        el('div', 'mut', sh, { text: '打开后：这个小游戏的题降一级或两级（最低 1 级），不给星、不开新游戏、不升复习箱，答错也不记成错，原来的星和难度都不变；离开这个小游戏或按“关掉”就恢复。星星槽左边有个“教”字。' });
+      } }
     el('h3', '', sh, { text: '设置' });
     /* the explanation after a wrong answer: off / by itself / step by step (the parent talks the child through it) */
     { const row = el('div', '', sh); el('span', '', row, { text: '答错后的讲解：' });
@@ -11026,6 +11074,7 @@ const Mem = {
   touch(c) { const d = DAY(); let m = Store.s.mem[c]; if (!m) { m = Store.s.mem[c] = { b: 0, due: 0, last: d, up: -1, seen: d, pass: [], n: 0, ok: 0, sup: 0, sd: [], pd: [] }; Mem.today().newK++; } return m; },
   answer(c, how, sid, ctx) {
     if (!c || !(SKILLS[c] || isFact(c))) return;
+    if (typeof Session !== 'undefined' && Session.G && Session.G.teach) return;
     ctx = ctx || {};
     const d = DAY(), m = this.touch(c), gap = d - m.last, wasDue = m.b > 0 && d >= m.due;
     m.n++;
