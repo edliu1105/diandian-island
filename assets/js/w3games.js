@@ -70,7 +70,7 @@ Object.assign(W3X, {
     if (cs[ia]) this.mine(st, cs[ia]);
     if (opt.why) { await opt.why(); if (!Session.alive(my)) return; }
     await st.scope.wait(T(500)); if (!Session.alive(my)) return;
-    if (opt.show) { await opt.show(); if (!Session.alive(my)) return; }
+    if (opt.show) { await opt.show(); if (!Session.alive(my)) return; await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */ }
     if (cs[ir]) this.gold(st, cs[ir]);
     Sfx.reveal();
     this.tell(opt.line || '对的是这个！');
@@ -647,6 +647,7 @@ const MMissing = {
     if (z) W3X.ringAt(st, box(z.e), W3X.BLUE, 0);
     await st.scope.wait(T(900)); if (!Session.alive(my)) return;
     st.pic.innerHTML = ''; st.pic.appendChild(this.art(q, true));
+    await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */
     const r = st.zones.find(x => x.k === q.miss); if (r) { W3X.ringAt(st, box(r.e), W3X.GOLD, 4); Fx.burst(center(r.e).x, center(r.e).y, { n: 12, dist: 60 }); }
     Sfx.reveal(); W3X.tell('少了' + q.name + '！');
     await W3X.beat(st, 1600);
@@ -1111,12 +1112,14 @@ const MOverlay = {
       const meet = { x: (ba.x + bb.x) / 2, y: ba.y, w: ba.w, h: ba.h };
       if (st.plus) st.plus.style.visibility = 'hidden';
       [A, B].forEach(e => { e.style.zIndex = 9; });
+      let mined = false;
+      if (Step.on(st) && ce) { W3X.mine(st, ce, 6); mined = true; await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */ }      /* step by step: his card first (PT2 Q4) */
       W3X.tell('两张叠起来是这样。');
       await Promise.all([A, B].map(e => K.flyTo(st, e, meet.x, meet.y, 650, 0))); if (!Session.alive(my)) return;
       const M = W2X.thing(st, meet.w, meet.h, 10, ''); place(M, meet.x, meet.y, meet.w, meet.h); M.appendChild(this.draw(U, '100%', true)); K.hop(st, M, 10);
       await st.scope.wait(T(400)); if (!Session.alive(my)) return;
       if (o && ce) {
-        W3X.mine(st, ce, 6);
+        if (!mined) W3X.mine(st, ce, 6);
         const dif = this.diff(U, o.c), sm = M.querySelector('svg'), sc = ce.querySelector('svg');
         dif.forEach(i => { this.cellRing(sm, i, W3X.BLUE); this.cellRing(sc, i, W3X.BLUE); });
         W3X.tell(dif.length > 1 ? '这几格不一样。' : '这一格不一样。');
@@ -2341,6 +2344,7 @@ const MCloth = {
       await st.scope.wait(T(250)); if (!Session.alive(my)) return;
     }
     await this.into(st, st.cards[q.answer]); if (!Session.alive(my)) return;
+    await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */
     W3X.ringAt(st, { x: g.x + q.c0 * g.cw, y: g.y + q.r0 * g.cw, w: q.hs * g.cw, h: q.hs * g.cw }, W3X.GOLD, 10);
     Sfx.reveal(); W3X.tell('花布补好啦！');
     await W3X.beat(st, 1600);
@@ -3131,6 +3135,7 @@ const MGears = {
     this.spin(st);
     if (st.gearEls[ans]) { W3X.ringAt(st, box(st.gearEls[ans]), W3X.BLUE, -6); this.turnArrow(st, ans, W3X.BLUE); }
     await st.scope.wait(T(1600)); if (!Session.alive(my)) return;
+    if (Step.on(st)) { this.spin(st); await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */ }
     W3X.ringAt(st, box(st.gearEls[q.answer]), W3X.GOLD, -6); this.turnArrow(st, q.answer, W3X.GOLD); this.spin(st);
     Sfx.reveal(); W3X.tell(q.ask === 'same' ? '它们转得一样！' : '它们转得相反！');
     await W3X.beat(st, 1800);

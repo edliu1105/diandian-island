@@ -598,6 +598,7 @@ const W4U = {
         Sfx.pop(); await st.scope.wait(T(220));
       }
       if (!Session.alive(my)) return;
+      await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */
       st.qSlot.innerHTML = ''; st.qSlot.style.border = '0'; st.qSlot.style.background = 'transparent'; st.qSlot.appendChild(UI.num(q.answer, P ? 74 : 80));
       const c = st.cards[st.opts.indexOf(q.answer)]; if (c) K.ring(st, [box(c)], 6, '#FFC93C');
       K.hop(st, st.qCard, 14); Sfx.reveal(); this.cheerAll(st);
@@ -3747,6 +3748,7 @@ const W4U = {
     async reveal(st) {
       const q = st.q, c = st.cells[st.opts.indexOf(q.answer)];
       q.clues.forEach(cl => this.shade(st, cl, 0));
+      await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */
       if (c) { W4U.gold(st, c); K.hop(st, c, 18); }
       st.clueEls.forEach((e, i) => { if (e._slot) V7.fill(e._slot, q.answer, 1, 54); st.scope.anim(e, [{ transform: 'scale(1)' }, { transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 380, delay: 160 * i, easing: EASE.pop }); });
       if (st.alien) K.hop(st, st.alien, 24);
@@ -3848,5 +3850,5 @@ const IC4 = (() => {
   if (card) GAMECARD[id] = card;
 });
 W4.ready = true;
-if (Screens.cur === 'map' && !Session.G && Store.s.mapSet === 4 && MapView.set !== 4) { MapView.useSet(4); MapView.update(); }
+if (Screens.cur === 'map' && !Session.G && Store.s.mapSet === 4) { if (MapView.set !== 4) MapView.useSet(4); MapView.update(); }      /* PT2 Q1 */
 W3.w4in = true;

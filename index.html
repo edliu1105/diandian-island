@@ -2083,83 +2083,13 @@ const Clock = {
 const Step = {
   mode() { const m = Store.s.settings && Store.s.settings.explain; return m === 'off' || m === 'step' ? m : 'auto'; },
   on(st) { return !!(st && st.stepMode && st.explaining && !st.ff && Session.alive(st)); },
-  show(st) {
-    this.hide();
-    const box = el('div', '', document.body); box.id = 'stepbox';
-    Object.assign(box.style, { position: 'fixed', left: '0px', top: '0px', zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', opacity: '0.45' });
-    const b = el('button', '', box); b.id = 'stepnext';
-    Object.assign(b.style, { width: '108px', height: '108px', borderRadius: '50%', border: 0, background: '#5CC46E', boxShadow: '0 0 0 4px #2B2118, 0 6px 0 4px rgba(43,33,24,.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', font: '800 20px/1.1 system-ui', flex: '0 0 auto' });
-    b.innerHTML = '<svg viewBox="0 0 40 40" width="44" height="44"><path d="M12 7L33 20L12 33Z" fill="#fff" stroke="#2B2118" stroke-width="3" stroke-linejoin="round"/></svg><span>下一步</span>';
-    tapify(b, () => this.next(st));
-    /* the parent's 跳过: under the button, a 1 s press (a child's tap does nothing), >= 44 px */
-    const sk = el('button', '', box, { text: '按住跳过' });
-    Object.assign(sk.style, { minWidth: '88px', height: '44px', border: 0, background: 'rgba(255,255,255,.8)', borderRadius: '12px', padding: '0 10px', font: '600 15px/1 system-ui', color: '#6B5B4B', position: 'relative', overflow: 'hidden', touchAction: 'none' });
-    let t = 0, bar = null;
-    const stop = () => { clearTimeout(t); t = 0; if (bar) { bar.remove(); bar = null; } };
-    sk.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); stop(); bar = el('i', '', sk); Object.assign(bar.style, { position: 'absolute', left: 0, bottom: 0, height: '4px', width: '0%', background: '#5CC46E' }); bar.animate([{ width: '0%' }, { width: '100%' }], { duration: 1000, fill: 'forwards' }); t = setTimeout(() => { stop(); this.skip(st); }, 1000); });
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => sk.addEventListener(ev, stop));
-    this.place(st);
-  },
-  /* the button's place: the first candidate that covers nothing - the options / targets of the question, the rings of the
-     explanation, the characters, the HUD and the task card - checked against their real rects now; else the least
-     covered place on a grid, at 88 px; the ringed options are never covered if that can be helped (review PT1 P1) */
-  place(st) {
-    const box = document.getElementById('stepbox'), btn = document.getElementById('stepnext'); if (!box || !btn) return;
-    const W = innerWidth, H = innerHeight;
-    const R = e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
-    const vis = e => { if (!e || !e.isConnected) return false; const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) < 0.05) return false; const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
-    const obs = [];
-    const add = (e, w, core) => { if (!vis(e)) return; let r = R(e); if (core) r = { x: r.x + r.w * 0.14, y: r.y + r.h * 0.08, w: r.w * 0.72, h: r.h * 0.9 }; obs.push({ r, w }); };
-    Object.values(st.map || {}).forEach(e => add(e, 3));
-    (st.cards || []).forEach(e => add(e, 3));
-    $$('.ringo', Stage.el).forEach(e => add(e, 6));
-    (st.els || []).forEach(e => { if (e.classList && (e.classList.contains('task') || e.classList.contains('card'))) add(e, e.classList.contains('task') ? 2 : 3); });
-    Object.values((st.G && st.G.actors) || {}).forEach(a => { if (!a.math) add(a.root, 1, true); });
-    ['#home', '#avatar', '#tray', '#gear'].forEach(q => add(document.querySelector(q), 40));        /* never over the HUD */
-    const inter = (a, c) => Math.max(0, Math.min(a.x + a.w, c.x + c.w) - Math.max(a.x, c.x)) * Math.max(0, Math.min(a.y + a.h, c.y + c.h) - Math.max(a.y, c.y));
-    const score = (x, y, S) => { const b = { x, y, w: S, h: S + 52 }; let sc = 0; obs.forEach(o => { const i = inter(b, o.r); if (i > 0) sc += o.w * i / Math.max(1, o.r.w * o.r.h); }); return sc; };
-    const hudB = Math.max(110, ...['#home', '#avatar', '#tray'].map(q => document.querySelector(q)).filter(vis).map(e => e.getBoundingClientRect().bottom + 8));
-    const m = 16, cands = S => [[W - S - m, H / 2 - S / 2 - 26], [W - S - m, H - S - 52 - m], [m, H / 2 - S / 2 - 26], [m, H - S - 52 - m], [W / 2 - S / 2, H - S - 52 - m], [W / 2 - S / 2, hudB], [W - S - m, hudB], [m, hudB], [W - S - m, H * 0.3], [m, H * 0.3], [W - S - m, H * 0.7 - S], [m, H * 0.7 - S]];
-    let best = null;
-    for (const S of [108, 88]) {
-      for (const [x, y] of cands(S)) { const sc = score(x, y, S); if (sc === 0) { best = { x, y, S, sc }; break; } if (!best || sc < best.sc) best = { x, y, S, sc }; }
-      if (best && best.sc === 0) break;
-      for (let y = hudB; y <= H - S - 52 - m && (!best || best.sc > 0); y += 24) for (let x = m; x <= W - S - m; x += 24) { const sc = score(x, y, S); if (sc < best.sc) best = { x, y, S, sc }; if (sc === 0) break; }
-      if (best.sc === 0) break;
-    }
-    btn.style.width = btn.style.height = best.S + 'px';
-    box.style.left = Math.round(best.x) + 'px'; box.style.top = Math.round(best.y) + 'px';
-  },
-  hide() { const b = document.getElementById('stepbox'); if (b) b.remove(); },
-  /* a beat is over: wait for 下一步 (the button lights up) */
-  wait(st) {
-    if (!this.on(st)) return Promise.resolve();
-    const b = document.getElementById('stepbox');
-    if (b) { this.place(st); b.style.opacity = '1'; const n = document.getElementById('stepnext'); if (n && n.animate) n.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: 600, iterations: 2 }); }
-    if (st.stepP) return st.stepP;               /* a beat already waiting (a line not awaited, then the end): the same tap */
-    st.stepP = st.scope.guard(new Promise(res => { st.stepRes = () => { st.stepP = null; res(); }; }));
-    return st.stepP;
-  },
   /* a beat happened (a ring, a line, a mark): the next pause of the explanation stops for 下一步 */
   mark(st) { st = st || Session.st; if (st && st.stepMode && st.explaining && !st.ff) st.stepDirty = true; },
   dirty(st) { return !!(st.stepDirty && this.on(st)); },
   /* an explicit beat boundary (a demonstration step without its own line or ring): step by step - wait for 下一步; else nothing */
-  beat(st) { if (!this.on(st)) return Promise.resolve(); this.mark(st); return this.boundary(st); },
-  /* a beat ends: what was said is finished, then 下一步. The first step always has words: if the game drew his blue ring
-     without a line, the line that told him what is wrong is said again (or "不是四个" / "不是这个哦"); after the first
-     tap "我们一起看！" is a step of its own - so the parent has a sentence at every step (review PT1 P6) */
-  boundary(st) {
-    st.stepDirty = false; st.stepN = (st.stepN || 0) + 1;
-    const first = st.stepN === 1 && !st.stepLines, silent = st.stepN > 1 && !st.stepLines && !st.closing, quiet = () => st.scope.guard(Voice.afterSay(0)).then(() => { st.stepDirty = false; });
-    st.stepLines = 0;
-    return quiet()
-      .then(() => { if (first && this.on(st)) { Voice.say(this.whatWrong(st), { tag: 'explain' }); return quiet(); } if (silent && this.on(st)) { Voice.say('再看一看！', { tag: 'explain' }); return quiet(); } })
-      .then(() => this.wait(st))
-      .then(() => { st.stepLines = 0; if (st.stepN === 1 && !st.cued && this.on(st)) { st.cued = true; st.stepN++; Voice.say('我们一起看！', { tag: 'explain' }); return quiet().then(() => this.wait(st)).then(() => { st.stepLines = 0; }); } });
-  },
-  whatWrong(st) { const a = st.answer; return st.fbLine || (typeof a === 'number' && a >= 0 && a <= 20 ? W2Say.notN(a) : '不是这个哦'); },
-  next(st) { const r = st.stepRes; st.stepRes = null; const b = document.getElementById('stepbox'); if (b) b.style.opacity = '0.45'; Sfx.touch(); if (r) r(); },
-  skip(st) { st.stepMode = false; this.hide(); const r = st.stepRes; st.stepRes = null; if (r) r(); Session.fastForward(); },
+  beat(st) { if (!this.on(st) || !this.boundary) return Promise.resolve(); this.mark(st); return this.boundary(st); },
+  /* the rest (the button, its place, the waits, the boundaries) comes with assets/js/v2games.js (raw/js/v2.js): the
+     first screen's budget; until then an explanation plays by itself (Session.runQ checks Step.show) */
 };
 /* ================================================================ 教一教 TEACH MODE (client 2026-10-11)
    From the parent panel: this game (open now, or the last one played) one or two levels lower ("降一级来教" /
@@ -2353,7 +2283,7 @@ const Session = {
     let err = 0;
     const pr = this.probeFor(G);
     const carry = G.carry; G.carry = null;          /* after a wrong answer: the same kind and level next, new numbers (R2-J03) */
-    let kind = pr ? pr.kind : (carry ? carry.kind : null), level = pr ? pr.level : (carry ? carry.level : null);
+    let kind = pr ? pr.kind : (carry ? carry.kind : null), level = pr ? pr.level : (carry ? (G.teach ? Math.min(carry.level, G.level) : carry.level) : null);     /* 教一教: never above the lowered level (PT2 Q2) */
     while (!G.dead) {
       const guided = false;          /* client rule: never lead the child to the answer (was: after two wrong answers) */
       /* client rule: after a wrong answer a NEW question of the same kind and level (the same one again could be solved by
@@ -2362,7 +2292,7 @@ const Session = {
          test are only review cards */
       if (!G.rv && !G.key && !G.test) G.rv = V2D.plan(G);
       const rv = err || carry ? null : V2D.slot(G);
-      const easier = !rv && !level && G.W.map >= 2 && (G.recent || []).filter(x => !x).length >= 2 ? Math.max(1, G.level - 1) : null;     /* 2 of the last 4 wrong: the next one a step easier (A.11) */
+      const easier = !rv && !level && !G.teach && G.W.map >= 2 && (G.recent || []).filter(x => !x).length >= 2 ? Math.max(1, G.level - 1) : null;     /* 2 of the last 4 wrong: the next one a step easier (A.11) */
       const st = rv ? V2D.newQ(G, rv) : this.newQ(G, { guided, retest: err > 0 || !!carry, err, kind, level: level || easier, probe: !!pr });
       /* R2-J03: after a wrong answer the retest keeps the skill and the kind (new numbers / positions / layout) */
       if (!rv) { kind = st.kind; level = st.level; }
@@ -2438,11 +2368,12 @@ const Session = {
       st.phase = 'explain'; st.explaining = true;
       const xm = Step.mode();                      /* the parent's setting: off / auto / step by step */
       if (xm !== 'off') {
-        if (xm === 'step' && !st.demo) { st.stepMode = true; st.scope.stepSt = st; Step.show(st); }
+        if (xm === 'step' && !st.demo && Step.show) { st.stepMode = true; st.scope.stepSt = st; Step.show(st); }
         if (g.explain) await g.explain(st, ans); else await g.reveal(st);
         if (!this.alive(my)) return 'dead';
         /* step by step: a game's demonstration may still run on after its explain() returned - wait until it is quiet: every
            beat still waiting gets its 下一步, and the last tap ends the explanation */
+        st.stepEnd = true;                         /* the explain() is done: no "我们一起看！" after its last words */
         for (let k = 0; k < 30 && Step.on(st); k++) {
           if (st.stepP) { await st.stepP; continue; }
           if (st.stepDirty || !st.stepN) { await Step.boundary(st); continue; }
@@ -2450,7 +2381,7 @@ const Session = {
           if (!st.stepP && !st.stepDirty) break;
         }
         if (!this.alive(my)) return 'dead';
-        Step.hide(); st.stepMode = false;
+        if (Step.hide) Step.hide(); st.stepMode = false;
       }
       if (!this.alive(my)) return 'dead';
       Voice.say(AGAIN[(G.again = (G.again || 0) + 1) % AGAIN.length], { tag: 'again' });
@@ -2644,7 +2575,7 @@ const Session = {
     G.dead = true;
     if (this.G !== G) { G.scope.dispose(); return; }
     Input.abort();
-    Step.hide();
+    if (Step.hide) Step.hide();
     if (this.st) { Hints.disarm(this.st); try { G.game.cleanup(this.st); } catch (e) {} }
     this.st = null;
     try { G.game.unbuild && G.game.unbuild(G); } catch (e) {}
@@ -3451,26 +3382,9 @@ const Parent = {
       } catch (e) { off.textContent = '这个浏览器不能离线使用。'; }
     })();
     /* settings */
-    /* 教一教: this game (open now, or the last one played) one or two levels lower, no stars, until turned off / left */
-    { const G0 = Session.G && !Session.G.dead ? Session.G : null, inKey = !!(G0 && (G0.key || G0.test)), G = inKey ? null : G0, t = inKey ? null : G ? { w: G.world, g: G.id } : Teach.last;
-      el('h3', '', sh, { text: '教一教（暂时降低难度，陪孩子学）' });
-      if (inKey) el('div', 'mut', sh, { text: G0.key ? '钥匙局里不能教一教。' : '月测里不能教一教。' });
-      else if (!t) el('div', 'mut', sh, { text: '先让孩子玩一个小游戏，再来这里。' });
-      else {
-        const row = el('div', '', sh), on = Teach.on && Teach.on.g === t.g ? Teach.on.down : 0;
-        el('span', '', row, { text: t.g + '（' + WORLDS[t.w].name + '）' + (G ? '正在玩' : '刚玩过') + '：' });
-        if (on && !G) el('div', 'mut', sh, { text: '已为 ' + t.g + ' 预设：' + (on === 1 ? '降一级' : '降两级') + '（孩子玩别的游戏就取消）。' });
-        [[1, '降一级来教'], [2, '降两级来教'], [0, '关掉']].forEach(([d, txt]) => { const b = el('button', 'pbtn', row, { text: txt }); if (d === on) b.style.background = '#FFC93C'; b.addEventListener('click', () => { Teach.set(d); this.close(); MapView.update && MapView.update(); }); });
-        el('div', 'mut', sh, { text: '打开后：这个小游戏的题降一级或两级（最低 1 级），不给星、不开新游戏、不升复习箱，答错也不记成错，原来的星和难度都不变；离开这个小游戏或按“关掉”就恢复。星星槽左边有个“教”字。' });
-      } }
+    if (typeof ParentV2 !== 'undefined' && ParentV2.teach) ParentV2.teach(sh, this);          /* 教一教 (raw/js/v2.js: the first screen's budget) */
     el('h3', '', sh, { text: '设置' });
-    /* the explanation after a wrong answer: off / by itself / step by step (the parent talks the child through it) */
-    { const row = el('div', '', sh); el('span', '', row, { text: '答错后的讲解：' });
-      const bs = [];
-      const paint = () => bs.forEach(([k, b]) => { b.style.background = Step.mode() === k ? '#FFC93C' : '#fff'; });
-      [['off', '关'], ['auto', '自动'], ['step', '一步一步']].forEach(([k, t]) => { const b = el('button', 'pbtn', row, { text: t }); bs.push([k, b]); b.addEventListener('click', () => { Store.s.settings.explain = k; Store.save(); paint(); }); });
-      paint();
-      el('div', 'mut', sh, { text: '一步一步：每说完一句就停下，按绿色的大按钮“下一步”再往下讲（按钮会自己找一个不挡住题目的地方），方便您陪孩子一起看；按住下面的“按住跳过”1 秒直接出下一题。关：答错后不讲解，直接出下一题。' }); }
+    if (typeof ParentV2 !== 'undefined' && ParentV2.explainSetting) ParentV2.explainSetting(sh);   /* 答错后的讲解: 关 / 自动 / 一步一步 */
     const dg = el('button', 'pbtn', sh, { text: '数字显示：' + (digits() ? '开' : '关') });
     dg.addEventListener('click', () => { Store.s.settings.digits = !Store.s.settings.digits; Store.save(); dg.textContent = '数字显示：' + (digits() ? '开' : '关'); });
     const vm = el('button', 'pbtn', sh, { text: '看图模式：' + (visualMode() ? '开' : '关') });
@@ -9579,6 +9493,7 @@ const MHidden = {
     await EX.chose(st, st.figEls[ans]);
     const i = st.q.answer, e = st.figEls[i]; e.innerHTML = ''; const s2 = this.fig(st.q.figs[i], '86%', true); s2.style.pointerEvents = 'none'; e.appendChild(s2);
     K.hop(st, e, 14);
+    await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */
     await EX.gold(st, e, '藏在这里！');
   },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.figs.length : st.q.answer; return { g: 'tap', p: { id: 'f' + i } }; },
@@ -9782,6 +9697,7 @@ const MOddOne = {
   async explain(st, ans) {
     await EX.chose(st, st.cards[ans]);
     const c = st.cards[st.q.answer]; K.hop(st, c, 18);
+    await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */
     await EX.gold(st, c, this.ruleWord(st.q.rule) + '不一样！');
   },
   next(st, strat) { if (st.picked) return null; const i = strat === 'wrong' ? (st.q.answer + 1) % st.q.items.length : st.q.answer; return { g: 'tap', p: { id: 'card' + i } }; },
@@ -10057,6 +9973,7 @@ const MMemory = {
     const at = q.shown.indexOf(ans); if (at >= 0 && st.slots[at]) EX.ring(st, st.slots[at], 'xchose', 6);
     await st.scope.wait(500);
     const k = q.mode === 'seen' ? q.shown.indexOf(q.answer) : q.mode === 'pos' ? q.pos : q.miss;
+    await Step.beat(st); if (!Session.alive(st)) return;      /* step by step: the demonstration is a step of its own (PT2 Q3) */
     if (st.slots[k]) { EX.ring(st, st.slots[k], 'xgold', 6); K.hop(st, st.slots[k], 16); }
     await EX.gold(st, EX.rightCard(st), '是' + CHARS[q.answer][0] + '！');
   },
