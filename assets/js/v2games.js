@@ -766,7 +766,8 @@ Object.assign(MapV2, {
     if (!on && c._pulse) { c._pulse.cancel(); c._pulse = null; }
     $('#gear').classList.toggle('dot', Supply.low());
   },
-  hello() { const D = Mem.today(); if (!Gems.avail() || D.hello || fast()) return; D.hello = 1; setTimeout(() => { if (Screens.cur !== 'map' || Session.G) return; Voice.say('找回老朋友！', { tag: 'map' }); const b = $('#gemchest'); if (b) b.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-12deg)' }, { transform: 'rotate(12deg)' }, { transform: 'rotate(0)' }], { duration: 600, iterations: 2 }); }, T(2600)); },
+  /* the day's greeting: once a day (saved), never while a hero card is showing - it waits for the card (PT3 3) */
+  hello() { const D = Mem.today(); if (!Gems.avail() || D.hello || fast()) return; D.hello = 1; Store.save(); const say = (k) => { if (Screens.cur !== 'map' || Session.G) return; if (document.getElementById('cardshow')) { if (k < 20) setTimeout(() => say(k + 1), 600); return; } Voice.say('找回老朋友！', { tag: 'map' }); const b = $('#gemchest'); if (b) b.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-12deg)' }, { transform: 'rotate(12deg)' }, { transform: 'rotate(0)' }], { duration: 600, iterations: 2 }); }; setTimeout(() => say(0), T(2600)); },
 });
 /* new content: the child has reached the last installed sea, or less than 14 days of islands left at last week's pace (A.28) */
 const Supply = {
@@ -961,7 +962,7 @@ Object.assign(Step, {
     st.stepLines = 0;
     return quiet()
       .then(() => { if (first && this.on(st)) Voice.say(this.whatWrong(st), { tag: 'explain' }); else if (silent && this.on(st)) Voice.say('再看一看！', { tag: 'explain' }); return quiet(); })
-      .then(() => { if (st.stepN === 1 && !st.cued && !st.stepEnd && this.on(st)) { st.cued = true; Voice.say('我们一起看！', { tag: 'explain' }); return quiet(); } })   /* the end of the first step (PT2 Q4) */
+      .then(() => { if (first && !st.cued && !st.stepEnd && this.on(st)) { st.cued = true; Voice.say('我们一起看！', { tag: 'explain' }); return quiet(); } })   /* the end of the first step (PT2 Q4) */
       .then(() => this.wait(st))
       .then(() => { st.stepLines = 0; });
   },

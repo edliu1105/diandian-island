@@ -4080,6 +4080,7 @@ const EX = {
     if (st.ff || !Session.alive(st)) return;
     await st.scope.guard(Voice.afterSay(0));
     if (st.ff || !Session.alive(st)) return;
+    if (n === 0 && !kind && Step.on(st)) return;      /* step by step: a bare "零" is no line - the step says "不是零个" (PT3 2) */
     if (n >= 1 && n <= 20) await Count.beat(st.scope, 0, n, kind); else await this.say(st, (kind === 'o' ? '第' : '') + (CN[n] != null ? CN[n] : String(n)));
   },
   /* step 2: the right one, ringed gold (it also glows) */
