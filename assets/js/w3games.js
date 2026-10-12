@@ -964,10 +964,14 @@ const MOverlay = {
   /* a card: up to 9 cells (3 x 3), each with one figure or nothing */
   gen(G, o) {
     const d = Math.min(5, o.level), rng = o.rng;
-    const kinds = ['circle', 'tri', 'sq', 'star', 'heart', 'diamond'], cols = [0, 1, 2, 3, 4];
+    /* the client (2026-10-11): too hard - fewer cells, figures, shapes and colours at the start.
+       L1: 2 x 2 cards, one figure each, 2 shapes, 1 colour; L2: 3 x 3, one each, 3 shapes, 2 colours;
+       L3: two each, 4 shapes, 3 colours; L4-5: 3 x 3, 4-5 shapes, 3-4 colours */
+    const gs = d <= 1 ? 2 : 3;
+    const kinds = ['circle', 'sq', 'tri', 'star', 'heart', 'diamond'].slice(0, [2, 2, 3, 4, 4, 5][d]), cols = [0, 1, 2, 3, 4].slice(0, [1, 1, 2, 3, 3, 4][d]);
     const fig = () => ({ k: rng.pick(kinds), c: rng.pick(cols) });
-    const per = d <= 1 ? 1 : d === 2 ? 2 : 3;
-    const cells = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    const per = d <= 2 ? 1 : d === 3 ? 2 : 3;
+    const cells = rng.shuffle(Array.from({ length: gs * gs }, (_, i) => i));
     const A = {}, B = {};
     cells.slice(0, per).forEach(i => { A[i] = fig(); }); cells.slice(per, per * 2).forEach(i => { B[i] = fig(); });
     const U = Object.assign({}, A, B), key = c => Object.keys(c).sort().map(i => i + c[i].k + c[i].c).join(';');
@@ -983,11 +987,12 @@ const MOverlay = {
         shape: used.map(i => Object.assign({}, U, { [i]: other(U[i], 'k') })),
         color: used.map(i => Object.assign({}, U, { [i]: other(U[i], 'c') })),
       };
+      if (cols.length < 2) delete cats.color;
       const order = rng.shuffle(Object.keys(cats)), pool = [];
       order.forEach(w => { const l = rng.shuffle(cats[w]); pool.push({ c: l[0], why: w }); });
       order.forEach(w => rng.shuffle(cats[w]).forEach(c => pool.push({ c, why: w })));
       const right = { c: U, why: 'ok' }, opts = W3X.deal(G, right, W3X.uniq(pool, x => key(x.c), 4, [right]), 'ov');
-      return { k: [d, key(A), key(B)], mode: 'make', A, B, opts, answer: opts.indexOf(right) };
+      return { k: [d, key(A), key(B)], mode: 'make', gs, A, B, opts, answer: opts.indexOf(right) };
     }
     /* which two cards make this picture? Three cards that do not: things in other places (level 4); one of the two with a
        shape / a colour changed or one thing moved (level 5) */
@@ -1009,7 +1014,7 @@ const MOverlay = {
     }
     if (!all) return this.gen(G, Object.assign({}, o, { level: 3 }));
     const ans = all.map((x, i) => (x.role === 'part' ? i : -1)).filter(i => i >= 0).join('-');
-    return { k: [d, key(A), key(B), all.map(x => key(x.c)).join('/')], mode: 'find', target: U, cardsC: all, answer: ans };
+    return { k: [d, key(A), key(B), all.map(x => key(x.c)).join('/')], mode: 'find', gs, target: U, cardsC: all, answer: ans };
   },
   /* the pairs of cards that together show exactly the picture (no place used twice) */
   pairs(cs, U) {
@@ -1019,7 +1024,9 @@ const MOverlay = {
   },
   /* the places where two cards differ */
   diff(a, b) { const out = []; for (let i = 0; i < 9; i++) { const x = a[i], y = b[i]; if (!x !== !y || (x && (x.k !== y.k || x.c !== y.c))) out.push(i); } return out; },
-  cellRing(s, i, color) { if (s) W3X.ringIn(s, 22 + (i % 3) * 38, 22 + Math.floor(i / 3) * 38, 18, color, 3.5); },
+  gs: 3,                                                     /* the cards' grid: 2 x 2 at L1, else 3 x 3 (set by present) */
+  cx(i) { const n = this.gs, w = 114 / n; return [3 + w * (i % n + 0.5), 3 + w * (Math.floor(i / n) + 0.5), w]; },
+  cellRing(s, i, color) { if (s) { const [x, y, w] = this.cx(i); W3X.ringIn(s, x, y, w * 0.47, color, 3.5); } },
   audit(q) {
     const key = c => Object.keys(c).sort().map(i => i + c[i].k + c[i].c).join(';');
     if (q.mode === 'make') { const U = key(Object.assign({}, q.A, q.B)), good = q.opts.map((x, i) => (key(x.c) === U ? i : -1)).filter(i => i >= 0); return { n: q.opts.length, pos: q.answer, err: good.length === 1 && good[0] === q.answer && new Set(q.opts.map(x => key(x.c))).size === q.opts.length ? null : 'right ones ' + good }; }
@@ -1029,8 +1036,9 @@ const MOverlay = {
   draw(c, size, tint) {
     const s = svg('svg', { viewBox: '0 0 120 120', width: size, height: size });
     svg('rect', { x: 3, y: 3, width: 114, height: 114, rx: 14, fill: tint ? 'rgba(190,232,255,.55)' : '#FFF8EC', stroke: '#2B2118', 'stroke-width': 4 }, s);
-    for (let i = 1; i < 3; i++) { svg('path', { d: 'M' + (3 + i * 38) + ' 8V112M8 ' + (3 + i * 38) + 'H112', stroke: 'rgba(43,33,24,.12)', 'stroke-width': 2 }, s); }
-    Object.keys(c).forEach(i => { const x = 22 + (i % 3) * 38, y = 22 + Math.floor(i / 3) * 38; W2X.shape(s, c[i].k, x, y, 12, W2X.pal[c[i].c], 0, 3); });
+    const n = this.gs, w = 114 / n;
+    for (let i = 1; i < n; i++) { svg('path', { d: 'M' + (3 + i * w) + ' 8V112M8 ' + (3 + i * w) + 'H112', stroke: 'rgba(43,33,24,.12)', 'stroke-width': 2 }, s); }
+    Object.keys(c).forEach(i => { const [x, y] = this.cx(+i); W2X.shape(s, c[i].k, x, y, n === 2 ? 18 : 12, W2X.pal[c[i].c], 0, 3); });
     s.style.pointerEvents = 'none';
     return s;
   },
@@ -1051,7 +1059,7 @@ const MOverlay = {
   optS(st) { return W3X.size2(st.optEls.length, [this.optFr(true), this.optFr(false)], 146, 20); },
   async present(st) {
     const q = st.q;
-    st.sel = [];
+    st.sel = []; this.gs = q.gs || 3;
     if (q.mode === 'make') {
       st.ab = [q.A, q.B].map(c => { const e = W2X.thing(st, 10, 10, 4, ''); e.appendChild(this.draw(c, '100%', true)); return e; });
       st.plus = W2X.thing(st, 52, 52, 4, ''); st.plus.innerHTML = '<svg viewBox="0 0 52 52" width="100%" height="100%"><path d="M26 8V44M8 26H44" stroke="#2B2118" stroke-width="9" stroke-linecap="round"/></svg>';
