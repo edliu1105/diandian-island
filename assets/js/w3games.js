@@ -55,7 +55,7 @@ Object.assign(W3X, {
   /* a counted beat (a number said) - after a tap that skips, nothing is counted */
   count(st, ms, n) { return st.ff ? Promise.resolve() : Count.beat(st.scope, ms, n); },
   /* wait for what is being said (at most ms), or ms */
-  async beat(st, ms) { await st.scope.guard(Promise.race([Voice.afterSay(80), st.scope.wait(ms)])); },
+  async beat(st, ms) { if (Step.on(st)) { await st.scope.wait(ms); return; } await st.scope.guard(Promise.race([Voice.afterSay(80), st.scope.wait(ms)])); },   /* step by step: the pause is the beat boundary (PT1 P5) */
   /* a dashed ring / box / line drawn inside an svg (in its own units) */
   sv(parent, tag, a) { return svg(tag, a, parent); },
   ringIn(s, cx, cy, r, color, sw) { return svg('circle', { cx, cy, r, fill: 'none', stroke: color || this.BLUE, 'stroke-width': sw || 4, 'stroke-dasharray': (sw || 4) * 1.6 + ' ' + (sw || 4) * 1.2, 'stroke-linecap': 'round' }, s); },

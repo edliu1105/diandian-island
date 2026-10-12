@@ -687,7 +687,7 @@ Object.assign(Gems, {
   card(src) {
     this.migrate();
     const a = Store.s.gems;
-    if (a.n >= CARDS.length) { if (!fast() && src === 'key') this.album(); else if (src === 'flag') Voice.say('卡册满啦！', { tag: 'card' }); return Promise.resolve(); }
+    if (a.n >= CARDS.length) { if (!fast() && (src === 'key' || src === 'free')) this.album(); else if (src === 'flag') Voice.say('卡册满啦！', { tag: 'card' }); return Promise.resolve(); }
     a.n++; a.src.push(src); Store.save();
     return fast() ? Promise.resolve() : this.reveal(CARDS[a.n - 1]);
   },
@@ -746,6 +746,7 @@ Object.assign(Gems, {
 /* the cards are here (this file comes a second after the entry tap): a save from the gems moves over; a card asked for
    before (core Gems.turn queued it) is opened now */
 Gems.migrate(); (Gems.q || []).splice(0).forEach(src => Gems.card(src));
+if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G) setTimeout(() => Gems.pending(), 600);      /* the card the move opened: on this map visit (PT1 P8) */
 
 /* ---------------------------------------------------------------- the map: the gem chest (top right), the parent's red dot, the
    first map of the day says "找回老朋友！" */

@@ -113,8 +113,9 @@ with sync_playwright() as p, serve() as base:
     log.check(r['b'] == 1 and r['due'] == 1 and 'give10' in r['notes'] and r['miss'][0] == ['give10', 3], 'D-05 twice not right -> box 1, back tomorrow, a note for the parent; and asked again two questions later %s' % r)
     # D-06 the key and the gems
     r = page.evaluate("""() => { Store.reset(); const out = { avail: Gems.avail() }; Gems.start(); out.free = Store.s.gems.n; out.avail2 = Gems.avail();
-      Gems.turn('flag'); out.flag = Store.s.gems.n; out.heroAt6 = HEROES6[0]; return out; }""")
-    log.check(r == {'avail': True, 'free': 1, 'avail2': False, 'flag': 2, 'heroAt6': 'optimus'}, 'D-06 the key once a day (nothing due -> at once), a flag turns a gem, gem 6 calls Optimus %s' % r)
+      Gems.turn('flag'); out.flag = Store.s.gems.n; out.first = CARDS[0]; out.cards = CARDS.length; out.unique = new Set(CARDS).size; return out; }""")
+    # hero cards (client 2026-10-11, like 字字岛): the key and a flag each open the next card of one fixed order
+    log.check(r == {'avail': True, 'free': 1, 'avail2': False, 'flag': 2, 'first': 'optimus', 'cards': 38, 'unique': 38}, 'D-06 the key once a day (nothing due -> at once) opens a hero card, a flag opens the next; 38 cards, Optimus first %s' % r)
     page.evaluate("() => { Store.s.key.day = -1; const d = DAY(); ['cmp10', 'on10', 'part10'].forEach(c => { const m = Mem.touch(c); m.b = 2; m.due = d; }); Store.s.w2all = true; ORDER.forEach(id => { Store.w(id).unlocked = true; }); Store.save(); }")
     page.evaluate("Gems.start()")
     page.wait_for_function("window.__q && ['act','ready','input'].includes(window.__q.phase)", timeout=30000)
@@ -128,7 +129,7 @@ with sync_playwright() as p, serve() as base:
         page.wait_for_timeout(30)
     page.wait_for_timeout(600)
     r = page.evaluate("({ gems: Store.s.gems.n, stars: Object.values(Store.s.worlds).reduce((a, w) => a + Object.values(w.gstars || {}).reduce((x, y) => x + y, 0), 0) })")
-    log.check(sorted(seen) == ['cmp10', 'on10', 'part10'] and r['gems'] == 3 and r['stars'] == 0, 'D-06 the key round asks the due cards, gives no stars, then a gem %s %s' % (seen, r))
+    log.check(sorted(seen) == ['cmp10', 'on10', 'part10'] and r['gems'] == 3 and r['stars'] == 0, 'D-06 the key round asks the due cards, gives no stars, then a hero card %s %s' % (seen, r))
     # D-07 the arithmetic island
     r = page.evaluate("""() => {
       const bad = [];
