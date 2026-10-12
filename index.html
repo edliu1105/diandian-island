@@ -601,6 +601,7 @@ const Store = {
       if (t.level < t.floor) t.level = t.floor;
     });
     if (o.settings && typeof o.settings === 'object') { d.settings.digits = o.settings.digits !== false; d.settings.voiceURI = typeof o.settings.voiceURI === 'string' ? o.settings.voiceURI : ''; d.settings.visual = o.settings.visual === true; }
+    d.settings.explain = o.settings && ['off', 'auto', 'step'].includes(o.settings.explain) ? o.settings.explain : 'auto';   /* the explanation after a wrong answer (parent) */
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
     d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.strict2 = o.strict2 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 || o.mapSet === 3 ? o.mapSet : 1;
     d.w3 = o.w3 === true; d.w3seen = o.w3seen === true; d.gate3 = o.gate3 === true || d.w3seen; d.fin3 = o.fin3 === 'due' || o.fin3 === 'seen' ? o.fin3 : '';
@@ -896,6 +897,12 @@ const Bank = {
 };
 
 const Voice = {
+  /* step-by-step explanation (Step): a line said in it resolves after it was said AND 下一步 was tapped */
+  stepSay(text, opt, p) {
+    const S = typeof Session !== 'undefined' && Session.st; opt = opt || {};
+    if (!S || !S.stepMode || !S.explaining || opt.tag === 'again' || opt.tag === 'count-fallback' || opt.prot || S !== speechOwner()) return p;
+    return p.then(v => (Step.on(S) ? Step.wait(S).then(() => v) : v));
+  },
   synth: ('speechSynthesis' in window) ? window.speechSynthesis : null,
   voices: [], zh: [], voice: null,
   q: [], cur: null, refs: [], waiters: [],
@@ -1073,7 +1080,8 @@ const Voice = {
   },
   /* the returned promise settles only while its owner is alive: code awaiting a sentence of a question that is gone
      simply stops there (same contract as Scope) */
-  say(text, opt) {
+  say(text, opt) { return this.stepSay(text, opt, this.say0(text, opt)); },
+  say0(text, opt) {
     opt = opt || {};
     /* a tap skipped the explanation after a wrong answer: the rest of it is not said (the engine's own line still is) */
     try { const S = Session.st; if (S && S.explaining && S.ff && opt.tag !== 'again' && !opt.prot && S === speechOwner()) { slog('narr', text, opt.tag, 'skipped'); return Promise.resolve('skipped'); } } catch (e) {}
@@ -2058,6 +2066,41 @@ const Clock = {
   hide() { if (!this.hiddenAt) this.hiddenAt = now(); },
   show() { if (this.hiddenAt) { this.lost += now() - this.hiddenAt; this.hiddenAt = 0; } },
 };
+/* ================================================================ THE EXPLANATION, A PARENT SETTING (client 2026-10-11)
+   Store.s.settings.explain: 'off' - after a wrong answer the feedback line, the closing line, the new question (no
+   explanation); 'auto' - the explanation plays by itself (default); 'step' - a parent talks the child through it: every
+   line of the explanation (any world, the arithmetic island, review cards - they all speak through Voice.say) finishes,
+   then the explanation waits for a tap on the big 下一步 button; one last tap ends it. No time limit; the skip tap does
+   not skip; a small 跳过 link (for the parent) ends it at once. The button sits at the right edge halfway up: the options
+   are at the bottom and the characters stand on the ground. */
+const Step = {
+  mode() { const m = Store.s.settings && Store.s.settings.explain; return m === 'off' || m === 'step' ? m : 'auto'; },
+  on(st) { return !!(st && st.stepMode && st.explaining && !st.ff && Session.alive(st)); },
+  show(st) {
+    this.hide();
+    const box = el('div', '', document.body); box.id = 'stepbox';
+    Object.assign(box.style, { position: 'fixed', right: '16px', top: 'calc(50% - 70px)', zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', opacity: '0.45' });
+    const sk = el('button', '', box, { text: '跳过' });
+    Object.assign(sk.style, { border: 0, background: 'rgba(255,255,255,.8)', borderRadius: '10px', padding: '4px 12px', font: '600 15px/1.2 system-ui', color: '#6B5B4B' });
+    const b = el('button', '', box); b.id = 'stepnext';
+    Object.assign(b.style, { width: '108px', height: '108px', borderRadius: '50%', border: 0, background: '#5CC46E', boxShadow: '0 0 0 4px #2B2118, 0 6px 0 4px rgba(43,33,24,.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', font: '800 20px/1.1 system-ui' });
+    b.innerHTML = '<svg viewBox="0 0 40 40" width="44" height="44"><path d="M12 7L33 20L12 33Z" fill="#fff" stroke="#2B2118" stroke-width="3" stroke-linejoin="round"/></svg><span>下一步</span>';
+    tapify(b, () => this.next(st));
+    tapify(sk, () => this.skip(st));
+  },
+  hide() { const b = document.getElementById('stepbox'); if (b) b.remove(); },
+  /* a beat is over: wait for 下一步 (the button lights up) */
+  wait(st) {
+    if (!this.on(st)) return Promise.resolve();
+    const b = document.getElementById('stepbox');
+    if (b) { b.style.opacity = '1'; const n = document.getElementById('stepnext'); if (n && n.animate) n.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: 600, iterations: 2 }); }
+    if (st.stepP) return st.stepP;               /* a beat already waiting (a line not awaited, then the end): the same tap */
+    st.stepP = st.scope.guard(new Promise(res => { st.stepRes = () => { st.stepP = null; res(); }; }));
+    return st.stepP;
+  },
+  next(st) { const r = st.stepRes; st.stepRes = null; const b = document.getElementById('stepbox'); if (b) b.style.opacity = '0.45'; Sfx.touch(); if (r) r(); },
+  skip(st) { st.stepMode = false; this.hide(); const r = st.stepRes; st.stepRes = null; if (r) r(); Session.fastForward(); },
+};
 const Session = {
   G: null, st: null, qn: 0,
   alive(st) { return !!st && this.st === st && !st.scope.dead && this.G === st.G && !st.G.dead; },
@@ -2291,7 +2334,14 @@ const Session = {
          is right. The question is not asked again (the next one is new), so showing it does not help anyone guess. A game's
          own explain(st, ans) if it has one, else its reveal (no cheering: st.explaining). */
       st.phase = 'explain'; st.explaining = true;
-      if (g.explain) await g.explain(st, ans); else await g.reveal(st);
+      const xm = Step.mode();                      /* the parent's setting: off / auto / step by step */
+      if (xm !== 'off') {
+        if (xm === 'step' && !st.demo) { st.stepMode = true; Step.show(st); }
+        if (g.explain) await g.explain(st, ans); else await g.reveal(st);
+        if (!this.alive(my)) return 'dead';
+        if (Step.on(st)) await Step.wait(st);      /* the last tap ends the explanation */
+        Step.hide(); st.stepMode = false;
+      }
       if (!this.alive(my)) return 'dead';
       Voice.say(AGAIN[(G.again = (G.again || 0) + 1) % AGAIN.length], { tag: 'again' });
       await st.scope.guard(Voice.afterSay(200));
@@ -2423,6 +2473,7 @@ const Session = {
     const st = this.st;
     if (!st || st.scope.dead) return;
     if (!['reveal', 'praise', 'correcting', 'pairing', 'explain'].includes(st.phase) && !st.demo) return;     /* the explanation after a wrong answer: a tap skips it */
+    if (st.stepMode && st.phase === 'explain') return;            /* step by step: only 下一步 (or the parent's 跳过) moves on */
     if (st.ff) return;
     st.ff = true;
     Voice.hush('ff', 'summary');
@@ -2481,6 +2532,7 @@ const Session = {
     G.dead = true;
     if (this.G !== G) { G.scope.dispose(); return; }
     Input.abort();
+    Step.hide();
     if (this.st) { Hints.disarm(this.st); try { G.game.cleanup(this.st); } catch (e) {} }
     this.st = null;
     try { G.game.unbuild && G.game.unbuild(G); } catch (e) {}
@@ -3288,6 +3340,13 @@ const Parent = {
     })();
     /* settings */
     el('h3', '', sh, { text: '设置' });
+    /* the explanation after a wrong answer: off / by itself / step by step (the parent talks the child through it) */
+    { const row = el('div', '', sh); el('span', '', row, { text: '答错后的讲解：' });
+      const bs = [];
+      const paint = () => bs.forEach(([k, b]) => { b.style.background = Step.mode() === k ? '#FFC93C' : '#fff'; });
+      [['off', '关'], ['auto', '自动'], ['step', '一步一步']].forEach(([k, t]) => { const b = el('button', 'pbtn', row, { text: t }); bs.push([k, b]); b.addEventListener('click', () => { Store.s.settings.explain = k; Store.save(); paint(); }); });
+      paint();
+      el('div', 'mut', sh, { text: '一步一步：每说完一句就停下，按右下角的大按钮“下一步”再往下讲，方便您陪孩子一起看；“跳过”直接出下一题。关：答错后不讲解，直接出下一题。' }); }
     const dg = el('button', 'pbtn', sh, { text: '数字显示：' + (digits() ? '开' : '关') });
     dg.addEventListener('click', () => { Store.s.settings.digits = !Store.s.settings.digits; Store.save(); dg.textContent = '数字显示：' + (digits() ? '开' : '关'); });
     const vm = el('button', 'pbtn', sh, { text: '看图模式：' + (visualMode() ? '开' : '关') });
