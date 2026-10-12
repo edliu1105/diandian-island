@@ -397,6 +397,9 @@ class Scope {
   clear(h) { const r = this.timers.get(h); if (!r) return; clearTimeout(r.id); clearInterval(r.id); this.timers.delete(h); }
   wait(ms) {
     if (this.dead) return never();
+    /* step-by-step explanation: the first pause after a ring / a line / a mark of the explanation ends the beat - the line
+       is said to its end, then 下一步 (Step.boundary) */
+    if (this.stepSt && Step.dirty(this.stepSt)) return Step.boundary(this.stepSt).then(() => this.wait(Math.min(ms, 120)));
     return new Promise(res => {
       const w = { res: () => { if (!this.dead) res(); } };
       const go = d => { w.id = setTimeout(() => { this.waits.delete(w); w.res(); }, d); w.due = now() + d; };
@@ -901,7 +904,7 @@ const Voice = {
   stepSay(text, opt, p) {
     const S = typeof Session !== 'undefined' && Session.st; opt = opt || {};
     if (!S || !S.stepMode || !S.explaining || opt.tag === 'again' || opt.tag === 'count-fallback' || opt.prot || S !== speechOwner()) return p;
-    return p.then(v => (Step.on(S) ? Step.wait(S).then(() => v) : v));
+    Step.mark(S); return p;                    /* the next pause of the explanation (or its end) waits for 下一步 */
   },
   synth: ('speechSynthesis' in window) ? window.speechSynthesis : null,
   voices: [], zh: [], voice: null,
@@ -2100,6 +2103,12 @@ const Step = {
     st.stepP = st.scope.guard(new Promise(res => { st.stepRes = () => { st.stepP = null; res(); }; }));
     return st.stepP;
   },
+  /* a beat happened (a ring, a line, a mark): the next pause of the explanation stops for 下一步 */
+  mark(st) { st = st || Session.st; if (st && st.stepMode && st.explaining && !st.ff) st.stepDirty = true; },
+  dirty(st) { return !!(st.stepDirty && this.on(st)); },
+  /* an explicit beat boundary (a demonstration step without its own line or ring): step by step - wait for 下一步; else nothing */
+  beat(st) { if (!this.on(st)) return Promise.resolve(); this.mark(st); return this.boundary(st); },
+  boundary(st) { st.stepDirty = false; st.stepN = (st.stepN || 0) + 1; return st.scope.guard(Voice.afterSay(0)).then(() => this.wait(st)); },
   next(st) { const r = st.stepRes; st.stepRes = null; const b = document.getElementById('stepbox'); if (b) b.style.opacity = '0.45'; Sfx.touch(); if (r) r(); },
   skip(st) { st.stepMode = false; this.hide(); const r = st.stepRes; st.stepRes = null; if (r) r(); Session.fastForward(); },
 };
@@ -2372,10 +2381,18 @@ const Session = {
       st.phase = 'explain'; st.explaining = true;
       const xm = Step.mode();                      /* the parent's setting: off / auto / step by step */
       if (xm !== 'off') {
-        if (xm === 'step' && !st.demo) { st.stepMode = true; Step.show(st); }
+        if (xm === 'step' && !st.demo) { st.stepMode = true; st.scope.stepSt = st; Step.show(st); }
         if (g.explain) await g.explain(st, ans); else await g.reveal(st);
         if (!this.alive(my)) return 'dead';
-        if (Step.on(st)) await Step.wait(st);      /* the last tap ends the explanation */
+        /* step by step: a game's demonstration may still run on after its explain() returned - wait until it is quiet: every
+           beat still waiting gets its 下一步, and the last tap ends the explanation */
+        for (let k = 0; k < 30 && Step.on(st); k++) {
+          if (st.stepP) { await st.stepP; continue; }
+          if (st.stepDirty || !st.stepN) { await Step.boundary(st); continue; }
+          await st.scope.wait(450);
+          if (!st.stepP && !st.stepDirty) break;
+        }
+        if (!this.alive(my)) return 'dead';
         Step.hide(); st.stepMode = false;
       }
       if (!this.alive(my)) return 'dead';
@@ -4005,6 +4022,7 @@ const K = {
   },
   ring(st, rects, pad, color) {
     if (!rects.length) return null;
+    Step.mark(st);                                         /* a ring in a step-by-step explanation: a beat */
     const x0 = Math.min(...rects.map(r => r.x)) - (pad || 16), y0 = Math.min(...rects.map(r => r.y)) - (pad || 16);
     const x1 = Math.max(...rects.map(r => r.x + r.w)) + (pad || 16), y1 = Math.max(...rects.map(r => r.y + r.h)) + (pad || 16);
     const r = el('div', 'ringo', Stage.el);

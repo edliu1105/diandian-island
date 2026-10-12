@@ -1886,6 +1886,7 @@ const MPipes = {
   async explain(st, ans) {
     const q = st.q, Lay = this.layouts[q.L], my = st, { seen } = this.reach(Lay, q.open), g = this.geo();
     for (let i = 0; i < Lay.e.length; i++) { if (!Session.alive(my)) return; const [a, b] = Lay.e[i]; if (q.open[i] && seen[a] && seen[b]) { st.water[i].setAttribute('opacity', 1); await st.scope.wait(T(110)); } }
+    await Step.beat(st); if (!Session.alive(my)) return;   /* step by step: a beat */
     /* his flower's dry part of the pipes, and the closed valves between it and the water */
     const dry = { [ans]: 1 }, todo = [ans];
     while (todo.length) { const x = todo.shift(); Lay.e.forEach(([a, b]) => { const y = a === x ? b : b === x ? a : null; if (y && !seen[y] && !dry[y]) { dry[y] = 1; todo.push(y); } }); }

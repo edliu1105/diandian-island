@@ -62,7 +62,7 @@ const W4U = {
   dot(st, x, y, r, dashed) {
     const d = W2X.thing(st, 2 * r, 2 * r, 48, ''); place(d, Math.round(x - r), Math.round(y - r), 2 * r, 2 * r);
     Object.assign(d.style, { borderRadius: '50%', border: '5px ' + (dashed ? 'dashed ' : 'solid ') + this.BLUE, boxSizing: 'border-box', pointerEvents: 'none', background: 'rgba(79,179,255,.12)' });
-    K.pop(st, d); return d;
+    K.pop(st, d); Step.mark(st); return d;          /* a mark: in a step-by-step explanation a beat */
   },
   /* counting things one by one: spoken ("一、二、三") when a right answer is shown; in the explain step a rising tick each (the
      step stays short - review OX1 - and the summary says how many) */
@@ -2156,6 +2156,7 @@ const W4U = {
       const at = (r, c) => { const i = q.gaps.findIndex(([a, b]) => a === r && b === c); return i >= 0 ? f[i] : q.g[r][c]; };
       const wrong = q.gaps.map(([r, c], i) => (f[i] !== q.g[r][c] ? i : -1)).filter(i => i >= 0), seen = new Set();
       const blues = W4U.blue(st, wrong.map(i => st.gapEls[i]));
+      await Step.beat(st); if (!Session.alive(my)) return;   /* step by step: a beat */
       const dup = (r, c) => { if (seen.has(r + ',' + c) || q.gaps.some(([a, b], i) => a === r && b === c && wrong.includes(i))) return; seen.add(r + ',' + c); W4U.dot(st, x0 + (6 + c * 100 + 50) * sc, g.y + (6 + r * 100 + 52) * sc, 46 * sc, true); };
       wrong.forEach(i => { const [r, c] = q.gaps[i], v = f[i]; for (let x = 0; x < n; x++) { if (x !== c && at(r, x) === v) dup(r, x); if (x !== r && at(x, c) === v) dup(x, c); } });
       await st.scope.wait(1200); if (!Session.alive(my)) return;
@@ -3213,6 +3214,7 @@ const W4U = {
     async explain(st, ans) {
       const q = st.q, my = st, e = q.ent.find(x => x.c === ans), w = q.ent.findIndex(x => x.c === ans), route = e && q.E0 ? this.route({ E: q.E0, S: q.S0 }, q.n, this.cellOf(e, q.n), this.cellOf(q.exit, q.n)) : null;          /* its way before the walls were put in */
       W4U.blue(st, W4U.cardOf(st, ans)); if (st.flags[w]) K.flash(st, [st.flags[w]]);
+      await Step.beat(st); if (!Session.alive(my)) return;   /* step by step: a beat */
       if (e && route) {
         const walk = [route[0]]; for (let i = 1; i < route.length && this.linked(q, route[i - 1], route[i]); i++) walk.push(route[i]);
         await this.drawWay(st, this.wayPts(q, e, walk, false), '#4FB3FF', 200 + 80 * walk.length); if (!Session.alive(my)) return;
