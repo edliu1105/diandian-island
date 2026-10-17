@@ -994,7 +994,7 @@ const Laps = {
   name(g) { return GAMES[g] && GAMES[g].verb ? GAMES[g].verb.replace(/[！!。，,\s]/g, '') : g; },
   /* a star of this session also counts for the island's lap; the game's 5th lap star is a "集满啦！" (NG1 1) */
   star(G) {
-    const w = G.world; if (!this.on(w) || G.key || G.test || G.teach) return;
+    const w = G.world; if (!G.lapOn || !this.on(w)) return;           /* a lap session is decided when it starts (NG2 A) */
     const s = this.st(w); if (s.due) { G.lapK = 5; return; }        /* this lap is complete: its reward comes on the map */
     const was = s.g[G.id] || 0; s.g[G.id] = Math.min(5, was + 1); G.lapK = s.g[G.id];
     if (was === 4) { G.lapFull = 1; this.lit = { w, g: G.id }; }
@@ -1008,18 +1008,32 @@ const Laps = {
     G.trayBase = n; G.lapK = 0; tray.dataset.lap = Math.min(4, s.n);
     $$('i', tray).forEach((e, i) => e.classList.toggle('on', i < n));
     this.css();
+    if (n < 5) { G.lapOn = 1; return; }
+    /* this game is full for the lap (NG2 D): said, the tray glows, its stars count nothing for the lap; back on the map the
+       island's panel opens with the games still to fill glowing */
+    G.lapK = 5;
+    if (s.due) return;
+    this.steer = w;
+    Voice.say('这个已经满啦！', { tag: 'map' });
+    tray.animate([{ boxShadow: '0 0 0 0 rgba(255,201,60,0)' }, { boxShadow: '0 0 0 8px rgba(255,201,60,.9), 0 0 30px 12px rgba(255,214,90,.8)' }, { boxShadow: '0 0 0 0 rgba(255,201,60,0)' }], { duration: T(1400) + 1, iterations: 2, easing: 'ease-in-out' });
   },
   /* the end of a session: 2+ wrong answers on an island without a lap -> the hand points to a lap once (NG1 1) */
   end(G) {
     if (G.key || G.test || G.teach) return;
     const wrong = (G.ev || []).filter(b => !b).length;
-    Store.s.lapHelp = !this.on(G.world) && wrong >= 2 ? 1 : 0; Store.save();
+    if (!this.on(G.world) && wrong >= 2) { Store.s.lapHelp = 1; Store.save(); }      /* kept until the hand has shown an island */
   },
   /* the hand's island after a hard session: in this sea, the lap with the fewest stars (the latest flag first) */
+  /* no lap in this sea but one in another: the hand shows the gate (the way back) once, the help waits for that sea (NG2 B) */
   pick(M) {
-    if (!Store.s.lapHelp) return null;
+    const h = Store.s.lapHelp; if (!h) return null;
     const fl = Store.s.flags || [], ids = M.ids().filter(o => this.on(o) && M.isl[o]);
-    if (!ids.length) return null;
+    if (!ids.length) {
+      if (h !== 1 || !M.isl.gate || !Object.keys(WORLDS).some(o => this.on(o))) return null;
+      Store.s.lapHelp = 2; Store.save(); Voice.say('回前面练一练！', { tag: 'map' });
+      return 'gate';
+    }
+    if (h === 1) Voice.say('回前面练一练！', { tag: 'map' });
     Store.s.lapHelp = 0; Store.save();
     ids.sort((a, b) => this.total(a) - this.total(b) || fl.indexOf(b) - fl.indexOf(a));
     return ids[0];
@@ -1031,7 +1045,7 @@ const Laps = {
     ids.sort((a, b) => fl.indexOf(b) - fl.indexOf(a));
     return ids[0] || null;
   },
-  css() { if ($('#lapcss')) return; const c = el('style', '', document.head); c.id = 'lapcss'; c.textContent = '#tray[data-lap="2"] i.on{filter:grayscale(1) brightness(1.35)}#tray[data-lap="3"] i.on{filter:saturate(1.6) brightness(1.1)}#tray[data-lap="4"] i.on{animation:laprb 2.4s linear infinite}@keyframes laprb{to{filter:hue-rotate(360deg)}}.lapb{position:absolute;right:12px;top:-4px;display:flex;flex-direction:row-reverse;align-items:flex-end;gap:2px;pointer-events:none}.lapb .rk{position:relative}.lapb .rk b{position:absolute;right:-12px;top:-6px;font:900 16px/1 system-ui,sans-serif;color:#fff;background:#FF6B5B;border-radius:10px;padding:2px 5px;box-shadow:0 0 0 2px #2B2118}#map:has(.lapnext) .bigstars{opacity:.2}.gstars.laprow{background:rgba(255,255,255,.92);border-radius:14px;box-shadow:0 0 0 2px rgba(43,33,24,.3);padding:2px 6px}'; },
+  css() { if ($('#lapcss')) return; const c = el('style', '', document.head); c.id = 'lapcss'; c.textContent = '#tray[data-lap="2"] i.on{filter:grayscale(1) brightness(1.35)}#tray[data-lap="3"] i.on{filter:saturate(1.6) brightness(1.1)}#tray[data-lap="4"] i.on{animation:laprb 2.4s linear infinite}@keyframes laprb{to{filter:hue-rotate(360deg)}}.lapb{position:absolute;right:12px;top:-4px;display:flex;flex-direction:row-reverse;align-items:flex-end;gap:2px;pointer-events:none}.lapb .rk{position:relative}.lapb .rk b{position:absolute;right:-12px;top:-6px;font:900 16px/1 system-ui,sans-serif;color:#fff;background:#FF6B5B;border-radius:10px;padding:2px 5px;box-shadow:0 0 0 2px #2B2118}#map:has(.gstars) .bigstars{opacity:.2}.gstars.laprow{background:rgba(255,255,255,.92);border-radius:14px;box-shadow:0 0 0 2px rgba(43,33,24,.3);padding:2px 6px}'; },
   /* the map: crown / rocket (xN) by every flag, a sparkle on the island inviting a lap */
   draw(M) {
     this.css();
@@ -1062,6 +1076,7 @@ const Laps = {
     const s = this.st(w), n = s.due ? 5 : (s.g[g] || 0);
     row.dataset.n = n; row.dataset.lap = s.n; row.classList.add('laprow'); this.css();
     $$('img', row).forEach((e, k) => { e.style.filter = k < n ? (s.n === 2 ? 'grayscale(1) brightness(1.35) drop-shadow(0 2px 0 rgba(43,33,24,.35))' : s.n === 3 ? 'saturate(1.6) brightness(1.1) drop-shadow(0 2px 0 rgba(43,33,24,.35))' : 'hue-rotate(' + (k * 60) + 'deg) drop-shadow(0 2px 0 rgba(43,33,24,.35))') : 'grayscale(1) opacity(.35)'; });
+    if (this.steer === w && n < 5) row.animate([{ boxShadow: '0 0 0 2px rgba(43,33,24,.3)' }, { boxShadow: '0 0 0 6px rgba(255,201,60,.95), 0 0 28px 10px rgba(255,214,90,.85)' }, { boxShadow: '0 0 0 2px rgba(43,33,24,.3)' }], { duration: T(1100) + 1, iterations: 4, delay: T(400) });      /* still to fill (NG2 D) */
     if (this.lit && this.lit.w === w && this.lit.g === g) {
       this.lit = null;
       row.animate([{ boxShadow: '0 0 0 2px rgba(43,33,24,.3)' }, { boxShadow: '0 0 0 6px rgba(255,201,60,.95), 0 0 28px 10px rgba(255,214,90,.85)' }, { boxShadow: '0 0 0 2px rgba(43,33,24,.3)' }], { duration: T(1100) + 1, iterations: 3, delay: T(400) });
@@ -1116,6 +1131,7 @@ const Laps = {
       await new Promise(r => setTimeout(r, T(s.got <= 2 ? 2600 : 1600)));
       if (s.cd && live()) { s.cd = 0; Store.save(); await Gems.card('lap'); }
     }
+    if (this.steer && M.isl[this.steer] && live()) { const w = this.steer; M.openPanel(w); this.steer = null; return false; }      /* back from a full game: the games to fill glow */
     return this.invite(M, live);
   },
   /* the first time an island is on lap 2: "再玩一次吧！" and its sparkle grows (once per island) */
