@@ -986,48 +986,86 @@ const LAPSVG = {
   spark: '<svg viewBox="0 0 30 30" width="100%" height="100%"><path d="M15 1L18 12L29 15L18 18L15 29L12 18L1 15L12 12Z" fill="#FFF3A8" stroke="#2B2118" stroke-width="2" stroke-linejoin="round"/></svg>',
 };
 const Laps = {
-  st(w) { const L = Store.s.laps || (Store.s.laps = {}); return L[w] || (L[w] = { n: 2, got: 0, due: 0, g: {} }); },
-  /* a lap is played on an island whose flag is planted (the map planted it) */
-  on(w) { return !!(WORLDS[w] && (WORLDS[w].games || []).length && (Store.s.flags || []).includes(w)); },
-  /* a star of this session also counts for the island's lap */
+  st(w) { const L = Store.s.laps || (Store.s.laps = {}); return L[w] || (L[w] = { n: 2, got: 0, due: 0, iv: 0, g: {} }); },
+  /* a lap is played on an island whose flag is planted and whose games are all done (NG1 4: an old-rule flag keeps its
+     own stars and checks until every game has its 5) */
+  on(w) { return !!(WORLDS[w] && (WORLDS[w].games || []).length && (Store.s.flags || []).includes(w) && W2.islandDone(w)); },
+  total(w) { const s = this.st(w); return s.due ? 99 : WORLDS[w].games.reduce((t, g) => t + (s.g[g] || 0), 0); },
+  name(g) { return GAMES[g] && GAMES[g].verb ? GAMES[g].verb.replace(/[！!。，,\s]/g, '') : g; },
+  /* a star of this session also counts for the island's lap; the game's 5th lap star is a "集满啦！" (NG1 1) */
   star(G) {
     const w = G.world; if (!this.on(w) || G.key || G.test || G.teach) return;
-    const s = this.st(w); if (s.due) return;                       /* this lap is complete: its reward comes on the map */
-    s.g[G.id] = Math.min(5, (s.g[G.id] || 0) + 1);
+    const s = this.st(w); if (s.due) { G.lapK = 5; return; }        /* this lap is complete: its reward comes on the map */
+    const was = s.g[G.id] || 0; s.g[G.id] = Math.min(5, was + 1); G.lapK = s.g[G.id];
+    if (was === 4) { G.lapFull = 1; this.lit = { w, g: G.id }; }
     if (WORLDS[w].games.every(g => (s.g[g] || 0) >= 5)) s.due = 1;
     Store.save();
   },
-  /* the game's tray: the lap's stars so far, in the lap's colour */
+  /* the game's tray: this lap's real stars (0-5), in the lap's colour */
   tray(G, tray) {
-    const w = G.world; if (!this.on(w) || G.key || G.test) return;
+    const w = G.world; if (!this.on(w) || G.key || G.test || G.teach) return;
     const s = this.st(w), n = s.due ? 5 : (s.g[G.id] || 0);
-    G.trayBase = Math.min(4, n); tray.dataset.lap = Math.min(4, s.n);
-    $$('i', tray).forEach((e, i) => e.classList.toggle('on', i < G.trayBase));
+    G.trayBase = n; G.lapK = 0; tray.dataset.lap = Math.min(4, s.n);
+    $$('i', tray).forEach((e, i) => e.classList.toggle('on', i < n));
     this.css();
   },
-  css() { if ($('#lapcss')) return; const c = el('style', '', document.head); c.id = 'lapcss'; c.textContent = '#tray[data-lap="2"] i.on{filter:grayscale(1) brightness(1.35)}#tray[data-lap="3"] i.on{filter:saturate(1.6) brightness(1.1)}#tray[data-lap="4"] i.on{animation:laprb 2.4s linear infinite}@keyframes laprb{to{filter:hue-rotate(360deg)}}.lapb{position:absolute;right:12px;top:-4px;display:flex;flex-direction:row-reverse;align-items:flex-end;gap:2px;pointer-events:none}.lapb .rk{position:relative}.lapb .rk b{position:absolute;right:-12px;top:-6px;font:900 16px/1 system-ui,sans-serif;color:#fff;background:#FF6B5B;border-radius:10px;padding:2px 5px;box-shadow:0 0 0 2px #2B2118}'; },
-  /* what the island has earned beyond its flag, drawn by the flag on the map */
-  icons(w) { const s = this.st(w), o = []; if (s.got >= 1) o.push('crown'); if (s.got >= 2) o.push('rocket'); return o; },
-  /* the map: crown / rocket (xN) by every flag, and a sparkle - "another lap to win" */
+  /* the end of a session: 2+ wrong answers on an island without a lap -> the hand points to a lap once (NG1 1) */
+  end(G) {
+    if (G.key || G.test || G.teach) return;
+    const wrong = (G.ev || []).filter(b => !b).length;
+    Store.s.lapHelp = !this.on(G.world) && wrong >= 2 ? 1 : 0; Store.save();
+  },
+  /* the hand's island after a hard session: in this sea, the lap with the fewest stars (the latest flag first) */
+  pick(M) {
+    if (!Store.s.lapHelp) return null;
+    const fl = Store.s.flags || [], ids = M.ids().filter(o => this.on(o) && M.isl[o]);
+    if (!ids.length) return null;
+    Store.s.lapHelp = 0; Store.save();
+    ids.sort((a, b) => this.total(a) - this.total(b) || fl.indexOf(b) - fl.indexOf(a));
+    return ids[0];
+  },
+  /* the island inviting another lap: in this sea the latest flag whose lap is not touched yet - one sparkle, not six */
+  target(M) {
+    const fl = Store.s.flags || [];
+    const ids = M.ids().filter(o => this.on(o) && !this.st(o).due && !Object.values(this.st(o).g).some(v => v > 0));
+    ids.sort((a, b) => fl.indexOf(b) - fl.indexOf(a));
+    return ids[0] || null;
+  },
+  css() { if ($('#lapcss')) return; const c = el('style', '', document.head); c.id = 'lapcss'; c.textContent = '#tray[data-lap="2"] i.on{filter:grayscale(1) brightness(1.35)}#tray[data-lap="3"] i.on{filter:saturate(1.6) brightness(1.1)}#tray[data-lap="4"] i.on{animation:laprb 2.4s linear infinite}@keyframes laprb{to{filter:hue-rotate(360deg)}}.lapb{position:absolute;right:12px;top:-4px;display:flex;flex-direction:row-reverse;align-items:flex-end;gap:2px;pointer-events:none}.lapb .rk{position:relative}.lapb .rk b{position:absolute;right:-12px;top:-6px;font:900 16px/1 system-ui,sans-serif;color:#fff;background:#FF6B5B;border-radius:10px;padding:2px 5px;box-shadow:0 0 0 2px #2B2118}#map:has(.lapnext) .bigstars{opacity:.2}.gstars.laprow{background:rgba(255,255,255,.92);border-radius:14px;box-shadow:0 0 0 2px rgba(43,33,24,.3);padding:2px 6px}'; },
+  /* the map: crown / rocket (xN) by every flag, a sparkle on the island inviting a lap */
   draw(M) {
     this.css();
+    const tg = this.target(M);
     Object.keys(M.isl || {}).forEach(id => {
       const I = M.isl[id]; if (!I || !I.flag || !WORLDS[id] || !this.on(id)) { const old = I && I.flag && I.flag.querySelector('.lapb'); if (old) old.remove(); return; }
       let b = I.flag.querySelector('.lapb'); if (!b) b = el('div', 'lapb', I.flag);
-      const s = this.st(id), key = s.got + ':' + s.n; if (b.dataset.k === key) return; b.dataset.k = key; b.innerHTML = '';
+      const s = this.st(id), key = s.got + ':' + s.n + ':' + (id === tg ? 1 : 0); if (b.dataset.k === key) return; b.dataset.k = key; b.innerHTML = '';
       if (s.got >= 1) { const c = el('span', 'cr', b); c.innerHTML = LAPSVG.crown; Object.assign(c.style, { width: '34px', height: '28px', display: 'block' }); }
       if (s.got >= 2) { const r = el('span', 'rk', b); r.innerHTML = LAPSVG.rocket; Object.assign(r.style, { width: '24px', height: '36px', display: 'block' }); if (s.got >= 3) el('b', '', r, { text: '×' + (s.got - 1) }); }
-      const sp = el('span', 'sp', b); sp.innerHTML = LAPSVG.spark; Object.assign(sp.style, { width: '20px', height: '20px', display: 'block', alignSelf: 'flex-start' });
-      Loops.run(sp, [{ transform: 'scale(.6) rotate(0)', opacity: 0.5 }, { transform: 'scale(1.15) rotate(45deg)', opacity: 1 }, { transform: 'scale(.6) rotate(90deg)', opacity: 0.5 }], { duration: 1600 });
+      if (id !== tg) return;
+      const sp = el('span', 'sp', b); sp.innerHTML = LAPSVG.spark; Object.assign(sp.style, { width: '22px', height: '22px', display: 'block', alignSelf: 'flex-start' });
+      Loops.run(sp, [{ transform: 'scale(.6) rotate(0)', opacity: 0.5 }, { transform: 'scale(1.2) rotate(45deg)', opacity: 1 }, { transform: 'scale(.6) rotate(90deg)', opacity: 0.5 }], { duration: 1600 });
     });
+    this.chest(M);
   },
-  /* the island panel: this lap's stars per game (silver / gold / rainbow) */
+  /* the chest (top right) never covers a flag, a crown or a host: then it goes top left (NG1 2) */
+  chest(M) {
+    const c = $('#gemchest'); if (!c || Screens.cur !== 'map') return;
+    const sz = innerWidth < 1100 ? '92px' : '104px'; c.style.width = c.style.height = sz;
+    const R = () => { c.style.left = ''; c.style.right = 'calc(14px + var(--sr))'; }, L = () => { c.style.right = 'auto'; c.style.left = 'calc(14px + var(--sl))'; };
+    const hit = () => { const r = c.getBoundingClientRect(); return Object.values(M.isl || {}).some(I => I && [I.flag, I.flag && I.flag.querySelector('.lapb'), I.hero].some(e => { if (!e || !e.isConnected) return false; const q = e.getBoundingClientRect(); return q.width > 0 && getComputedStyle(e).display !== 'none' && q.left < r.right && q.right > r.left && q.top < r.bottom && q.bottom > r.top; })); };
+    R(); if (hit()) { L(); if (hit()) R(); }
+  },
+  /* the island panel: this lap's stars per game (silver / gold / rainbow) on a light strip; the game just filled glows */
   row(w, g, row) {
     if (!this.on(w)) return;
-    const s = this.st(w), n = s.due ? 5 : (s.g[g] || 0), col = LAPCOL(s.n);
-    row.dataset.n = n; row.dataset.lap = s.n;
+    const s = this.st(w), n = s.due ? 5 : (s.g[g] || 0);
+    row.dataset.n = n; row.dataset.lap = s.n; row.classList.add('laprow'); this.css();
     $$('img', row).forEach((e, k) => { e.style.filter = k < n ? (s.n === 2 ? 'grayscale(1) brightness(1.35) drop-shadow(0 2px 0 rgba(43,33,24,.35))' : s.n === 3 ? 'saturate(1.6) brightness(1.1) drop-shadow(0 2px 0 rgba(43,33,24,.35))' : 'hue-rotate(' + (k * 60) + 'deg) drop-shadow(0 2px 0 rgba(43,33,24,.35))') : 'grayscale(1) opacity(.35)'; });
-    void col;
+    if (this.lit && this.lit.w === w && this.lit.g === g) {
+      this.lit = null;
+      row.animate([{ boxShadow: '0 0 0 2px rgba(43,33,24,.3)' }, { boxShadow: '0 0 0 6px rgba(255,201,60,.95), 0 0 28px 10px rgba(255,214,90,.85)' }, { boxShadow: '0 0 0 2px rgba(43,33,24,.3)' }], { duration: T(1100) + 1, iterations: 3, delay: T(400) });
+    }
   },
   /* the island panel's flag box: the next lap's reward, a little dim */
   panel(w, fs, FS) {
@@ -1036,38 +1074,76 @@ const Laps = {
     d.innerHTML = LAPSVG[nx];
     Object.assign(d.style, { position: 'absolute', right: '-14px', top: '-18px', width: (nx === 'crown' ? 40 : 28) + 'px', height: (nx === 'crown' ? 32 : 42) + 'px', opacity: 0.9, filter: 'grayscale(.4)', pointerEvents: 'none' });
     Loops.run(d, [{ transform: 'translateY(0)' }, { transform: 'translateY(-6px)' }, { transform: 'translateY(0)' }], { duration: 1200 });
-    const t = el('div', '', fs, { text: '第' + CN[s.n] + '圈' });
+    const t = el('div', '', fs, { text: '第' + (CN[s.n] || s.n) + '圈' });
     Object.assign(t.style, { position: 'absolute', left: '50%', bottom: '-30px', transform: 'translateX(-50%)', whiteSpace: 'nowrap', font: '800 16px/1 system-ui,sans-serif', color: '#fff', background: LAPCOL(s.n), borderRadius: '10px', padding: '4px 8px', boxShadow: '0 0 0 2px #2B2118', textShadow: '0 1px 0 #2B2118', pointerEvents: 'none' });
   },
-  /* the map after a session: a completed lap - its reward appears by the flag, a celebration, a hero card (laps 2, 3) */
+  /* a hero card for a lap: lap 2 always; lap 3 only while plenty are left (10 after one for every island still without
+     a flag) - otherwise the rocket alone (NG1 6) */
+  card(got) {
+    if (got === 1) return true;
+    if (got !== 2) return false;
+    const left = CARDS.length - ((Store.s.gems && Store.s.gems.n) || 0), fl = Store.s.flags || [];
+    const unfl = Object.keys(WORLDS).filter(o => (WORLDS[o].games || []).length && !fl.includes(o)).length;
+    return left - unfl >= 10;
+  },
+  /* the map after a session: a completed lap - its reward appears by the flag, a celebration, maybe a hero card */
   async celebrate(M, live) {
+    for (const w of M.ids().filter(o => this.on(o) && this.st(o).cd && !this.st(o).due)) {      /* a card a reload interrupted */
+      if (!live()) return true;
+      this.st(w).cd = 0; Store.save(); await Gems.card('lap');
+    }
     for (const w of M.ids().filter(o => this.on(o) && this.st(o).due)) {
       if (!live()) return true;
-      const s = this.st(w); s.due = 0; s.got++; s.n++; s.g = {}; Store.save();
+      const s = this.st(w); s.due = 0; s.got++; s.n++; s.g = {}; s.cd = this.card(s.got) ? 1 : 0; Store.save();      /* the card is owed from now on */
       M.update(); this.draw(M);
       const I = M.isl[w], b = I && I.flag && I.flag.querySelector('.lapb'), it = b && (s.got >= 2 ? b.querySelector('.rk') : b.querySelector('.cr'));
       if (it) {
-        if (s.got === 2) it.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(8px) scale(1.1)', offset: 0.15 }, { transform: 'translateY(-160px) scale(1.2)', offset: 0.55 }, { transform: 'translateY(-160px) scale(1.2)', offset: 0.65 }, { transform: 'translateY(0)' }], { duration: T(2200) + 1, easing: 'ease-in-out' });
-        else it.animate([{ transform: 'scale(0) rotate(-30deg)' }, { transform: 'scale(1.6) rotate(8deg)', offset: 0.6 }, { transform: 'scale(1)' }], { duration: T(800) + 1, easing: EASE.pop });
-        const r = it.getBoundingClientRect(); Fx.burst(r.left + r.width / 2, r.top + r.height / 2, { screen: true, n: 18 });
+        /* the flight is drawn over the whole map (an island's own layer would pass behind its neighbours) */
+        const r = it.getBoundingClientRect(), dx = innerWidth / 2 - (r.left + r.width / 2), dy = innerHeight / 2 - (r.top + r.height / 2);
+        const fly = el('div', '', $('#fx')); fly.innerHTML = it.innerHTML;
+        Object.assign(fly.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', zIndex: 70, pointerEvents: 'none' });
+        it.style.visibility = 'hidden';
+        const kf = s.got === 1 ? [{ transform: 'translate(' + dx + 'px,' + dy + 'px) scale(0)' }, { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(4) rotate(-8deg)', offset: 0.3 }, { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(4) rotate(8deg)', offset: 0.5 }, { transform: 'translate(0,-30px) scale(1.5)', offset: 0.85 }, { transform: 'translate(0,0) scale(1)' }]      /* the crown flies onto the host's head */
+          : s.got === 2 ? [{ transform: 'translateY(0)' }, { transform: 'translateY(8px) scale(1.1)', offset: 0.15 }, { transform: 'translateY(-200px) scale(1.4)', offset: 0.55 }, { transform: 'translateY(-200px) scale(1.4)', offset: 0.65 }, { transform: 'translateY(0)' }]
+          : [{ transform: 'scale(0) rotate(-30deg)' }, { transform: 'scale(1.6) rotate(8deg)', offset: 0.6 }, { transform: 'scale(1)' }];
+        const an = fly.animate(kf, { duration: T(s.got <= 2 ? 2200 : 800) + 1, easing: s.got <= 2 ? 'ease-in-out' : EASE.pop });
+        const done = () => { if (!fly.isConnected) return; fly.remove(); it.style.visibility = ''; const q = it.getBoundingClientRect(); Fx.burst(q.left + q.width / 2, q.top + q.height / 2, { screen: true, n: 22 }); };
+        an.onfinish = done; setTimeout(done, T(s.got <= 2 ? 2400 : 1000) + 50);
       }
       Sfx.fanfare(); Fx.confetti(40);
-      Voice.say(s.got === 1 ? '太棒啦！' : s.got === 2 ? '你真厉害！' : '好样的！', { tag: 'unlock' });      /* recordings to come: 得到皇冠啦！ / 火箭起飞啦！ */
-      await new Promise(r => setTimeout(r, T(s.got === 2 ? 2400 : 1600)));
-      if (s.got <= 2 && live()) await Gems.card('lap');                /* laps 2 and 3 open a hero card, like a flag */
+      if (s.got <= 2) { setTimeout(() => { Sfx.fanfare(); Fx.confetti(40); }, T(1100)); }      /* a longer fanfare for the crown and the rocket */
+      Voice.say(s.got === 1 ? '得到皇冠啦！' : s.got === 2 ? '火箭起飞啦！' : '火箭又飞啦！', { tag: 'unlock' });
+      await new Promise(r => setTimeout(r, T(s.got <= 2 ? 2600 : 1600)));
+      if (s.cd && live()) { s.cd = 0; Store.save(); await Gems.card('lap'); }
     }
-    return false;
+    return this.invite(M, live);
   },
-  /* the parent panel: per island, the lap and what it has earned */
+  /* the first time an island is on lap 2: "再玩一次吧！" and its sparkle grows (once per island) */
+  async invite(M, live) {
+    const w = this.target(M); if (!w || !live()) return !live();
+    const s = this.st(w); if (s.iv || s.n !== 2) return false;
+    s.iv = 1; Store.save();
+    const I = M.isl[w], sp = I && I.flag && I.flag.querySelector('.lapb .sp');
+    Voice.say('再玩一次吧！', { tag: 'map' });
+    if (sp) {
+      sp.animate([{ transform: 'scale(1)' }, { transform: 'scale(2.6) rotate(45deg)' }, { transform: 'scale(1)' }], { duration: T(900) + 1, iterations: 3, easing: 'ease-in-out', composite: 'add' });
+      const q = sp.getBoundingClientRect(); Fx.burst(q.left + q.width / 2, q.top + q.height / 2, { screen: true, n: 14 });
+    }
+    await new Promise(r => setTimeout(r, T(1600)));
+    return !live();
+  },
+  /* the parent panel: per island, the lap, this lap's stars per game (by name) and what it has earned */
   parent(sh) {
     const ids = Object.keys(WORLDS).filter(w => this.on(w)); if (!ids.length) return;
     el('h3', '', sh, { text: '再玩一圈（插旗以后：第二圈皇冠，第三圈火箭，以后火箭 ×2、×3……）' });
     const t = el('table', '', sh); t.innerHTML = '<tr><th>岛</th><th>正在玩</th><th>这一圈的星</th><th>已得</th></tr>';
-    ids.forEach(w => { const s = this.st(w), tr = el('tr', '', t); el('td', '', tr, { text: WORLDS[w].name }); el('td', '', tr, { text: '第' + s.n + '圈' }); el('td', '', tr, { text: WORLDS[w].games.map(g => g + ' ' + (s.due ? 5 : (s.g[g] || 0)) + '/5').join('  ') }); el('td', '', tr, { text: s.got === 0 ? '旗子' : s.got === 1 ? '旗子、皇冠' : '旗子、皇冠、火箭' + (s.got >= 3 ? ' ×' + (s.got - 1) : '') }); });
+    ids.forEach(w => { const s = this.st(w), tr = el('tr', '', t); el('td', '', tr, { text: WORLDS[w].name }); el('td', '', tr, { text: '第' + s.n + '圈' }); el('td', '', tr, { text: WORLDS[w].games.map(g => this.name(g) + ' ' + (s.due ? 5 : (s.g[g] || 0)) + '/5').join('、') }); el('td', '', tr, { text: s.got === 0 ? '旗子' : s.got === 1 ? '旗子、皇冠' : '旗子、皇冠、火箭' + (s.got >= 3 ? ' ×' + (s.got - 1) : '') }); });
   },
 };
 /* the map came before this file (it loads a second after the entry tap): its chest, the day's greeting, a card the move
    opened - now that MapV2 and the cards are in (PT1 P8, PT2 Q1) */
 if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G) { MapView.update(); MapV2.hello(); setTimeout(() => Gems.pending(), 600); }
+/* a lap completed before the app was closed: its reward is shown now, not a session later (NG1 5) */
+if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G && (MapView.ids().some(o => Laps.on(o) && Laps.st(o).due) || ((t) => t && !Laps.st(t).iv && Laps.st(t).n === 2)(Laps.target(MapView)))) MapView.after(T(300));
 
 W3.loaded = true;          /* the sky's games and v2's are both in */

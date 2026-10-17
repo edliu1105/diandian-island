@@ -607,7 +607,8 @@ const Store = {
     d.settings.explain = o.settings && ['off', 'auto', 'step'].includes(o.settings.explain) ? o.settings.explain : 'auto';   /* the explanation after a wrong answer (parent) */
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
     d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.strict2 = o.strict2 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 || o.mapSet === 3 ? o.mapSet : 1;
-    if (o.laps && typeof o.laps === 'object') { d.laps = {}; for (const w in o.laps) { const x = o.laps[w]; if (!WORLDS[w] || !x || typeof x !== 'object') continue; const t = d.laps[w] = { n: Math.round(num(x.n, 2, 2, 999)), got: Math.round(num(x.got, 0, 0, 999)), due: x.due ? 1 : 0, g: {} }; for (const g of WORLDS[w].games || []) if (x.g && typeof x.g[g] === 'number') t.g[g] = Math.round(num(x.g[g], 0, 0, 5)); } }   /* laps after the flag (New Game Plus) */
+    if (o.laps && typeof o.laps === 'object') { d.laps = {}; for (const w in o.laps) { const x = o.laps[w]; if (!WORLDS[w] || !x || typeof x !== 'object') continue; const t = d.laps[w] = { n: Math.round(num(x.n, 2, 2, 999)), got: Math.round(num(x.got, 0, 0, 999)), due: x.due ? 1 : 0, iv: x.iv ? 1 : 0, cd: x.cd ? 1 : 0, g: {} }; for (const g of WORLDS[w].games || []) if (x.g && typeof x.g[g] === 'number') t.g[g] = Math.round(num(x.g[g], 0, 0, 5)); } }   /* laps after the flag (New Game Plus) */
+    d.lapHelp = o.lapHelp ? 1 : 0;
     d.w3 = o.w3 === true; d.w3seen = o.w3seen === true; d.gate3 = o.gate3 === true || d.w3seen; d.fin3 = o.fin3 === 'due' || o.fin3 === 'seen' ? o.fin3 : '';
     d.w4 = o.w4 === true; d.w4seen = o.w4seen === true; d.gate4 = o.gate4 === true || d.w4seen; d.fin4 = o.fin4 === 'due' || o.fin4 === 'seen' ? o.fin4 : ''; if (o.mapSet === 4) d.mapSet = 4;
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
@@ -2434,7 +2435,7 @@ const Session = {
     if (typeof Laps !== 'undefined' && Laps.star) Laps.star(G);      /* a flagged island's lap (New Game Plus) */
     Store.save();
     const slots = $$('#tray i');
-    const slot = slots[Math.min((G.trayBase || 0) + G.stars, slots.length) - 1];
+    const slot = slots[Math.min(G.lapK || ((G.trayBase || 0) + G.stars), slots.length) - 1];      /* a lap: the lap's own count */
     if (!slot) return;
     const sr = slot.getBoundingClientRect();
     const star = img('assets/props/ui_star.png', '', $('#fx'));
@@ -2447,6 +2448,7 @@ const Session = {
     slot.classList.add('on');
     slot.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: T(260) + 1, easing: EASE.pop });
     if (!G.wasDone && !G.full && W2.gameDone(G.world, G.id)) { G.full = true; await this.fullTray(G); }
+    if (G.lapFull && !G.full) { G.lapFull = 0; G.full = true; await this.fullTray(G); }      /* a game's 5 lap stars: the same moment (NG1 1) */
   },
   /* all five stars of this game: the tray glows star by star, a fanfare and "集满啦！" (then the session ends) */
   async fullTray(G) {
@@ -2557,6 +2559,7 @@ const Session = {
     if (G.key || G.test) { if (G.key) Mem.today().keyEnd++; else MonthTest.done(G); this.teardown(G); Screens.show('map'); Voice.enter('map'); MapView.update(); if (G.key) Gems.grant('key'); else Parent.toast('月测做完啦'); return; }
     Mastery.sessionEnd(G);
     const wid = G.world, stars = G.stars, lvUp = !!G.levelUp;
+    if (typeof Laps !== 'undefined' && Laps.end) Laps.end(G);      /* a hard session: the hand may point to a lap */
     let newGame = null;
     if (!G.teach) (G.ws.gdone || (G.ws.gdone = {}))[G.id] = true;      /* played through (a record only: a game is done with 5 stars) */
     if (G.nx && !G.nxWas && W2.gameOpen(wid, G.nx)) newGame = G.nx;      /* opened by this session (its 5th star) */
@@ -3070,7 +3073,7 @@ const MapView = {
   /* a show that is due (the gate opening / the lantern island + finale), otherwise the hand shows where to go */
   after(ms) {
     const live = this.liveTok();
-    setTimeout(async () => { if (!live() || await this.specials(live) || !live()) return; const r = this.recommend(); if (r) this.pointAt(r); }, ms);
+    setTimeout(async () => { if (!live() || await this.specials(live) || !live()) return; const r = (typeof Laps !== 'undefined' && Laps.pick && Laps.pick(this)) || this.recommend(); if (r) this.pointAt(r); }, ms);
   },
   liveTok() { const tok = this.celebTok = (this.celebTok || 0) + 1; return () => this.celebTok === tok && Screens.cur === 'map' && !Session.G; },
   async specials(live) {
@@ -3247,6 +3250,7 @@ const MapView = {
     if (!live()) return;
     this.update();
     await this.specials(live);
+    if (live() && typeof Laps !== 'undefined' && Laps.pick) { const h = Laps.pick(this); if (h) this.pointAt(h); }      /* a hard session: the hand points to a lap once (NG1 1) */
   },
 };
 
