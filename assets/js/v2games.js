@@ -760,6 +760,7 @@ Object.assign(MapV2, {
   },
   update() {
     this.ensure();
+    if (typeof Laps !== 'undefined' && MapView.isl) Laps.draw(MapView);      /* crowns, rockets and sparkles by the flags */
     if (Screens.cur === 'map' && !Session.G) setTimeout(() => Gems.pending(), 400);       /* a card the move to cards opened: shown once */
     const c = $('#gemchest'), on = Gems.avail();
     if (on && !c._pulse) c._pulse = c.animate([{ transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(255,201,60,0)' }, { transform: 'scale(1.08)', boxShadow: '0 0 0 12px rgba(255,201,60,.85)' }, { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(255,201,60,0)' }], { duration: 1400, iterations: Infinity });
@@ -848,6 +849,7 @@ const ParentV2 = {
       el('div', 'mut', sh, { text: '一步一步：每说完一句就停下，按绿色的大按钮“下一步”再往下讲（按钮会自己找一个不挡住题目的地方），方便您陪孩子一起看；按住下面的“按住跳过”1 秒直接出下一题。关：答错后不讲解，直接出下一题。' }); }
   },
   sections(sh) {
+    if (typeof Laps !== 'undefined') Laps.parent(sh);
     const S = Store.s, cs = Object.keys(S.mem), cnt = s => cs.filter(c => Mem.state(c) === s).length;
     const [r7, n7] = Mem.keep(7, 13), [r30, n30] = Mem.keep(30, 59), pct = (r, n) => n ? Math.round(r * 100) + '%（' + Math.round(r * n) + '/' + n + '）' : '样本不足';
     if (Supply.low()) el('div', 'mut', sh, { html: '<b style="color:#E8414B">● 新内容快用完了</b>：请点"复制进度报告"，发给 Claude（Opus 5.5），让它做下一个世界。' });
@@ -970,6 +972,100 @@ Object.assign(Step, {
   next(st) { const r = st.stepRes; st.stepRes = null; const b = document.getElementById('stepbox'); if (b) b.style.opacity = '0.45'; Sfx.touch(); if (r) r(); },
   skip(st) { st.stepMode = false; this.hide(); const r = st.stepRes; st.stepRes = null; if (r) r(); Session.fastForward(); },
 });
+/* ---------------------------------------------------------------- New Game Plus (client 2026-10-17): an island whose flag is
+   planted plays laps. Lap 2: every game a fresh row of 5 silver stars (the normal star rule); all 4 games full -> a crown
+   by the flag (and a hero card). Lap 3: gold stars -> a rocket that takes off and lands by the island (and a card). Lap 4
+   and later: rainbow stars -> the rocket counts x2, x3 ... Nothing locks; difficulty and review stay as they are.
+   Store.s.laps[w] = { n: the lap being played (2 ...), got: rewards so far (1 crown, 2 rocket, 3+ rocket xN), g: stars of
+   this lap per game (0-5), due: a lap completed, its reward still to show }. A save without laps: every flagged island is
+   on lap 2 with no stars (nothing to migrate); its stars are never touched. */
+const LAPCOL = n => (n === 2 ? '#C9D3E0' : n === 3 ? '#FFC93C' : '#FF7BC8');
+const LAPSVG = {
+  crown: '<svg viewBox="0 0 60 48" width="100%" height="100%"><path d="M6 40L4 12L18 24L30 6L42 24L56 12L54 40Z" fill="#FFC93C" stroke="#2B2118" stroke-width="3.5" stroke-linejoin="round"/><rect x="6" y="38" width="48" height="8" rx="3" fill="#F2A93B" stroke="#2B2118" stroke-width="3.5"/><circle cx="30" cy="27" r="4.5" fill="#FF6B5B" stroke="#2B2118" stroke-width="2.5"/><circle cx="16" cy="31" r="3.5" fill="#4FB3FF" stroke="#2B2118" stroke-width="2"/><circle cx="44" cy="31" r="3.5" fill="#5CC46E" stroke="#2B2118" stroke-width="2"/></svg>',
+  rocket: '<svg viewBox="0 0 48 72" width="100%" height="100%"><path d="M24 4C36 14 38 32 34 50H14C10 32 12 14 24 4Z" fill="#F4F7FB" stroke="#2B2118" stroke-width="3.5" stroke-linejoin="round"/><circle cx="24" cy="26" r="6" fill="#4FB3FF" stroke="#2B2118" stroke-width="3"/><path d="M14 38L4 54L14 50ZM34 38L44 54L34 50Z" fill="#FF6B5B" stroke="#2B2118" stroke-width="3" stroke-linejoin="round"/><path d="M18 52L24 68L30 52Z" fill="#FFC93C" stroke="#2B2118" stroke-width="2.5" stroke-linejoin="round"/></svg>',
+  spark: '<svg viewBox="0 0 30 30" width="100%" height="100%"><path d="M15 1L18 12L29 15L18 18L15 29L12 18L1 15L12 12Z" fill="#FFF3A8" stroke="#2B2118" stroke-width="2" stroke-linejoin="round"/></svg>',
+};
+const Laps = {
+  st(w) { const L = Store.s.laps || (Store.s.laps = {}); return L[w] || (L[w] = { n: 2, got: 0, due: 0, g: {} }); },
+  /* a lap is played on an island whose flag is planted (the map planted it) */
+  on(w) { return !!(WORLDS[w] && (WORLDS[w].games || []).length && (Store.s.flags || []).includes(w)); },
+  /* a star of this session also counts for the island's lap */
+  star(G) {
+    const w = G.world; if (!this.on(w) || G.key || G.test || G.teach) return;
+    const s = this.st(w); if (s.due) return;                       /* this lap is complete: its reward comes on the map */
+    s.g[G.id] = Math.min(5, (s.g[G.id] || 0) + 1);
+    if (WORLDS[w].games.every(g => (s.g[g] || 0) >= 5)) s.due = 1;
+    Store.save();
+  },
+  /* the game's tray: the lap's stars so far, in the lap's colour */
+  tray(G, tray) {
+    const w = G.world; if (!this.on(w) || G.key || G.test) return;
+    const s = this.st(w), n = s.due ? 5 : (s.g[G.id] || 0);
+    G.trayBase = Math.min(4, n); tray.dataset.lap = Math.min(4, s.n);
+    $$('i', tray).forEach((e, i) => e.classList.toggle('on', i < G.trayBase));
+    this.css();
+  },
+  css() { if ($('#lapcss')) return; const c = el('style', '', document.head); c.id = 'lapcss'; c.textContent = '#tray[data-lap="2"] i.on{filter:grayscale(1) brightness(1.35)}#tray[data-lap="3"] i.on{filter:saturate(1.6) brightness(1.1)}#tray[data-lap="4"] i.on{animation:laprb 2.4s linear infinite}@keyframes laprb{to{filter:hue-rotate(360deg)}}.lapb{position:absolute;right:12px;top:-4px;display:flex;flex-direction:row-reverse;align-items:flex-end;gap:2px;pointer-events:none}.lapb .rk{position:relative}.lapb .rk b{position:absolute;right:-12px;top:-6px;font:900 16px/1 system-ui,sans-serif;color:#fff;background:#FF6B5B;border-radius:10px;padding:2px 5px;box-shadow:0 0 0 2px #2B2118}'; },
+  /* what the island has earned beyond its flag, drawn by the flag on the map */
+  icons(w) { const s = this.st(w), o = []; if (s.got >= 1) o.push('crown'); if (s.got >= 2) o.push('rocket'); return o; },
+  /* the map: crown / rocket (xN) by every flag, and a sparkle - "another lap to win" */
+  draw(M) {
+    this.css();
+    Object.keys(M.isl || {}).forEach(id => {
+      const I = M.isl[id]; if (!I || !I.flag || !WORLDS[id] || !this.on(id)) { const old = I && I.flag && I.flag.querySelector('.lapb'); if (old) old.remove(); return; }
+      let b = I.flag.querySelector('.lapb'); if (!b) b = el('div', 'lapb', I.flag);
+      const s = this.st(id), key = s.got + ':' + s.n; if (b.dataset.k === key) return; b.dataset.k = key; b.innerHTML = '';
+      if (s.got >= 1) { const c = el('span', 'cr', b); c.innerHTML = LAPSVG.crown; Object.assign(c.style, { width: '34px', height: '28px', display: 'block' }); }
+      if (s.got >= 2) { const r = el('span', 'rk', b); r.innerHTML = LAPSVG.rocket; Object.assign(r.style, { width: '24px', height: '36px', display: 'block' }); if (s.got >= 3) el('b', '', r, { text: '×' + (s.got - 1) }); }
+      const sp = el('span', 'sp', b); sp.innerHTML = LAPSVG.spark; Object.assign(sp.style, { width: '20px', height: '20px', display: 'block', alignSelf: 'flex-start' });
+      Loops.run(sp, [{ transform: 'scale(.6) rotate(0)', opacity: 0.5 }, { transform: 'scale(1.15) rotate(45deg)', opacity: 1 }, { transform: 'scale(.6) rotate(90deg)', opacity: 0.5 }], { duration: 1600 });
+    });
+  },
+  /* the island panel: this lap's stars per game (silver / gold / rainbow) */
+  row(w, g, row) {
+    if (!this.on(w)) return;
+    const s = this.st(w), n = s.due ? 5 : (s.g[g] || 0), col = LAPCOL(s.n);
+    row.dataset.n = n; row.dataset.lap = s.n;
+    $$('img', row).forEach((e, k) => { e.style.filter = k < n ? (s.n === 2 ? 'grayscale(1) brightness(1.35) drop-shadow(0 2px 0 rgba(43,33,24,.35))' : s.n === 3 ? 'saturate(1.6) brightness(1.1) drop-shadow(0 2px 0 rgba(43,33,24,.35))' : 'hue-rotate(' + (k * 60) + 'deg) drop-shadow(0 2px 0 rgba(43,33,24,.35))') : 'grayscale(1) opacity(.35)'; });
+    void col;
+  },
+  /* the island panel's flag box: the next lap's reward, a little dim */
+  panel(w, fs, FS) {
+    if (!this.on(w)) return;
+    const s = this.st(w), nx = s.got >= 1 ? 'rocket' : 'crown', d = el('div', 'lapnext', fs);
+    d.innerHTML = LAPSVG[nx];
+    Object.assign(d.style, { position: 'absolute', right: '-14px', top: '-18px', width: (nx === 'crown' ? 40 : 28) + 'px', height: (nx === 'crown' ? 32 : 42) + 'px', opacity: 0.9, filter: 'grayscale(.4)', pointerEvents: 'none' });
+    Loops.run(d, [{ transform: 'translateY(0)' }, { transform: 'translateY(-6px)' }, { transform: 'translateY(0)' }], { duration: 1200 });
+    const t = el('div', '', fs, { text: '第' + CN[s.n] + '圈' });
+    Object.assign(t.style, { position: 'absolute', left: '50%', bottom: '-30px', transform: 'translateX(-50%)', whiteSpace: 'nowrap', font: '800 16px/1 system-ui,sans-serif', color: '#fff', background: LAPCOL(s.n), borderRadius: '10px', padding: '4px 8px', boxShadow: '0 0 0 2px #2B2118', textShadow: '0 1px 0 #2B2118', pointerEvents: 'none' });
+  },
+  /* the map after a session: a completed lap - its reward appears by the flag, a celebration, a hero card (laps 2, 3) */
+  async celebrate(M, live) {
+    for (const w of M.ids().filter(o => this.on(o) && this.st(o).due)) {
+      if (!live()) return true;
+      const s = this.st(w); s.due = 0; s.got++; s.n++; s.g = {}; Store.save();
+      M.update(); this.draw(M);
+      const I = M.isl[w], b = I && I.flag && I.flag.querySelector('.lapb'), it = b && (s.got >= 2 ? b.querySelector('.rk') : b.querySelector('.cr'));
+      if (it) {
+        if (s.got === 2) it.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(8px) scale(1.1)', offset: 0.15 }, { transform: 'translateY(-160px) scale(1.2)', offset: 0.55 }, { transform: 'translateY(-160px) scale(1.2)', offset: 0.65 }, { transform: 'translateY(0)' }], { duration: T(2200) + 1, easing: 'ease-in-out' });
+        else it.animate([{ transform: 'scale(0) rotate(-30deg)' }, { transform: 'scale(1.6) rotate(8deg)', offset: 0.6 }, { transform: 'scale(1)' }], { duration: T(800) + 1, easing: EASE.pop });
+        const r = it.getBoundingClientRect(); Fx.burst(r.left + r.width / 2, r.top + r.height / 2, { screen: true, n: 18 });
+      }
+      Sfx.fanfare(); Fx.confetti(40);
+      Voice.say(s.got === 1 ? '太棒啦！' : s.got === 2 ? '你真厉害！' : '好样的！', { tag: 'unlock' });      /* recordings to come: 得到皇冠啦！ / 火箭起飞啦！ */
+      await new Promise(r => setTimeout(r, T(s.got === 2 ? 2400 : 1600)));
+      if (s.got <= 2 && live()) await Gems.card('lap');                /* laps 2 and 3 open a hero card, like a flag */
+    }
+    return false;
+  },
+  /* the parent panel: per island, the lap and what it has earned */
+  parent(sh) {
+    const ids = Object.keys(WORLDS).filter(w => this.on(w)); if (!ids.length) return;
+    el('h3', '', sh, { text: '再玩一圈（插旗以后：第二圈皇冠，第三圈火箭，以后火箭 ×2、×3……）' });
+    const t = el('table', '', sh); t.innerHTML = '<tr><th>岛</th><th>正在玩</th><th>这一圈的星</th><th>已得</th></tr>';
+    ids.forEach(w => { const s = this.st(w), tr = el('tr', '', t); el('td', '', tr, { text: WORLDS[w].name }); el('td', '', tr, { text: '第' + s.n + '圈' }); el('td', '', tr, { text: WORLDS[w].games.map(g => g + ' ' + (s.due ? 5 : (s.g[g] || 0)) + '/5').join('  ') }); el('td', '', tr, { text: s.got === 0 ? '旗子' : s.got === 1 ? '旗子、皇冠' : '旗子、皇冠、火箭' + (s.got >= 3 ? ' ×' + (s.got - 1) : '') }); });
+  },
+};
 /* the map came before this file (it loads a second after the entry tap): its chest, the day's greeting, a card the move
    opened - now that MapV2 and the cards are in (PT1 P8, PT2 Q1) */
 if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G) { MapView.update(); MapV2.hello(); setTimeout(() => Gems.pending(), 600); }

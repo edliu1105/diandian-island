@@ -607,6 +607,7 @@ const Store = {
     d.settings.explain = o.settings && ['off', 'auto', 'step'].includes(o.settings.explain) ? o.settings.explain : 'auto';   /* the explanation after a wrong answer (parent) */
     d.finaleSeen = o.finaleSeen === true; d.finaleDue = o.finaleDue === true;
     d.w2 = o.w2 === true; d.w2all = o.w2all === true; d.w2seen = o.w2seen === true; d.seq1 = o.seq1 === true; d.star5 = o.star5 === true; d.strict2 = o.strict2 === true; d.flags = Array.isArray(o.flags) ? o.flags.filter(x => typeof x === 'string' && !!WORLDS[x]).slice(0, 40) : null; d.gateShown = o.gateShown === true || d.w2seen; d.mapSet = o.mapSet === 2 || o.mapSet === 3 ? o.mapSet : 1;
+    if (o.laps && typeof o.laps === 'object') { d.laps = {}; for (const w in o.laps) { const x = o.laps[w]; if (!WORLDS[w] || !x || typeof x !== 'object') continue; const t = d.laps[w] = { n: Math.round(num(x.n, 2, 2, 999)), got: Math.round(num(x.got, 0, 0, 999)), due: x.due ? 1 : 0, g: {} }; for (const g of WORLDS[w].games || []) if (x.g && typeof x.g[g] === 'number') t.g[g] = Math.round(num(x.g[g], 0, 0, 5)); } }   /* laps after the flag (New Game Plus) */
     d.w3 = o.w3 === true; d.w3seen = o.w3seen === true; d.gate3 = o.gate3 === true || d.w3seen; d.fin3 = o.fin3 === 'due' || o.fin3 === 'seen' ? o.fin3 : '';
     d.w4 = o.w4 === true; d.w4seen = o.w4seen === true; d.gate4 = o.gate4 === true || d.w4seen; d.fin4 = o.fin4 === 'due' || o.fin4 === 'seen' ? o.fin4 : ''; if (o.mapSet === 4) d.mapSet = 4;
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
@@ -2193,6 +2194,7 @@ const Session = {
     const tray = $('#tray'); tray.innerHTML = '';
     G.trayBase = W2.gameDone(G.world, G.id) ? 0 : Math.min(4, W2.stars(G.world, G.id));      /* 5 in the tray = the next game */
     for (let i = 0; i < 5; i++) el('i', i < G.trayBase ? 'on' : '', tray);
+    tray.removeAttribute('data-lap'); if (typeof Laps !== 'undefined' && Laps.tray) Laps.tray(G, tray);      /* a lap: its own stars, its colour */
     if (G.teach) Teach.badge(G);                            /* the tray was emptied: the 教 badge again (PT1 P2) */
     /* rotation: drop any gesture in flight, re-lay the scene, then the question (task card, cards, done button) */
     Stage.onRelayout = () => {
@@ -2429,6 +2431,7 @@ const Session = {
     if (G.teach) return;                                /* 教一教: no star (nothing taken away either) */
     G.stars++; G.ws.stars++;
     { const gs = G.ws.gstars || (G.ws.gstars = {}); gs[G.id] = (gs[G.id] || 0) + 1; }
+    if (typeof Laps !== 'undefined' && Laps.star) Laps.star(G);      /* a flagged island's lap (New Game Plus) */
     Store.save();
     const slots = $$('#tray i');
     const slot = slots[Math.min((G.trayBase || 0) + G.stars, slots.length) - 1];
@@ -3030,6 +3033,7 @@ const MapView = {
         Object.assign(row.style, { position: 'absolute', left: (x - M / 2) + 'px', top: (y + M / 2 + 8) + 'px', width: M + 'px', display: 'flex', justifyContent: 'center', gap: '1px', pointerEvents: 'none' });
         for (let k = 0; k < 5; k++) { const s = img('assets/props/ui_star.png', '', row); Object.assign(s.style, { width: sz + 'px', height: sz + 'px', filter: k < n ? 'drop-shadow(0 2px 0 rgba(43,33,24,.35))' : 'grayscale(1) brightness(1.6) opacity(.55)' }); }
         row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(300) + 1, delay: T(80 * i + 200), fill: 'backwards' });
+        if (typeof Laps !== 'undefined' && Laps.row) Laps.row(id, g, row);
       }
       tapify(m, () => {
         if (locked) { m.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-10px)' }, { transform: 'translateX(10px)' }, { transform: 'translateX(0)' }], { duration: T(360) + 1 }); Voice.sayNow('先集满五颗星！', { tag: 'map' }); return; }
@@ -3042,6 +3046,7 @@ const MapView = {
     Object.assign(fp.style, { left: (FS * 0.28) + 'px', top: (FS * 0.5 - 30) + 'px', height: '64px', filter: has ? '' : 'grayscale(1) opacity(.45)' });
     fs.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: T(320) + 1, delay: T(80 * games.length), easing: EASE.pop, fill: 'backwards' });
     tapify(fs, () => { fs.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-8deg)' }, { transform: 'rotate(8deg)' }, { transform: 'rotate(0)' }], { duration: T(400) + 1 }); Voice.sayNow(has ? '旗子插好啦！' : '集满星星有旗子！', { tag: 'map' }); });
+    if (typeof Laps !== 'undefined' && Laps.panel) Laps.panel(id, fs, FS);      /* the next lap's reward */
   },
   recGame(id) {
     const W = WORLDS[id], ws = Store.w(id);
@@ -3075,6 +3080,7 @@ const MapView = {
       (Store.s.flags || (Store.s.flags = [])).push(id); Store.save();
       await this.plantFlag(id);
     }
+    if (typeof Laps !== 'undefined' && Laps.celebrate && await Laps.celebrate(this, live)) return true;      /* a lap completed: crown / rocket */
     for (const o of this.ids().filter(o => Store.w(o).justOpened)) {
       if (!live()) return true;                                  /* not shown now -> shown the next time this sea is seen */
       delete Store.w(o).justOpened; Store.save();
