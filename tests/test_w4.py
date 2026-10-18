@@ -240,7 +240,8 @@ def progress(log):
     from playwright.sync_api import sync_playwright
     from harness import serve, new_page, enter, answer_question, wait_next_question, wait_map
     with sync_playwright() as p, serve() as base:
-        br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True); enter(page)
+        # 积木城 (world 5) not live: no flight there on the first map visit of this save (tests/w5_flow.py tests it)
+        br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True, extra_init='window.__live5 = [];'); enter(page)
         page.evaluate("() => W3.load()")
         st = page.evaluate("() => ({ open: W4.open(), u: ORDER4.map(w => Store.w(w).unlocked) })")
         log.check(not st['open'] and not any(st['u']), 'fresh save: the stars closed %s' % st)

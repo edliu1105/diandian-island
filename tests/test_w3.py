@@ -59,7 +59,8 @@ def progress(log):
     from harness import serve, new_page, enter, answer_question, wait_next_question, wait_map
     with sync_playwright() as p, serve() as base:
         br = getattr(p, ENG).launch()
-        page = new_page(br, base, 1180, 820, fast=True); enter(page)
+        # 积木城 (world 5) not live: the second sea's gate leads straight up to the sky, as before it (tests/w5_flow.py: with it)
+        page = new_page(br, base, 1180, 820, fast=True, extra_init='window.__live5 = [];'); enter(page)
         st = page.evaluate("() => ({ open: W3.open(), u: ORDER3.map(w => Store.w(w).unlocked) })")
         log.check(not st['open'] and not any(st['u']), 'fresh save: the sky closed %s' % st)
         # world 1 and world 2 done, the lantern island seen: the gate in the evening sea becomes the way up

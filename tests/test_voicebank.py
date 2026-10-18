@@ -86,7 +86,7 @@ def main():
     from harness import serve, new_page, enter
     with sync_playwright() as p, serve() as base:
         br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True); enter(page)
-        ids = page.evaluate("() => Object.keys(WORLDS).flatMap(w => (WORLDS[w].games || []).map(g => [w, g])).filter(x => GAMES[x[1]])")
+        ids = page.evaluate("() => Object.keys(WORLDS).flatMap(w => (WORLDS[w].games || []).map(g => [w, g])).filter(x => GAMES[x[1]] && (typeof W5 === 'undefined' || W5.live(x[0])))")          # 积木城: only its live islands (an island being written records its lines before it goes live: tests/lines_w5.py)
         if os.environ.get('VB_WORLDS'): ids = [x for x in ids if x[0] in os.environ['VB_WORLDS'].split(',')]
         br.close()
     with Pool(jobs) as pool:

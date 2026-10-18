@@ -18,7 +18,7 @@ SETUP = """(fin2) => {
 
 
 def fresh(br, base, fast=True):
-    page = new_page(br, base, 1180, 820, sw='block', fast=fast)
+    page = new_page(br, base, 1180, 820, sw='block', fast=fast, extra_init='window.__live5 = [];')      # 积木城 not live: sea 2's gate leads to the sky (tests/w5_flow.py: with it)
     enter(page); page.wait_for_timeout(300)
     return page
 

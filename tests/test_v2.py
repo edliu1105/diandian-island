@@ -115,7 +115,7 @@ with sync_playwright() as p, serve() as base:
     r = page.evaluate("""() => { Store.reset(); const out = { avail: Gems.avail() }; Gems.start(); out.free = Store.s.gems.n; out.avail2 = Gems.avail();
       Gems.turn('flag'); out.flag = Store.s.gems.n; out.first = CARDS[0]; out.cards = CARDS.length; out.unique = new Set(CARDS).size; return out; }""")
     # hero cards (client 2026-10-11, like 字字岛): the key and a flag each open the next card of one fixed order
-    log.check(r == {'avail': True, 'free': 1, 'avail2': False, 'flag': 2, 'first': 'optimus', 'cards': 38, 'unique': 38}, 'D-06 the key once a day (nothing due -> at once) opens a hero card, a flag opens the next; 38 cards, Optimus first %s' % r)
+    log.check(r == {'avail': True, 'free': 1, 'avail2': False, 'flag': 2, 'first': 'optimus', 'cards': 51, 'unique': 51}, 'D-06 the key once a day (nothing due -> at once) opens a hero card, a flag opens the next; 51 cards (38 + 13 more of the client pictures, 积木城), Optimus first %s' % r)
     page.evaluate("() => { Store.s.key.day = -1; const d = DAY(); ['cmp10', 'on10', 'part10'].forEach(c => { const m = Mem.touch(c); m.b = 2; m.due = d; }); Store.s.w2all = true; ORDER.forEach(id => { Store.w(id).unlocked = true; }); Store.save(); }")
     page.evaluate("Gems.start()")
     page.wait_for_function("window.__q && ['act','ready','input'].includes(window.__q.phase)", timeout=30000)

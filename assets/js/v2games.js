@@ -682,7 +682,10 @@ function w3GameV2(rule, spec) { const g = defGame(Object.assign({}, W2Base, rule
 const CARDS = ['optimus', 'ultraman', 'ironman', 'chase', 'bumblebee', 'spiderman', 'wukong', 'zero', 'captain', 'catboy',
   'hulk', 'gourd1', 'kaiju1', 'thor', 'marshall', 'owlette', 'panther', 'gourd2', 'skye', 'miles', 'kaiju2', 'gekko', 'gourd3',
   'widow', 'rubble', 'bajie', 'hawkeye', 'gourd7', 'zuma', 'dragon_horse', 'pj_robot', 'rocky', 'shaseng', 'bluey', 'peppa',
-  'ryder', 'bingo', 'george'];
+  'ryder', 'bingo', 'george',
+  /* 积木城 (client 2026-10-17, via docs/W5-DESIGN.md §10.5): every other picture of the client's in assets/chars, appended so
+     no card already out changes */
+  'gourd4', 'tangseng', 'luna_girl', 'grandpa', 'bandit', 'gourd5', 'romeo', 'daddy_pig', 'gourd6', 'chilli', 'snake', 'mummy_pig', 'scorpion'];
 Object.assign(Gems, {
   card(src) {
     this.migrate();
@@ -774,7 +777,7 @@ Object.assign(MapV2, {
 const Supply = {
   low() {
     if (ORDER4.some(id => Store.w(id).unlocked)) return true;          /* the stars are the last installed world */
-    const d = DAY(), recent = (Store.s.flagDays || []).filter(x => x > d - 7).length, left = ORDER.concat(ORDER2, ORDER3, ORDER4).filter(id => !flagged(id)).length;
+    const d = DAY(), recent = (Store.s.flagDays || []).filter(x => x > d - 7).length, left = ALLW().filter(id => W5.live(id) && !flagged(id)).length;
     return recent > 0 && left / (recent / 7) < 14;
   },
 };
@@ -798,9 +801,9 @@ const Report = {
   text() {
     const S = Store.s, d = DAY(), cs = Object.keys(S.mem), by = s => cs.filter(c => Mem.state(c) === s).map(cardName).join('、') || '-';
     const [r7, n7] = Mem.keep(7, 13), [r30, n30] = Mem.keep(30, 59);
-    const where = ORDER.concat(ORDER2, ORDER3, ORDER4).filter(id => Store.w(id).unlocked).slice(-1)[0];
+    const where = ALLW().filter(id => Store.w(id).unlocked).slice(-1)[0], maps = new Set(ALLW().map(id => WORLDS[id].map || 1)).size;
     const days = Object.keys(S.days).map(Number).filter(x => x > d - 7).map(x => Math.round(S.days[x].ms / 60000) + '分').join(' ');
-    return ['点点岛进度报告（' + new Date().toLocaleDateString() + '）', '位置：' + (where ? WORLDS[where].name : '-') + '；旗子 ' + (S.flags || []).length + ' 面；已装：三片海，运算岛在云上第 ' + (ORDER3.indexOf('trans3') + 1) + ' 个',
+    return ['点点岛进度报告（' + new Date().toLocaleDateString() + '）', '位置：' + (where ? WORLDS[where].name : '-') + '；旗子 ' + (S.flags || []).length + ' 面；已装：' + CN[maps] + '个世界（积木城上线 ' + LIVE5.length + '/7 岛），运算岛在云上第 ' + (ORDER3.indexOf('trans3') + 1) + ' 个',
       '会了（隔 7 天还对）：' + by('known'), '学习中：' + by('learning'), '待复测：' + by('stale'),
       '今天到期 ' + Mem.due().length + '，逾期 ' + Mem.overdue(), '7 天保持率：' + (n7 ? Math.round(r7 * 100) + '%（' + n7 + '）' : '样本不足') + '；30 天：' + (n30 ? Math.round(r30 * 100) + '%（' + n30 + '）' : '样本不足'),
       '月测：' + (S.tests.length ? S.tests.map(t => t.ok + '/' + t.n).join(' ') : '还没测'), '考一考：' + (S.checks.length ? S.checks.map(c => c.yes + '/' + c.n).join(' ') : '还没做'),
@@ -1161,5 +1164,6 @@ const Laps = {
 if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G) { MapView.update(); MapV2.hello(); setTimeout(() => Gems.pending(), 600); }
 /* a lap completed before the app was closed: its reward is shown now, not a session later (NG1 5) */
 if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G && (MapView.ids().some(o => Laps.on(o) && Laps.st(o).due) || ((t) => t && !Laps.st(t).iv && Laps.st(t).n === 2)(Laps.target(MapView)))) MapView.after(T(300));
+if (typeof W5 !== 'undefined' && W5.cardsIn) W5.cardsIn();          /* 积木城's review cards whose question types came with this file (pos / shape / op10) */
 
 W3.loaded = true;          /* the sky's games and v2's are both in */
