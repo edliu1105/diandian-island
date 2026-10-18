@@ -1462,6 +1462,7 @@ Object.assign(Parent, {
     /* offline readiness: the service worker writes its list only after EVERY asset is in the cache */
     el('h3', '', sh, { text: '离线' });
     const off = el('div', '', sh, { text: '检查中…' });
+    if (typeof UpdateUI !== 'undefined') UpdateUI.rows(sh);
     (async () => {
       try {
         let n = 0;
@@ -1491,5 +1492,70 @@ Object.assign(Parent, {
   },
   panel() { this.tok = (this.tok || 0) + 1; this.body(); },
 });
+/* ---------------------------------------------------------------- the parent panel's update status (in the 离线 section; this file
+   goes into the lazy assets/js/v2games.js with the panel's body, raw/js/w5_core_patch.py). A new release (page + every asset)
+   installs in the background and only then switches (sw.js), so a parent who does not see the new things yet needs to know
+   where it is: the version running now, a newer one downloading (X / Y files, every 2 s while the panel is open), a newer one
+   downloaded and waiting (a big 立即更新 button: the same switch as SWU.apply, then the page reloads), or 已是最新版本; and
+   a 检查更新 button (reg.update()). The workers answer {q:'status'} with { v: VERSION, n: files, have: files in its cache }
+   (sw.js); a worker of an older release does not answer - then its version comes from the cache names and a new release's
+   size from its sw.js. Text only (nothing is said). */
+const UpdateUI = {
+  /* ask one worker for its status (null when it does not answer: an older sw.js) */
+  ask(w, ms) {
+    return new Promise(res => {
+      if (!w || typeof MessageChannel === 'undefined') return res(null);
+      const ch = new MessageChannel(), to = setTimeout(() => res(null), ms || 800);
+      ch.port1.onmessage = e => { clearTimeout(to); res(e.data && e.data.v ? e.data : null); };
+      try { w.postMessage({ q: 'status' }, [ch.port2]); } catch (e) { clearTimeout(to); res(null); }
+    });
+  },
+  /* a release's size and version from its sw.js (once per page: it does not change while it installs) */
+  async fromNet() {
+    if (this.net) return this.net;
+    try {
+      const t = await (await fetch('sw.js?u=' + Date.now(), { cache: 'no-store' })).text(), m = t.match(/const VERSION = '([^']+)'/);
+      if (m) this.net = { v: m[1], n: (t.match(/\["\.\/assets\//g) || []).length };
+    } catch (e) {}
+    return this.net || null;
+  },
+  async count(v) { try { if (!(await caches.has('ddi-assets-' + v))) return 0; return (await (await caches.open('ddi-assets-' + v)).keys()).length; } catch (e) { return 0; } },
+  async status() {
+    const sw = navigator.serviceWorker; if (!sw || location.protocol === 'file:') return { none: 1 };
+    const reg = await sw.getRegistration(); if (!reg) return { none: 1 };
+    const nw = reg.installing || reg.waiting, cur = await this.ask(sw.controller || reg.active);
+    let next = nw ? await this.ask(nw, 1500) : null;
+    if (nw && !next) { const s = await this.fromNet(); if (s) next = { v: s.v, n: s.n, have: Math.min(s.n, await this.count(s.v)) }; }
+    let v = cur && cur.v;
+    if (!v) { const cores = (await caches.keys()).filter(k => k.startsWith('ddi-core-')).map(k => k.slice(9)).filter(x => !next || x !== next.v); v = cores.length === 1 ? cores[0] : cores.join(' / '); }
+    return { reg, v: v || '-', waiting: !!reg.waiting, installing: !reg.waiting && !!reg.installing, next };
+  },
+  rows(sh) {
+    const box = el('div', '', sh), cur = el('div', 'mut', box), line = el('div', '', box), act = el('div', '', box);
+    Object.assign(line.style, { font: '700 17px/1.5 system-ui, sans-serif', margin: '4px 0' });
+    const big = (txt, bg, fn) => { const b = el('button', 'pbtn', act, { text: txt }); Object.assign(b.style, { minWidth: '200px', minHeight: '88px', fontSize: '24px', background: bg }); b.addEventListener('click', fn); return b; };
+    let shown = '', busy = false, note = '';
+    const tick = async () => {
+      if (!box.isConnected) { clearInterval(this.t); return; }
+      if (busy) return; busy = true;
+      let s; try { s = await this.status(); } catch (e) { s = { none: 1 }; } finally { busy = false; }
+      if (!box.isConnected) return;
+      cur.textContent = s.none ? '这个浏览器不能自动更新。' : '现在的版本：' + s.v;
+      const key = s.none ? 'none' : s.waiting ? 'wait' : s.installing ? 'inst' : 'ok';
+      if (s.installing) line.innerHTML = '正在下载新版本：已下载 ' + (s.next ? s.next.have + ' / ' + s.next.n : '…') + '<br><span style="color:#E8414B">请保持联网、不要关 App</span>';
+      else if (s.waiting) line.textContent = '新版本已下载好' + (s.next ? '（' + s.next.v + '）' : '');
+      else if (!s.none) line.textContent = note || '已是最新版本';
+      else line.textContent = '';
+      if (key === shown) return;
+      shown = key; act.innerHTML = '';
+      if (s.waiting) big('立即更新', '#5CC46E', () => { SWU.watch(s.reg); SWU.apply(); line.textContent = '正在更新…'; setTimeout(() => location.reload(), 4000); });
+      if (!s.none) {
+        const chk = el('button', 'pbtn', act, { text: '检查更新' });
+        chk.addEventListener('click', async () => { chk.disabled = true; line.textContent = '正在检查…'; note = ''; try { await s.reg.update(); } catch (e) { note = '没有联网，查不到新版本'; } chk.disabled = false; setTimeout(tick, 600); });
+      }
+    };
+    clearInterval(this.t); this.t = setInterval(tick, 2000); tick();
+  },
+};
 
 W3.loaded = true;          /* the sky's games and v2's are both in */
