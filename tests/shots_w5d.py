@@ -20,7 +20,25 @@ SCR = "([x, y]) => { const p = Stage.toScreen(x, y); return [p.x, p.y]; }"
 
 def shots(page, g, lv, tag):
     from harness import wait_phase, answer_question, wait_next_question
-    page.evaluate("([g,l]) => { (Store.w('avengers5').gstars || {})[g] = 0; window.__go('avengers5', g, l, {noDemo: true, seed: 5 + l}); }", [g, lv])
+    if g.startswith('rq:'):           # a review type (pos / shape / op10): asked by the host of ⑦ in a key-round session
+        c = g[3:]
+        for k, seed in enumerate((3 + lv, 9 + lv)):
+            page.evaluate("([c, s]) => window.__go('avengers5', 'V8', 2, { seed: s, test: true, keyItems: [c], noDemo: true })", [c, seed])
+            wait_phase(page, timeout=30000); page.wait_for_timeout(900)
+            page.screenshot(path=os.path.join(OUT, '%s_%d_%s_q.png' % (c, k + 1, tag)))
+            page.evaluate("() => { Store.s.settings.explain = 'step'; }")
+            answer_question(page, 'wrong', timeout=30000)
+            page.wait_for_function("!!document.getElementById('stepnext')", timeout=30000)
+            for j in range(5):
+                page.wait_for_timeout(1500)
+                page.screenshot(path=os.path.join(OUT, '%s_%d_%s_x%d.png' % (c, k + 1, tag, j + 1)))
+                r = page.evaluate("(() => { const b = document.getElementById('stepnext'); if (!b) return null; const r = b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+                if not r: break
+                page.mouse.click(r[0], r[1])
+            page.evaluate("() => { Store.s.settings.explain = 'auto'; gesture('home'); }"); page.wait_for_timeout(300)
+        return
+    # the game's own questions only (no review card of the island comes in between): nothing remembered, nothing played
+    page.evaluate("([g,l]) => { Store.s.mem = {}; Store.w('avengers5').played = []; (Store.w('avengers5').gstars || {})[g] = 0; window.__go('avengers5', g, l, {noDemo: true, seed: 5 + l}); }", [g, lv])
     wait_phase(page, timeout=30000); page.wait_for_timeout(900)
     page.screenshot(path=os.path.join(OUT, '%s_L%d_%s_q.png' % (g, lv, tag)))
     gen, _ = answer_question(page, 'right', timeout=30000)

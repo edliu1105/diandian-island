@@ -28,9 +28,11 @@ SHOTS = os.path.join(ROOT, 'tests', 'logs', 'opt3')
 os.makedirs(SHOTS, exist_ok=True)
 _NEWF = os.path.join(ROOT, 'raw', 'js', 'w4', 'w3explain.voice.txt')          # not in a delivered copy (raw/ is not published): then the bank alone
 NEW = [l.strip() for l in open(_NEWF, encoding='utf-8') if l.strip()] if os.path.exists(_NEWF) else []
+_NEW5 = os.path.join(ROOT, 'raw', 'js', 'w4', 'w5review.voice.txt')       # 积木城's review types (pos / shape / op10): their sentences
+NEW += [l.strip() for l in open(_NEW5, encoding='utf-8') if l.strip()] if os.path.exists(_NEW5) else []
 # the machine (socket buffers) and other builds running at the same time (sw.js rewritten while a real-speed page updates it)
 NOISE = ('ERR_NO_BUFFER_SPACE', 'ERR_INSUFFICIENT_RESOURCES', 'ERR_ADDRESS_IN_USE', 'Failed to update a ServiceWorker')
-CARDS = ['sub5', 'give10', 'cmp10', 'cmp20', 'next10', 'next20', 'on10', 'on20', 'part5', 'part10', 'ten20', 'add10', 'sub10', 'F+3+4', 'F-8-3']
+CARDS = ['sub5', 'give10', 'cmp10', 'cmp20', 'next10', 'next20', 'on10', 'on20', 'part5', 'part10', 'ten20', 'add10', 'sub10', 'F+3+4', 'F-8-3', 'pos', 'shape', 'op10']
 OPEN = "() => { Store.s.w2all = true; Store.s.w3 = true; ORDER.concat(ORDER2, ORDER3).forEach(id => { const ws = Store.w(id); ws.unlocked = true; ws.demo = {}; WORLDS[id].games.forEach(g => { ws.demo[g] = true; }); }); Store.save(); }"
 GO = "([g, l, s, c]) => { const w = Object.keys(WORLDS).find(x => (WORLDS[x].games || []).includes(g)); window.__go(w, g, l, c ? { seed: s, test: true, keyItems: [c], noDemo: true } : { seed: s, noDemo: true }); }"
 # what happens during the explanation: rings (their colour), lines said, cheering, red crosses
@@ -284,11 +286,11 @@ def main():
                 for ok, msg in part: log.check(ok, msg)
         if 'T' in PARTS:
             items = [(g, SHOT_LV.get(g, 3), None) for g, _ in games] + [x for x in [('U4', 4, None), ('R4', 3, None)] if any(g == x[0] for g, _ in games)]
-            items += [] if (only and 'review' not in only.split(',')) else [('P2', 2, c) for c in ('sub5', 'give10', 'cmp10', 'next10', 'on10', 'part10', 'ten20', 'add10', 'F+3+4')]
+            items += [] if (only and 'review' not in only.split(',')) else [('P2', 2, c) for c in ('sub5', 'give10', 'cmp10', 'next10', 'on10', 'part10', 'ten20', 'add10', 'F+3+4', 'pos', 'shape', 'op10')]
             for part in pool.map(timing_job, [(items[i::JOBS], 1180, 820) for i in range(JOBS)]):
                 for ok, msg in part: log.check(ok, msg)
         if 'S' in PARTS:
-            pick = games + [x for x in [('P2', c) for c in ('sub5', 'give10', 'cmp10', 'next10', 'on10', 'part10', 'ten20', 'add10', 'F+3+4')] if not only or 'review' in only.split(',')]
+            pick = games + [x for x in [('P2', c) for c in ('sub5', 'give10', 'cmp10', 'next10', 'on10', 'part10', 'ten20', 'add10', 'F+3+4', 'pos', 'shape', 'op10')] if not only or 'review' in only.split(',')]
             jobs = [(pick[i::JOBS], o) for o in ('L', 'P') for i in range(JOBS)]
             for part in pool.map(shot_job, jobs):
                 for ok, msg in part: log.check(ok, msg)

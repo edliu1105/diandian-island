@@ -599,7 +599,7 @@ const W5U = {
       return this.whereLine(q, T);
     },
     rightLines(q) {
-      if (q.d === 5) return ['在桌子下面，', '也在' + LMN[q.ref] + '后面！'];
+      if (q.d === 5) return ['也在桌子下面！'];
       if (q.d === 4) return ['在' + LMN[q.lms[q.ask[0][0]].k] + RW[q.word] + '！'];
       return [this.whereLine(q, q.toys[+q.answer.slice(1)])];
     },
@@ -664,12 +664,12 @@ const W5U = {
       const rel = q.d === 5 ? 'behind' : q.word, hider = q.d === 5 ? [st.refEl] : st.lmEls[q.d === 4 ? q.ask[0][0] : Rt.lm], name = q.d === 5 ? LMN[q.ref] : LMN[q.lms[q.d === 4 ? q.ask[0][0] : Rt.lm].k];
       if (rel === 'behind') {
         hider.forEach(e => st.scope.anim(e, [{ opacity: 1 }, { opacity: 0.28, offset: 0.2 }, { opacity: 0.28, offset: 0.8 }, { opacity: 1 }], { duration: 1500, easing: 'ease-in-out' }));
-        W5U.note(st, '看，它被' + name + '挡住了');
-        await st.scope.wait(1300);
+        W5U.note(st, '它被' + name + '挡住了');
+        await st.scope.wait(1100);
       } else if (rel === 'front') {
         st.scope.anim(Re, [{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(6%) scale(1.14)', offset: 0.3 }, { transform: 'translateY(6%) scale(1.14)', offset: 0.75 }, { transform: 'translateY(0) scale(1)' }], { duration: 1300, easing: 'ease-in-out' });
-        W5U.note(st, '看，它挡住了' + name);
-        await st.scope.wait(1200);
+        W5U.note(st, '它挡住了' + name);
+        await st.scope.wait(1100);
       } else {
         K.hop(st, Re, 18); hider.forEach(e => K.flash(st, [e]));
         await W5U.beat(st); if (!Session.alive(my)) return;
@@ -679,12 +679,12 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st;
       const rings = W5U.blue(st, st.tapEls[ans]);
-      await st.scope.wait(800); if (!Session.alive(my)) return;
+      await st.scope.wait(600); if (!Session.alive(my)) return;
       W5U.hide(rings);
       await this.demo(st); if (!Session.alive(my)) return;
       const R = st.tapEls[q.answer]; W5U.gold(st, R); K.hop(st, this.optEls(st, q.answer)[0], 14);
       for (const l of this.rightLines(q)) { await W5U.sum(st, l); if (!Session.alive(my)) return; }
-      await st.scope.wait(500);
+      await st.scope.wait(200);
     },
     rightEls(st) { return [st.tapEls[st.q.answer]]; },
     async reveal(st) {
@@ -703,9 +703,10 @@ const W5U = {
       [['table', ['on', 'under', 'front', 'behind']], ['box', ['in', 'front', 'behind']], ['teddy', ['on', 'behind', 'front']], ['dino', ['on', 'behind', 'front']]].forEach(([k, rs]) => rs.forEach(r => out.push('谁在' + LMN[k] + RW[r] + '？')));
       ['table', 'box', 'teddy', 'dino'].forEach(k => LREL[k].forEach(r => out.push('它在' + LMN[k] + RW[r])));
       ['table', 'box', 'block', 'bush', 'slide'].forEach(k => W4.forEach(r => { out.push('不在' + LMN[k] + RW[r] + '哦'); if (LREL[k].includes(r)) out.push('在' + LMN[k] + RW[r] + '！'); }));
-      Object.keys(LMN).forEach(k => out.push('看，它被' + LMN[k] + '挡住了', '看，它挡住了' + LMN[k]));
+      Object.keys(LMN).forEach(k => out.push('它被' + LMN[k] + '挡住了', '它挡住了' + LMN[k]));
       TOY5.forEach(t => W4.forEach(r => { if (!(t === 'turtle' && (r === 'behind' || r === 'in'))) out.push(TN[t] + '藏在什么' + RW[r] + '？'); }));
-      ['teddy', 'dino'].forEach(r => out.push('谁也在' + LMN[r] + '后面？', '它不在' + LMN[r] + '后面', '也在' + LMN[r] + '后面！'));
+      ['teddy', 'dino'].forEach(r => out.push('谁也在' + LMN[r] + '后面？', '它不在' + LMN[r] + '后面'));
+      out.push('也在桌子下面！');
       out.push('在桌子下面，', '它不在桌子下面');
       return uniq(out);
     },
@@ -985,7 +986,7 @@ const W5U = {
       const start = q.kind === 'join' ? P.mats.filter(Boolean) : q.kind === 'take' ? P.cookies.map(c => c.e) : P.on.map(a => a.e);
       start.forEach(e => st.scope.anim(e, [{ opacity: 0 }, { opacity: 1 }], { duration: 260 }));
       const frame = W5U.stay(st, start); if (frame) frame.style.borderStyle = 'solid';
-      await pause(st, 450); if (!Session.alive(my)) return;
+      await pause(st, 200); if (!Session.alive(my)) return;
       W5U.hide(frame);
       if (q.kind === 'join') {
         W5U.note(st, '合起来！');
@@ -1002,33 +1003,34 @@ const W5U = {
       if (q.kind === 'take') {
         W5U.note(st, '佩奇拿走' + CNQ(q.n) + '块！');
         const b = box(P.basket);
-        for (let i = 0; i < q.n; i++) { const c = P.cookies[P.cookies.length - 1 - i]; c.inB = i; W5U.leave(st, c.e, b.x + b.w / 2, b.y + b.h / 2, 420); Count.say(q.start - i - 1); await pause(st, 400); if (!Session.alive(my)) return; const k = imgPart(st, 7, 'cookie'), r = this.basketSpot(i); place(k, r.x, r.y, r.w, r.h); K.pop(st, k); }
+        for (let i = 0; i < q.n; i++) { const c = P.cookies[P.cookies.length - 1 - i]; c.inB = i; W5U.leave(st, c.e, b.x + b.w / 2, b.y + b.h / 2, 420); Count.say(q.start - i - 1); await pause(st, 300); if (!Session.alive(my)) return; const k = imgPart(st, 7, 'cookie'), r = this.basketSpot(i); place(k, r.x, r.y, r.w, r.h); K.pop(st, k); }
         P.result = P.cookies.filter(c => c.inB < 0).map(c => c.e);
-        await st.scope.wait(300);
+        await st.scope.wait(150);
         return;
       }
       const steps = q.steps.filter(s => !s.setup), dd = this.doorAt();
       let n = q.start;
       for (const s of steps) {
-        W5U.note(st, q.kind === 'two' ? this.storyLines(q)[steps.indexOf(s) + 1] : this.changeLine(q, s));
+        if (q.kind !== 'two') W5U.note(st, this.changeLine(q, s));
+        else if (!steps.indexOf(s)) W5U.note(st, steps.map(x => (x.dir === 'come' ? '来了' : '走了') + CNQ(x.n) + '只').join('，') + '！');
         for (let i = 0; i < s.n; i++) {
-          if (s.dir === 'come') { const sp = this.freeSpot(st), a = { e: this.actorEl(st, q.who, false), spot: sp, fresh: 0 }, r = this.spot(sp); P.on.push(a); place(a.e, dd.x - 50, dd.y - 60, 100, 100); await K.flyTo(st, a.e, r.x, r.y, 300, 30); if (!Session.alive(my)) return; W5U.came(st, a.e); a.badge = K.badge(st, a.e, ++n, 0, -4, 40); Count.say(n); await pause(st, 220); }
-          else { const a = P.on.pop(); if (a.badge) a.badge.remove(); W5U.leave(st, a.e, dd.x, dd.y, 420); Count.say(--n); await pause(st, 420); }
+          if (s.dir === 'come') { const sp = this.freeSpot(st), a = { e: this.actorEl(st, q.who, false), spot: sp, fresh: 0 }, r = this.spot(sp); P.on.push(a); place(a.e, dd.x - 50, dd.y - 60, 100, 100); await K.flyTo(st, a.e, r.x, r.y, 300, 30); if (!Session.alive(my)) return; W5U.came(st, a.e); a.badge = K.badge(st, a.e, ++n, 0, -4, 40); Count.say(n); await pause(st, 160); }
+          else { const a = P.on.pop(); if (a.badge) a.badge.remove(); W5U.leave(st, a.e, dd.x, dd.y, 360); Count.say(--n); await pause(st, 300); }
           if (!Session.alive(my)) return;
         }
       }
       P.result = P.on.map(a => a.e);
-      await st.scope.wait(250);
+      await st.scope.wait(150);
     },
     async explain(st, ans) {
       const q = st.q, my = st;
       const rings = W5U.blue(st, this.moved(st, ans));
-      await st.scope.wait(800); if (!Session.alive(my)) return;
+      await st.scope.wait(300); if (!Session.alive(my)) return;
       W5U.hide(rings);
       await this.replay(st); if (!Session.alive(my)) return;
       this.goldFrame(st, st.p6.result);
       for (const l of this.endLines(q)) { await W5U.sum(st, l); if (!Session.alive(my)) return; }
-      await st.scope.wait(400);
+      await st.scope.wait(200);
     },
     rightEls(st) { return (st.p6 && st.p6.result) || []; },
     /* what is there at the end: one solid gold frame round the group (§3.3: what is still here is drawn solid) */
@@ -1051,6 +1053,7 @@ const W5U = {
       const R = (a, b, f) => { for (let n = a; n <= b; n++) f(CNQ(n)); };
       R(1, 3, c => out.push('又来了' + c + '只！', '走了' + c + '只！', '佩奇拿走' + c + '块！', '拿走' + c + '块，', '这边有' + c + '只，', '那边有' + c + '只，', '走了' + c + '只，'));
       R(1, 2, c => out.push('来了' + c + '只，', '又走了' + c + '只！', '只拿了' + c + '块'));
+      R(1, 2, a => R(1, 2, b => out.push('来了' + a + '只，走了' + b + '只！', '走了' + a + '只，来了' + b + '只！')));
       R(2, 5, c => out.push('台上有' + c + '只。'));
       R(2, 6, c => out.push('盘子里有' + c + '块。'));
       R(1, 5, c => out.push('还剩' + c + '块！', '多拿了' + c + '块'));
@@ -1321,9 +1324,9 @@ const W5U = {
       const v = a.closed ? PG.corners(a.path, true) : a.path, edges = v.map((p, i) => (i || a.closed ? [v[(i - 1 + v.length) % v.length], p] : null)).filter(Boolean);
       const lay = S.layer, line = (e, col, w, dash) => { const A = this.pegXY(st, e[0]), B = this.pegXY(st, e[1]); return svg('line', { x1: A.x, y1: A.y, x2: B.x, y2: B.y, stroke: col, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-dasharray': dash || 'none' }, lay); };
       if (j === 'sides') {
-        for (let i = 0; i < edges.length; i++) { line(edges[i], W5U.BLUE, 12); Count.say(i + 1); await pause(st, 330); if (!Session.alive(my)) return; }
+        for (let i = 0; i < edges.length; i++) { line(edges[i], W5U.BLUE, 12); Count.say(i + 1); await pause(st, 250); if (!Session.alive(my)) return; }
       } else edges.filter(e => !rk.has(key(e[0], e[1]))).forEach(e => { const l = line(e, W5U.BLUE, 12, '4 16'); st.scope.anim(l, [{ opacity: 1 }, { opacity: 0.2 }, { opacity: 1 }], { duration: 500, iterations: 3 }); });
-      await st.scope.wait(900); if (!Session.alive(my)) return;
+      await st.scope.wait(600); if (!Session.alive(my)) return;
       W5U.hide(rings);
       /* 2. the right one in gold: from the card onto the board / counted / with a little train on both bands */
       const gs = this.goldShape(st, R);
@@ -1331,7 +1334,7 @@ const W5U = {
       else st.scope.anim(gs, [{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
       if (q.d === 3) {
         W5U.note(st, CN[q.sides] + '条边！');
-        for (let i = 0; i < R.pts.length; i++) { const p = R.pts[i], c = this.pegXY(st, [(p[0] + R.pts[(i + 1) % R.pts.length][0]) / 2, (p[1] + R.pts[(i + 1) % R.pts.length][1]) / 2]); const b = W2X.thing(st, 40, 40, 51, 'badge'); b.appendChild(UI.num(i + 1, 26, { plain: true, halo: false })); place(b, Math.round(c.x - 20), Math.round(c.y - 20), 40, 40); Object.assign(b.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#FFF', boxShadow: '0 0 0 3px ' + INK }); Count.say(i + 1); await pause(st, 330); if (!Session.alive(my)) return; }
+        for (let i = 0; i < R.pts.length; i++) { const p = R.pts[i], c = this.pegXY(st, [(p[0] + R.pts[(i + 1) % R.pts.length][0]) / 2, (p[1] + R.pts[(i + 1) % R.pts.length][1]) / 2]); const b = W2X.thing(st, 40, 40, 51, 'badge'); b.appendChild(UI.num(i + 1, 26, { plain: true, halo: false })); place(b, Math.round(c.x - 20), Math.round(c.y - 20), 40, 40); Object.assign(b.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#FFF', boxShadow: '0 0 0 3px ' + INK }); Count.say(i + 1); await pause(st, 250); if (!Session.alive(my)) return; }
       } else if (q.d === 5) {
         W5U.note(st, '一样方向');
         const trains = [q.given, R.pts].map(b => { const A = this.pegXY(st, b[0]), B = this.pegXY(st, b[1]), t = W2X.thing(st, 34, 34, 52, ''); Object.assign(t.style, { borderRadius: '10px', background: '#FF6B5B', boxShadow: '0 0 0 3px ' + INK, pointerEvents: 'none' }); place(t, Math.round(A.x - 17), Math.round(A.y - 17), 34, 34); st.scope.anim(t, [{ transform: 'translate(0,0)' }, { transform: 'translate(' + Math.round(B.x - A.x) + 'px,' + Math.round(B.y - A.y) + 'px)' }], { duration: 1100, easing: 'ease-in-out', fill: 'forwards' }); return t; });
@@ -1339,7 +1342,7 @@ const W5U = {
       } else { W5U.note(st, '照这样拉'); await pause(st, 900); if (!Session.alive(my)) return; }
       S.gold = this.over(st, R.pts, 34);
       W5U.gold(st, S.gold);
-      await st.scope.wait(900);
+      await st.scope.wait(600);
     },
     rightEls(st) { return st.p7 && st.p7.gold ? [st.p7.gold] : []; },
     async reveal(st) {
@@ -1360,6 +1363,745 @@ const W5U = {
     },
   };
 })();
+/* ================================================================ ② Bluey·积木院 (bluey5, from level 1): B5 左手右手 · B6 发生了什么 ·
+   B7 风筝线团 · B8 找不同 (reasoning). docs/W5-DESIGN.md §5 ②. Everything inside one function: no top-level names (all the
+   islands share one script); each rule is W5R.<id>, registered (background, friends, icon, review card) in games.js. The parts
+   follow W5R.P8 (raw/js/w5/peppa.js): gen / audit / geo / present / place / onGesture / next / feedback / explain / reveal /
+   rightEls / lines. */
+(() => {
+  const INK = '#2B2118', GOLD = '#FFC93C', BLUE = '#4FB3FF';
+  const lvOf = o => Math.min(5, Math.max(1, o.level || 1));
+  const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
+  const S4 = 'stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"';
+  /* a pause inside one step of the explanation (Scope.wait would end the step-by-step beat there); a tap skips it */
+  const pause = (st, ms) => (st.ff || fast() ? Promise.resolve() : new Promise(r => st.scope.timeout(r, ms)));
+  /* a positioned piece of the question (an svg drawing in it, stretched to its box) */
+  const piece = (st, z, inner, vw, vh) => { const e = W2X.thing(st, 10, 10, z, ''); if (inner != null) e.innerHTML = '<svg viewBox="0 0 ' + vw + ' ' + vh + '" width="100%" height="100%" style="position:absolute;left:0;top:0;overflow:visible;pointer-events:none">' + inner + '</svg>'; return e; };
+  const gridXY = (n, per, cx, cy, w, h, gx, gy) => W5U.grid(n, cx, cy, w, h, gx, gy, per);
+
+  /* ---------------------------------------------------------------- B5 找！ 左手右手 (F14 Lucky Ring: left and right - one's own,
+     and the left and right of someone facing you). Five block figures (a generic toy: square head, square body, two mittens,
+     two legs; a face in front, hair at the back), something in each hand: "谁右手拿着气球？" - tap a figure.
+       L1 all five with their backs to you (their right hand is on your right), 3 kinds of things; exactly one has a balloon in
+       its right hand, at least one has it in its left · L2 all five face you (first question: "它们看着你哦！") · L3 some face
+       you, some not · L4 two conditions: "右手拿气球，" "左手拿花的是谁？" · L5 nothing in the hands: a kitten / teddy / ball on
+       the ground on its own left or right: "谁的左边有小猫？".
+     L1-L2: the task card shows a figure from the back, the asked hand glowing (what "right hand" means); from L3 only the
+     thing. The right figure's place and the asked hand (left / right) come from bags. Wrong: his figure ringed blue, it lifts
+     the hand he took for the asked one ("这是它的左手" / "它右手拿着花"); a figure that faces you turns round ("它面对着你"
+     "转过来看看") - its hands change sides on the screen; the right figure ringed gold lifts the asked hand ("它右手拿气球"). */
+  const IT = { balloon: '气球', flower: '花', icecream: '冰淇淋', ball: '球', flag: '小旗' };
+  const GR = { kitten: '小猫', teddy: '小熊', ball: '球' };
+  const HW = { L: '左', R: '右' };
+  const FLAG = W2X.icon('<path d="M30 92V10" stroke="' + INK + '" stroke-width="7" stroke-linecap="round"/><path d="M32 12L86 28L32 46Z" fill="#FF6B5B" ' + S4 + '/><circle cx="30" cy="9" r="6" fill="' + GOLD + '" ' + S4 + '/>');
+  const itemSrc = k => (k === 'flag' ? FLAG : W5U.prop(k));
+  const SHIRT = ['#FF6B5B', '#4FB3FF', '#5CC46E', '#B57BFF', '#FF9F43'];
+  /* a block figure (viewBox 100 x 160): .arms[0] is the arm on the screen's left, .arms[1] on the right (each with its mitten
+     and what it holds) - its OWN right hand is on the screen's left when it faces you */
+  const FIG = (front, color, hold) => {
+    const s = svg('svg', { viewBox: '0 0 100 160', width: '100%', height: '100%' }); s.style.overflow = 'visible'; s.style.pointerEvents = 'none';
+    const R = (x, y, w, h, rx, fill, p) => svg('rect', { x, y, width: w, height: h, rx, fill, stroke: INK, 'stroke-width': 4 }, p || s);
+    R(34, 112, 13, 40, 4, '#2E3A6B'); R(53, 112, 13, 40, 4, '#2E3A6B');
+    R(26, 62, 48, 54, 8, color);
+    s.arms = [10, 76].map((x, k) => {
+      const g = svg('g', {}, s); g.style.transformBox = 'view-box'; g.style.transformOrigin = (x + 7) + 'px 66px';
+      R(x, 66, 14, 40, 6, color, g); R(x - 3, 102, 20, 18, 8, '#FFC93C', g);
+      const own = (k === 0) === !!front ? 'R' : 'L', it = hold && hold[own];
+      if (it) { const im = svg('image', { href: itemSrc(it), x: x + 7 - 22, y: 84, width: 44, height: 44 }, g); im.setAttribute('preserveAspectRatio', 'xMidYMid meet'); }
+      return g;
+    });
+    R(30, 16, 40, 42, 8, '#FFD9A8'); R(40, 8, 20, 10, 3, '#FFD9A8');
+    if (front) { svg('circle', { cx: 42, cy: 34, r: 3.6, fill: INK }, s); svg('circle', { cx: 58, cy: 34, r: 3.6, fill: INK }, s); svg('path', { d: 'M42 45Q50 51 58 45', stroke: INK, 'stroke-width': 3.4, fill: 'none', 'stroke-linecap': 'round' }, s); }
+    else svg('path', { d: 'M30 38V24Q30 16 38 16H62Q70 16 70 24V38Z', fill: '#6B4A2E', stroke: INK, 'stroke-width': 4 }, s);
+    return s;
+  };
+  const B5L = [null, { face: 'back' }, { face: 'front' }, { face: 'mix' }, { face: 'mix', two: true }, { face: 'mix', ground: true }];
+  W5R.B5 = {
+    kind0: 'lr5', verb: '找！', intro: '分清左和右！', praise: ['左右分得清！'], props: ['balloon', 'flower', 'icecream', 'ball', 'kitten', 'teddy'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, L = B5L[d], at = W5U.at(G, 5, 'b5p' + d);
+      const faces = L.face === 'back' ? [0, 0, 0, 0, 0] : L.face === 'front' ? [1, 1, 1, 1, 1] : rng.shuffle([1, 1, 0, 0, rng.int(0, 1)]);
+      const H = bagPick(G, 'b5h' + d, ['L', 'R']), O = H === 'L' ? 'R' : 'L';
+      for (let t = 0; t < 200; t++) {
+        let men, ask;
+        if (L.ground) {
+          const Z = rng.pick(Object.keys(GR));
+          men = Array.from({ length: 5 }, () => ({ g: rng.pick(Object.keys(GR)), side: rng.pick(['L', 'R']) }));
+          men[at] = { g: Z, side: H };
+          const dz = rng.pick([0, 1, 2, 3, 4].filter(i => i !== at)); men[dz] = { g: Z, side: O };
+          ask = { g: Z, side: H };
+        } else {
+          const kinds = rng.shuffle(Object.keys(IT)).slice(0, d === 1 ? 3 : 4), X = kinds[0], Y = rng.pick(kinds.slice(1).filter(k => k !== 'icecream' && (X !== 'icecream' || IT[k].length === 1)).concat(X === 'icecream' ? ['flower'] : []));
+          const any = () => rng.pick(kinds);
+          men = Array.from({ length: 5 }, () => ({ L: any(), R: any() }));
+          const others = rng.shuffle([0, 1, 2, 3, 4].filter(i => i !== at));
+          if (L.two) {
+            men[at] = { [H]: X, [O]: Y };
+            men[others[0]] = { [H]: X, [O]: any() }; men[others[1]] = { [H]: any(), [O]: Y }; men[others[2]] = { [H]: Y, [O]: X };
+            ask = { X, H, Y, O };
+          } else {
+            men[at] = { [H]: X, [O]: any() };
+            men[others[0]] = { [H]: any(), [O]: X };
+            ask = { X, H };
+          }
+        }
+        men.forEach((m, i) => { m.front = faces[i]; m.color = SHIRT[i]; });
+        const q = { d, men, ask, answer: at, opts: [0, 1, 2, 3, 4] };
+        if (this.right(q).length !== 1 || this.right(q)[0] !== at) continue;
+        /* every condition is met by someone else too (a figure that has it the other way round or only half) */
+        if (L.ground ? !men.some((m, i) => i !== at && m.g === ask.g) : !men.some((m, i) => i !== at && (m[O] === ask.X || m.L === ask.X || m.R === ask.X))) continue;
+        q.k = [d, H, men.map(m => (m.front ? 'f' : 'b') + (L.ground ? m.g[0] + m.side : m.L.slice(0, 2) + m.R.slice(0, 2))).join('.')];
+        return q;
+      }
+      return null;
+    },
+    /* the figures that meet the question */
+    ok(q, m) { const a = q.ask; if (q.d === 5) return m.g === a.g && m.side === a.side; return m[a.H] === a.X && (!a.Y || m[a.O] === a.Y); },
+    right(q) { return q.men.map((m, i) => (this.ok(q, m) ? i : -1)).filter(i => i >= 0); },
+    audit(q) { return [{ n: 5, at: q.answer, right: this.right(q).length }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    geo() {
+      const L = K.L();
+      return L ? { w: 140, h: 224, gap: 24, cx: 512, cy: 392, uw: 196, uh: 210, ugap: 22, rows: [258, 486] } : { w: 124, h: 198, gap: 10, cx: 352, cy: 560, uw: 196, uh: 210, ugap: 14, rows: [420, 650] };
+    },
+    /* a figure's unit: the figure (and in L5 its mat with the thing on the ground beside its feet) */
+    unitInner(q, m) {
+      if (q.d !== 5) return null;
+      const scr = m.front ? (m.side === 'L' ? 'R' : 'L') : m.side;    /* its own left, on the screen */
+      return { scr };
+    },
+    draw(st, i) {
+      const q = st.q, m = q.men[i], e = st.units[i];
+      e.innerHTML = '';
+      if (q.d === 5) {
+        const mat = el('div', '', e); Object.assign(mat.style, { position: 'absolute', left: '2%', right: '2%', bottom: '0', height: '20%', borderRadius: '50%', background: 'rgba(255,248,236,.75)', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' });
+        const fw = el('div', '', e); Object.assign(fw.style, { position: 'absolute', left: '22%', width: '56%', top: '0', height: '94%', pointerEvents: 'none' }); fw.appendChild(FIG(m.front, m.color, null));
+        const scr = this.unitInner(q, m).scr, gi = W5U.propImg(m.g); gi.style.objectPosition = '50% 100%';
+        const gw = el('div', '', e); Object.assign(gw.style, { position: 'absolute', width: '30%', height: '30%', bottom: '4%', pointerEvents: 'none' }); gw.style[scr === 'L' ? 'left' : 'right'] = '-2%'; gw.appendChild(gi);
+        e._fig = fw.firstChild; e._g = gw; e._gside = scr;
+      } else { e.appendChild(FIG(m.front, m.color, m)); e._fig = e.firstChild; }
+    },
+    place(st) {
+      if (!st.units) return;
+      const g = this.geo(), q = st.q;
+      if (q.d === 5) { const top = gridXY(5, 3, g.cx, 0, g.uw, g.uh, g.ugap, 0); st.units.forEach((e, i) => place(e, top[i].x, (i < 3 ? g.rows[0] : g.rows[1]) - g.uh / 2, g.uw, g.uh)); }
+      else W5U.lay(st.units, g.cx, g.cy, g.w, g.h, g.gap, 0);
+    },
+    askLines(q) {
+      const a = q.ask;
+      if (q.d === 5) return ['谁的' + HW[a.side] + '边有' + GR[a.g] + '？'];
+      if (q.d === 4) return [HW[a.H] + '手拿' + IT[a.X] + '，', HW[a.O] + '手拿' + IT[a.Y] + '的是谁？'];
+      return ['谁' + HW[a.H] + '手拿着' + IT[a.X] + '？'];
+    },
+    /* the task card: L1-L2 a figure from the back with the asked hand glowing and the thing in it; then only the thing(s) */
+    taskCard(st) {
+      const q = st.q, a = q.ask;
+      if (q.d <= 2) {
+        const d = el('span', ''); Object.assign(d.style, { position: 'relative', display: 'inline-block', width: '62px', height: '98px' });
+        const f = FIG(false, '#C9D3E0', { [a.H]: a.X }); d.appendChild(f);
+        const arm = f.arms[a.H === 'R' ? 1 : 0]; arm.style.filter = 'drop-shadow(0 0 6px #FFC93C) drop-shadow(0 0 3px #FFC93C)';
+        return K.task(st, [[{ node: d }], ['q']]);
+      }
+      if (q.d === 5) return K.task(st, [[W5U.prop(a.g)], ['q']]);
+      if (q.d === 4) return K.task(st, [[itemSrc(a.X)], [itemSrc(a.Y)], ['q']]);
+      return K.task(st, [[itemSrc(a.X)], ['q']]);
+    },
+    async present(st) {
+      const q = st.q, G = st.G;
+      st.units = q.men.map((m, i) => { const e = W2X.thing(st, 10, 10, 6, ''); K.reg(st, 'm' + i, e, {}); return e; });
+      st.units.forEach((e, i) => this.draw(st, i));
+      this.place(st);
+      st.units.forEach((e, i) => K.pop(st, e, 60 * i));
+      this.taskCard(st);
+      const ls = this.askLines(q);
+      if (q.d === 2 && !G.b5front) { G.b5front = true; W3X.say2(st, '它们看着你哦！', ls[0]); }
+      else if (ls.length > 1) W3X.say2(st, ls[0], ls[1]);
+      else K.say(st, ls[0]);
+    },
+    onGesture(st, name, p) {
+      const i = /^m\d$/.test(p.id || '') ? +p.id.slice(1) : -1;
+      if (name !== 'tap' || i < 0 || st.picked) return false;
+      st.picked = true; K.hop(st, st.units[i], 10); Session.submit(st, i); return 'ok';
+    },
+    next(st, strat) { if (st.picked || !st.units) return null; const q = st.q; return { g: 'tap', p: { id: 'm' + (strat === 'wrong' ? (q.answer + 1 + (st.gen % 4)) % 5 : q.answer) } }; },
+    /* what his figure really has (the first condition it misses) */
+    wrongLine(q, i) {
+      const m = q.men[i], a = q.ask;
+      if (q.d === 5) {
+        if (m.g === a.g) return GR[a.g] + '在它' + HW[m.side] + '边';
+        return m.side === a.side ? '它的' + HW[a.side] + '边是' + GR[m.g] : '它' + HW[a.side] + '边什么也没有';
+      }
+      if (m[a.H] !== a.X) return m[a.H === 'L' ? 'R' : 'L'] === a.X ? '这是' + HW[a.H === 'L' ? 'R' : 'L'] + '手哦' : '它' + HW[a.H] + '手拿着' + IT[m[a.H]];
+      return '它' + HW[a.O] + '手拿着' + IT[m[a.O]];
+    },
+    /* a hand lifts (screen side 0 / 1); in L5 the thing on that side glows */
+    lift(st, i, scr, color) {
+      const e = st.units[i];
+      if (st.q.d === 5) { const b = box(e), gl = W2X.thing(st, 10, 10, 7, ''); gl.style.pointerEvents = 'none'; place(gl, Math.round(scr ? b.x + b.w * 0.66 : b.x), Math.round(b.y + b.h * 0.6), Math.round(b.w * 0.34), Math.round(b.h * 0.4)); return W5U.ring(st, gl, color || GOLD, 4); }
+      const arm = e._fig && e._fig.arms && e._fig.arms[scr];
+      if (arm) st.scope.anim(arm, [{ transform: 'translateY(0)' }, { transform: 'translateY(-34px)', offset: 0.35 }, { transform: 'translateY(-34px)', offset: 0.8 }, { transform: 'translateY(0)' }], { duration: 1300, easing: 'ease-in-out' });
+      Sfx.pop();
+      return null;
+    },
+    /* a figure that faces you turns round (0.6 s): its hands change sides on the screen */
+    async turn(st, i) {
+      const my = st, e = st.units[i], m = st.q.men[i];
+      await st.scope.anim(e, [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0.05)' }], { duration: 300, easing: EASE.glide }); if (!Session.alive(my)) return;
+      m.front = 0; this.draw(st, i);
+      await st.scope.anim(e, [{ transform: 'scaleX(0.05)' }, { transform: 'scaleX(1)' }], { duration: 300, easing: EASE.glide });
+    },
+    async feedback(st, ans) { K.wiggle(st, st.units[ans]); W5U.say(st, this.wrongLine(st.q, ans)); await st.scope.wait(T(600)); },
+    /* the screen side (0 left / 1 right) of a figure's own hand / side */
+    scr(m, own) { return (own === 'R') === !m.front ? 1 : 0; },
+    async explain(st, ans) {
+      const q = st.q, my = st, a = q.ask, H = q.d === 5 ? a.side : a.H, m = q.men[ans], R = q.men[q.answer];
+      /* 1. his figure lifts the hand on YOUR side H (the one he took for its H): what it really is */
+      W5U.blue(st, st.units[ans]);
+      /* the hand (side) he took for H: the one with the asked thing in it, else the one on his own H side of the screen */
+      const F = H === 'L' ? 'R' : 'L', took = q.d === 5 ? (m.g === a.g ? m.side : m.front ? F : H) : m[F] === a.X && m[H] !== a.X ? F : m[H] === a.X ? a.O : (m.front ? F : H);
+      const blueRing = this.lift(st, ans, this.scr(m, took), BLUE);
+      await st.scope.wait(500); if (!Session.alive(my)) return;
+      if (blueRing) W5U.hide(blueRing);
+      /* 2. one that faces you turns round */
+      const who = m.front ? ans : R.front ? q.answer : -1;
+      if (who >= 0) {
+        W5U.note(st, '它面对着你');
+        await this.turn(st, who); if (!Session.alive(my)) return;
+        await st.scope.wait(400); if (!Session.alive(my)) return;
+      } else {
+        /* nobody faces you: his figure lifts its own H hand (side) - what is really there */
+        const say = q.d === 5 ? (m.side === H ? '它的' + HW[H] + '边是' + GR[m.g] : '它' + HW[H] + '边什么也没有') : '它' + HW[H] + '手拿着' + IT[m[H]];
+        const r2 = this.lift(st, ans, this.scr(m, H), BLUE); if (say !== st.fbLine) W5U.note(st, say); else W5U.beat(st);
+        await st.scope.wait(700); if (!Session.alive(my)) return; if (r2) W5U.hide(r2);
+      }
+      /* 3. the right one, gold: it lifts its own H hand */
+      W5U.gold(st, st.units[q.answer]);
+      this.lift(st, q.answer, this.scr(R, H));
+      if (q.d === 4) this.lift(st, q.answer, this.scr(R, a.O));
+      for (const l of this.rightLines(q)) { await W5U.sum(st, l); if (!Session.alive(my)) return; }
+      await st.scope.wait(200);
+    },
+    rightLines(q) {
+      const a = q.ask;
+      if (q.d === 5) return ['它的' + HW[a.side] + '边有' + GR[a.g]];
+      if (q.d === 4) return ['两只手都对！'];
+      return ['它' + HW[a.H] + '手拿' + IT[a.X]];
+    },
+    rightEls(st) { return [st.units[st.q.answer]]; },
+    async reveal(st) {
+      const q = st.q, my = st, R = q.men[q.answer];
+      Sfx.reveal(); W5U.gold(st, st.units[q.answer]);
+      this.lift(st, q.answer, this.scr(R, q.d === 5 ? q.ask.side : q.ask.H));
+      this.cheerAll(st);
+      const ls = this.rightLines(q); st.summary = ls[ls.length - 1];
+      for (const l of ls) { await W5U.sum(st, l); if (!Session.alive(my)) return; }
+      await st.scope.wait(T(400));
+    },
+    workEls(st) { return st.units || []; },
+    snap(st) { return { men: st.q.men.map(m => (m.front ? 'f' : 'b')) }; },
+    lines() {
+      const out = [this.intro, '它们看着你哦！', '它面对着你', '两只手都对！'].concat(this.praise), K2 = Object.keys(IT);
+      ['L', 'R'].forEach(h => {
+        const o = h === 'L' ? 'R' : 'L';
+        out.push('这是' + HW[h] + '手哦', '这是它的' + HW[h] + '手', '这是它的' + HW[h] + '边', '它' + HW[h] + '边什么也没有');
+        K2.forEach(x => { out.push('谁' + HW[h] + '手拿着' + IT[x] + '？', '它' + HW[h] + '手拿着' + IT[x], '它' + HW[h] + '手拿' + IT[x], HW[h] + '手拿' + IT[x] + '，'); if (x !== 'icecream') out.push(HW[o] + '手拿' + IT[x] + '的是谁？'); });
+        Object.keys(GR).forEach(g => out.push('谁的' + HW[h] + '边有' + GR[g] + '？', '它的' + HW[h] + '边是' + GR[g], '它的' + HW[h] + '边有' + GR[g], GR[g] + '在它' + HW[h] + '边'));
+      });
+      return uniq(out);
+    },
+  };
+  /* ---------------------------------------------------------------- B6 变！ 发生了什么 (S11 / S8 / S16: pictures and a story -
+     the step after acting it out). Two instant photos of the same place - "之前" and "之后" (ducks on the pond, chicks on the
+     bench, bunnies in the garden) - and five event cards: a little block door with an arrow in + n dots = n came; an arrow out
+     + n dots = n went; two equal little photos = nothing changed. "发生了什么？" - tap a card.
+       L1 1-4 before, 1-2 came or went (from a bag), at most 5; the places stay (who came stands at the end, who went was at the
+       end) · L2 at most 6, 1-3; the after photo is arranged anew (no empty places to see) · L3 at most 8; maybe nothing
+       changed (about 1 in 5, the arrangement changed) · L4 the before photo is shown 2 s and turned over: "记住有几只！" ·
+       L5 the before photo is only a number card; at most 10 - count on or back from a number.
+     The five cards: right; the same way ±1; the other way, the same number; nothing changed (the right card's place from a
+     bag). Wrong: his card ringed blue; before and after joined one to one - what is more in after sparkles (came, counted on:
+     "多了两只，是来了"), what is not there any more in before turns into a grey dashed outline and walks out of the door
+     (went, counted back: "少了两只，是走了"); "没有来也没有走"; the right card ringed gold ("来了两只"). */
+  const B6A = ['duck', 'chick', 'bunny'], B6N = { duck: '小鸭', chick: '小鸡', bunny: '小兔' };
+  const SCENE = {
+    duck: '<rect width="300" height="190" fill="#BFE7A2"/><ellipse cx="160" cy="104" rx="132" ry="74" fill="#7CC8F2" stroke="#4FA6D6" stroke-width="6"/><path d="M60 92Q80 86 100 92M190 132Q210 126 230 132" stroke="#E6F6FF" stroke-width="4" fill="none"/>',
+    chick: '<rect width="300" height="190" fill="#BFE7A2"/><rect x="18" y="98" width="272" height="20" rx="6" fill="#C98B4A" stroke="' + INK + '" stroke-width="4"/><rect x="18" y="150" width="272" height="20" rx="6" fill="#C98B4A" stroke="' + INK + '" stroke-width="4"/><path d="M40 170V188M268 170V188" stroke="' + INK + '" stroke-width="6"/>',
+    bunny: '<rect width="300" height="190" fill="#A8D98A"/><path d="M14 70H292M14 112H292M14 154H292" stroke="#8A5A2B" stroke-width="10" stroke-linecap="round" opacity=".45"/>',
+  };
+  const DOOR6S = '<rect x="2" y="54" width="28" height="84" rx="6" fill="#FFC93C" ' + S4 + '/><path d="M8 138V80Q8 68 16 68Q24 68 24 80V138Z" fill="#5A3A22"/>';
+  /* the 10 places in a photo (2 rows of 5), in the photo's own units (300 x 190) */
+  const SLOT6 = i => ({ x: 62 + (i % 5) * 54, y: Math.floor(i / 5) ? 136 : 62 });
+  const EVT = {
+    came: '<rect x="6" y="10" width="34" height="58" rx="6" fill="#FFC93C" ' + S4 + '/><path d="M13 68V34Q13 24 23 24Q33 24 33 34V68Z" fill="#5A3A22"/><path d="M42 40H86M72 26L88 40L72 54" fill="none" stroke="#5CC46E" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/><path d="M66 6L69 14L77 15L71 20L73 28L66 24L59 28L61 20L55 15L63 14Z" fill="#FFF3A8" stroke="' + INK + '" stroke-width="2"/>',
+    went: '<rect x="6" y="10" width="34" height="58" rx="6" fill="#FFC93C" ' + S4 + '/><path d="M13 68V34Q13 24 23 24Q33 24 33 34V68Z" fill="#5A3A22"/><path d="M90 40H46M58 26L44 40L58 54" fill="none" stroke="#9AA3AD" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>',
+    same: '<rect x="4" y="18" width="38" height="46" rx="5" fill="#FFF" ' + S4 + '/><rect x="58" y="18" width="38" height="46" rx="5" fill="#FFF" ' + S4 + '/><circle cx="23" cy="40" r="9" fill="#FFC93C" stroke="' + INK + '" stroke-width="3"/><circle cx="77" cy="40" r="9" fill="#FFC93C" stroke="' + INK + '" stroke-width="3"/><path d="M45 34H55M45 46H55" stroke="' + INK + '" stroke-width="4"/>',
+  };
+  const B6L = [null, { max: 5, nMax: 2, kinds: ['came', 'went'] }, { max: 6, nMax: 3, kinds: ['came', 'went'] }, { max: 8, nMax: 3, kinds: ['came', 'went', 'came', 'went', 'same'] }, { max: 8, nMax: 3, kinds: ['came', 'went', 'came', 'went', 'same'] }, { max: 10, nMax: 3, kinds: ['came', 'went', 'came', 'went', 'same'] }];
+  W5R.B6 = {
+    kind0: 'what5', verb: '变！', intro: '发生了什么？', praise: ['看得真明白！'], props: B6A.slice(),
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, L = B6L[d], kind = bagPick(G, 'b6k' + d, L.kinds), who = rng.pick(B6A);
+      let b, n = 0;
+      if (kind === 'same') { b = rng.int(2, L.max); }
+      else { n = rng.int(1, L.nMax); b = kind === 'came' ? rng.int(1, L.max - n) : rng.int(n + 1, d === 1 ? 4 : L.max); if (d === 1) b = Math.min(b, 4); }
+      const a = kind === 'came' ? b + n : kind === 'went' ? b - n : b;
+      /* the places: L1 kept (who came at the end, who went from the end); else the after photo arranged anew */
+      const pb = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, b).sort((x, y) => x - y);
+      const before = d === 1 ? Array.from({ length: b }, (_, i) => i) : pb;
+      const after = d === 1 ? Array.from({ length: a }, (_, i) => i) : (() => { for (let t = 0; t < 20; t++) { const pa = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, a).sort((x, y) => x - y); if (pa.join() !== pb.slice(0, a).join()) return pa; } return rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).slice(0, a).sort((x, y) => x - y); })();
+      const right = kind === 'same' ? 's' : kind[0] + n;
+      /* the others: the same way ±1, the other way with the same number, nothing changed */
+      const cands = [], dir = kind === 'same' ? null : kind[0], other = dir === 'c' ? 'w' : 'c';
+      const okc = v => v !== right && !cands.includes(v) && (v === 's' || (+v.slice(1) >= 1 && (v[0] === 'c' ? b + +v.slice(1) <= 10 : +v.slice(1) <= b)));
+      const add = v => { if (okc(v)) cands.push(v); };
+      if (dir) { add(dir + (n - 1)); add(dir + (n + 1)); add(other + n); add('s'); add(dir + (n + 2)); add(other + (n + 1)); add(other + (n - 1)); add(dir + (n + 3)); }
+      else { add('c1'); add('w1'); add('c2'); add('w2'); add('c3'); add('w3'); }
+      for (let k = 1; k <= 6 && cands.length < 4; k++) { add('c' + k); add('w' + k); }
+      const opts = W5U.deal(G, right, cands.slice(0, 4), 'b6p' + d);
+      const q = { d, kind, who, b, n, a, before, after, answer: right, opts, k: [d, kind, who, b, n, after.join('')] };
+      if (kind !== 'same') q.fact = factOf(kind === 'came' ? '+' : '-', b, n);
+      return q;
+    },
+    audit(q) { return [{ n: q.opts.length, at: q.opts.indexOf(q.answer), right: q.opts.filter(v => v === q.answer).length }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    geo() {
+      const L = K.L();
+      return L ? { ph: [{ x: 58, y: 108, w: 412, h: 302 }, { x: 554, y: 108, w: 412, h: 302 }], arrow: { x: 482, y: 230, w: 60, h: 60 }, cardCy: 604 }
+        : { ph: [{ x: 180, y: 198, w: 344, h: 252 }, { x: 180, y: 478, w: 344, h: 252 }], arrow: { x: 330, y: 450, w: 44, h: 28 }, cardCy: 812 };
+    },
+    /* a photo: the white frame, its scene (with the little door on the left) and its label dot */
+    photoEl(st, k) {
+      const e = W2X.thing(st, 10, 10, 2, ''); e.style.pointerEvents = 'none';
+      e.innerHTML = '<svg viewBox="0 0 336 246" width="100%" height="100%" preserveAspectRatio="none" style="position:absolute;left:0;top:0"><rect x="3" y="3" width="330" height="240" rx="10" fill="#FFF" ' + S4 + '/><g transform="translate(18 16)">' + SCENE[st.q.who] + '<g transform="translate(-4 20)">' + DOOR6S + '</g></g><circle cx="168" cy="226" r="8" fill="' + (k ? '#FF6B5B' : '#9AA3AD') + '"/></svg>';
+      return e;
+    },
+    /* where a thing at place i of photo k is (stage px) */
+    slotRect(st, k, i) { const g = this.geo().ph[k], s = SLOT6(i), sx = g.w / 336, sy = g.h / 246, w = 56 * sx; return { x: Math.round(g.x + (18 + s.x) * sx - w / 2), y: Math.round(g.y + (16 + s.y) * sy - w / 2), w: Math.round(w), h: Math.round(w) }; },
+    doorXY(k) { const g = this.geo().ph[k], sx = g.w / 336, sy = g.h / 246; return { x: g.x + (18 + 12) * sx, y: g.y + (16 + 20 + 104) * sy }; },
+    place(st) {
+      if (!st.photos) return;
+      const g = this.geo(), q = st.q;
+      st.photos.forEach((e, k) => place(e, g.ph[k].x, g.ph[k].y, g.ph[k].w, g.ph[k].h));
+      if (st.arrow) place(st.arrow, g.arrow.x, g.arrow.y, g.arrow.w, g.arrow.h);
+      st.items.forEach((list, k) => list.forEach(it => { const r = this.slotRect(st, k, it.slot); place(it.e, r.x, r.y, r.w, r.h); }));
+      if (st.numCard) { const r = g.ph[0]; place(st.numCard, r.x + r.w / 2 - 70, r.y + r.h / 2 - 80, 140, 160); }
+      if (st.back) place(st.back, g.ph[0].x, g.ph[0].y, g.ph[0].w, g.ph[0].h);
+      if (st.cards) { const r = W5U.row5(K.L()); W5U.lay(st.cards, Stage.W / 2, g.cardCy, r.s, r.s, r.gap); }
+    },
+    itemEl(st, k, slot) { const e = W2X.thing(st, 10, 10, 6, ''); e.style.pointerEvents = 'none'; const im = W5U.propImg(st.q.who); e.appendChild(im); return { e, slot }; },
+    cardNode(v) {
+      const d = el('div', ''); Object.assign(d.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', pointerEvents: 'none' });
+      const kind = v === 's' ? 'same' : v[0] === 'c' ? 'came' : 'went';
+      d.innerHTML = '<svg viewBox="0 0 100 74" width="84" height="62">' + EVT[kind] + '</svg>';
+      if (kind !== 'same') { const n = +v.slice(1), per = n > 4 ? Math.ceil(n / 2) : n, s2 = svg('svg', { viewBox: '0 0 ' + (per * 20) + ' ' + (n > per ? 40 : 20), width: per * 18, height: n > per ? 36 : 18 }, d); for (let i = 0; i < n; i++) svg('circle', { cx: 10 + (i % per) * 20, cy: 10 + Math.floor(i / per) * 20, r: 7.5, fill: kind === 'came' ? '#5CC46E' : '#9AA3AD', stroke: INK, 'stroke-width': 2.5 }, s2); }
+      return d;
+    },
+    async present(st) {
+      const q = st.q, my = st;
+      st.photos = [this.photoEl(st, 0), this.photoEl(st, 1)];
+      st.arrow = W2X.thing(st, 10, 10, 4, ''); st.arrow.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%" style="pointer-events:none">' + (K.L() ? '<path d="M8 30H48M36 16L52 30L36 44" fill="none" stroke="' + INK + '" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' : '<path d="M30 6V50M16 38L30 54L44 38" fill="none" stroke="' + INK + '" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>') + '</svg>';
+      st.items = [q.before.map(s => this.itemEl(st, 0, s)), q.after.map(s => this.itemEl(st, 1, s))];
+      if (q.d === 5) { st.items[0].forEach(it => { it.e.style.visibility = 'hidden'; }); st.numCard = W2X.thing(st, 10, 10, 7, 'card'); st.numCard.style.pointerEvents = 'none'; st.numCard.appendChild(UI.qty(q.b, 96)); }
+      W5U.cards(st, q.opts.map(v => this.cardNode(v)), q.opts);
+      this.place(st);
+      if (q.d === 4) {
+        st.photos[1].style.visibility = 'hidden'; st.items[1].forEach(it => { it.e.style.visibility = 'hidden'; }); st.cards.forEach(c => { c.style.visibility = 'hidden'; });
+        K.pop(st, st.photos[0]); st.items[0].forEach((it, i) => K.pop(st, it.e, 40 * i));
+        K.task(st, [[W5U.prop(q.who)], ['q']]);
+        K.say(st, '记住有几只！');
+        await st.scope.wait(T(2000)); if (!Session.alive(my)) return;
+        await this.flip(st, true); if (!Session.alive(my)) return;
+        st.photos[1].style.visibility = ''; st.items[1].forEach(it => { it.e.style.visibility = ''; }); st.cards.forEach(c => { c.style.visibility = ''; });
+        K.pop(st, st.photos[1]); st.items[1].forEach((it, i) => K.pop(st, it.e, 40 * i)); st.cards.forEach((c, i) => K.pop(st, c, 200 + 60 * i));
+        K.say(st, '发生了什么？');
+        return;
+      }
+      K.pop(st, st.photos[0]); K.pop(st, st.photos[1], 120); st.items.forEach((l, k) => l.forEach((it, i) => K.pop(st, it.e, 120 * k + 40 * i)));
+      st.cards.forEach((c, i) => K.pop(st, c, 300 + 60 * i));
+      K.task(st, [[W5U.prop(q.who)], ['q']]);
+      K.say(st, '发生了什么？');
+    },
+    /* L4: the before photo turns over (face down: a block pattern) and back */
+    async flip(st, down) {
+      const my = st, P = st.photos[0];
+      await st.scope.anim(P, [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0.04)' }], { duration: 220 }); if (!Session.alive(my)) return;
+      if (down) { st.back = W2X.thing(st, 10, 10, 8, ''); st.back.style.pointerEvents = 'none'; st.back.innerHTML = '<svg viewBox="0 0 336 246" width="100%" height="100%" preserveAspectRatio="none"><rect x="3" y="3" width="330" height="240" rx="10" fill="#4FB3FF" ' + S4 + '/><g fill="#FFF" opacity=".35"><circle cx="70" cy="70" r="22"/><circle cx="168" cy="70" r="22"/><circle cx="266" cy="70" r="22"/><circle cx="70" cy="176" r="22"/><circle cx="168" cy="176" r="22"/><circle cx="266" cy="176" r="22"/></g><text x="168" y="140" font-size="72" font-weight="900" text-anchor="middle" fill="#FFF">?</text></svg>'; this.place(st); st.items[0].forEach(it => { it.e.style.visibility = 'hidden'; }); }
+      else { if (st.back) st.back.remove(); st.back = null; st.items[0].forEach(it => { it.e.style.visibility = ''; }); }
+      await st.scope.anim(down ? st.back : P, [{ transform: 'scaleX(0.04)' }, { transform: 'scaleX(1)' }], { duration: 220 });
+    },
+    onGesture(st, name, p) { return W5U.tapCard(st, name, p); },
+    next(st, strat) { if (st.cards && st.cards[0].style.visibility === 'hidden') return null; return W5U.cardNext(st, strat); },
+    say(v) { return v === 's' ? '没有变' : (v[0] === 'c' ? '来了' : '走了') + CNQ(+v.slice(1)) + '只'; },
+    wrongLine(q, v) {
+      if (v === 's') return '数量变了哦';
+      if (q.kind === 'same') return v[0] === 'c' ? '不是来了哦' : '不是走了哦';
+      if (v[0] !== q.answer[0]) return v[0] === 'c' ? '不是来了哦' : '不是走了哦';
+      return '不是' + this.say(v);
+    },
+    async feedback(st, ans) { const c = W5U.cardOf(st, ans); if (c) K.wiggle(st, c); W5U.say(st, this.wrongLine(st.q, ans)); await st.scope.wait(T(600)); },
+    async explain(st, ans) {
+      const q = st.q, my = st, B = st.items[0], A = st.items[1];
+      const rings = W5U.blue(st, W5U.cardOf(st, ans));
+      await st.scope.wait(500); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      /* 2. the before photo face up again (L4) / the number card turned into its picture (L5), then one to one */
+      if (st.back) { await this.flip(st, false); if (!Session.alive(my)) return; }
+      if (st.numCard) { st.numCard.remove(); st.numCard = null; B.forEach((it, i) => { it.e.style.visibility = ''; K.pop(st, it.e, 30 * i); }); await pause(st, 300); if (!Session.alive(my)) return; }
+      const m = Math.min(B.length, A.length), s = K.lines(st);
+      for (let i = 0; i < m; i++) { const a = W5U.rect(B[i].e), b = W5U.rect(A[i].e); K.link(st, s, { x: a.x + a.w / 2, y: a.y + a.h / 2 }, { x: b.x + b.w / 2, y: b.y + b.h / 2 }, '#B57BFF'); }
+      await pause(st, 200); if (!Session.alive(my)) return;
+      if (q.kind === 'same') W5U.note(st, '没有来也没有走');
+      else if (q.kind === 'came') {
+        W5U.note(st, '多了' + CNQ(q.n) + '只，是来了');
+        for (let i = m; i < A.length; i++) { W5U.came(st, A[i].e); K.badge(st, A[i].e, i + 1, 0, -4, 36); Count.say(i + 1); await pause(st, 260); if (!Session.alive(my)) return; }
+      } else {
+        W5U.note(st, '少了' + CNQ(q.n) + '只，是走了');
+        const dd = this.doorXY(0);
+        for (let i = B.length - 1; i >= m; i--) { W5U.leave(st, B[i].e, dd.x, dd.y, 340); Count.say(i); await pause(st, 260); if (!Session.alive(my)) return; }
+        const fr = W5U.stay(st, B.slice(0, m).map(it => it.e)); if (fr) fr.style.borderStyle = 'solid';
+      }
+      await st.scope.wait(250); if (!Session.alive(my)) return;
+      const R = W5U.cardOf(st, q.answer); W5U.gold(st, R); K.hop(st, R, 12);
+      await W5U.sum(st, q.kind === 'went' ? W5U.left(q.a) + '！' : this.say(q.answer));
+      if (!Session.alive(my)) return;
+      await st.scope.wait(200);
+    },
+    rightEls(st) { return [W5U.cardOf(st, st.q.answer)]; },
+    async reveal(st) {
+      const q = st.q, my = st, R = W5U.cardOf(st, q.answer);
+      if (st.back) { await this.flip(st, false); if (!Session.alive(my)) return; }
+      Sfx.reveal(); W5U.gold(st, R); K.hop(st, R, 14); this.cheerAll(st);
+      st.summary = this.say(q.answer);
+      await W5U.sum(st, st.summary); if (!Session.alive(my)) return;
+      await st.scope.wait(T(400));
+    },
+    workEls(st) { return st.cards || []; },
+    snap(st) { return { opts: (st.opts || []).slice() }; },
+    lines() {
+      const out = [this.intro, '记住有几只！', '没有变', '数量变了哦', '不是来了哦', '不是走了哦', '没有来也没有走'].concat(this.praise);
+      for (let n = 1; n <= 6; n++) { const c = CNQ(n); out.push('来了' + c + '只', '走了' + c + '只', '不是来了' + c + '只', '不是走了' + c + '只', '多了' + c + '只，是来了', '少了' + c + '只，是走了'); }
+      for (let n = 1; n <= 9; n++) out.push('还剩' + CNQ(n) + '只！');
+      return uniq(out);
+    },
+  };
+  /* ---------------------------------------------------------------- B7 跟！ 风筝线团 (S1 Chase It: the eyes follow a line). Five
+     kites above, five little animals below, each holding a string up to its kite; the strings cross. "小兔的风筝是哪个？" - tap
+     a kite. He may also slide his finger along a string from its animal (stations along it): what he slid over glows - his
+     own tool, never judged.
+       L1 five strings of five colours, each crosses at most once · L2 one colour, each crosses 1-2 times · L3 2-3 times, with
+       S-bends · L4 a cloud hides a piece of the asked string (straight under it, <= 80 units) · L5 small loops and close
+       parallel stretches, 3-4 crossings.
+     The right kite's place comes from a bag (the asked animal is the one whose kite it is). Wrong: a blue bead runs from his
+     kite down its string to its owner ("这是小鸭的风筝"); a gold bead runs from the asked animal up its string, stopping and
+     flashing at every crossing ("跟着线走"); the right kite ringed gold ("这个是小兔的"). */
+  const B7A = ['bunny', 'duck', 'kitten', 'chick', 'sheep'], B7N = { bunny: '小兔', duck: '小鸭', kitten: '小猫', chick: '小鸡', sheep: '小羊' };
+  const KCOL = ['#FF6B5B', '#4FB3FF', '#5CC46E', '#FFC93C', '#B57BFF'];
+  const SCOL = ['#E8414B', '#2E86DE', '#2FA84F', '#E0A400', '#8E44D9'];
+  const KITE = [
+    c => '<polygon points="50,4 90,42 50,84 10,42" fill="' + c + '" ' + S4 + '/><path d="M50 4V84M10 42H90" stroke="' + INK + '" stroke-width="3"/>',
+    c => '<polygon points="50,6 94,70 50,58 6,70" fill="' + c + '" ' + S4 + '/><path d="M50 6V58" stroke="' + INK + '" stroke-width="3"/>',
+    c => '<rect x="16" y="8" width="68" height="70" rx="6" fill="' + c + '" ' + S4 + '/><path d="M16 8L84 78M84 8L16 78" stroke="' + INK + '" stroke-width="3"/>',
+    c => '<circle cx="50" cy="42" r="38" fill="' + c + '" ' + S4 + '/><circle cx="50" cy="42" r="14" fill="#FFF" stroke="' + INK + '" stroke-width="3"/>',
+    c => '<polygon points="' + W2X.pts(W2X.star(50, 44, 42)) + '" fill="' + c + '" ' + S4 + '/>',
+  ];
+  const B7L = [null, { lo: 0, hi: 1, each: 1, amp: 0, colors: true }, { lo: 1, hi: 2, each: 2, amp: 0.25 }, { lo: 2, hi: 3, each: 3, amp: 0.6 }, { lo: 1, hi: 3, each: 3, amp: 0, cloud: true }, { lo: 3, hi: 4, each: 4, amp: 0.5, loop: true }];
+  const segX = (a, b, c, d) => { const den = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x); if (Math.abs(den) < 1e-9) return null; const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / den, u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / den; return t >= 0 && t < 1 && u >= 0 && u < 1 ? { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), t } : null; };
+  W5R.B7 = {
+    kind0: 'tangle5', verb: '跟！', intro: '风筝线缠住啦！', praise: ['眼睛跟得真准！'], props: B7A.slice(),
+    geo() {
+      const L = K.L();
+      return L ? { kx: 512, ky: 112, kw: 104, kh: 116, kp: 150, ax: 512, ay: 498, aw: 100, ap: 150 }
+        : { kx: 352, ky: 214, kw: 100, kh: 112, kp: 126, ax: 352, ay: 752, aw: 100, ap: 126 };
+    },
+    /* a string in unit space: u along the board (0 animal ... 1 kite), x in "lanes" (0..4); sampled */
+    curve(xa, xk, amp, ph, loop) {
+      const P = [], N = 48;
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, s = t * t * (3 - 2 * t), w = amp * Math.sin(Math.PI * 2 * t + ph) * Math.sin(Math.PI * t);
+        P.push({ x: xa + (xk - xa) * s + w, y: t });
+      }
+      if (loop) { const k = Math.round(N * loop.t), c = P[k], out = []; for (let j = 0; j <= 14; j++) { const a = Math.PI / 2 + j / 14 * Math.PI * 2; out.push({ x: c.x + loop.r * Math.cos(a) * loop.dir, y: c.y - loop.r * 0.12 + loop.r * 0.12 * Math.sin(a) }); } P.splice(k, 0, ...out); }
+      return P;
+    },
+    /* the crossings of string i with the others (in unit space, x scaled so the lanes are about as wide as the height) */
+    crossings(S, i) {
+      const sc = p => ({ x: p.x * 0.25, y: p.y }), out = [];
+      S.forEach((Q, j) => { if (j === i) return; const A = S[i]; for (let a = 1; a < A.length; a++) for (let b = 1; b < Q.length; b++) { const h = segX(sc(A[a - 1]), sc(A[a]), sc(Q[b - 1]), sc(Q[b])); if (h) out.push({ a: a - 1 + h.t, j }); } });
+      return out.sort((x, y) => x.a - y.a);
+    },
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, L = B7L[d], at = W5U.at(G, 5, 'b7p' + d);
+      const animals = rng.shuffle(B7A), kites = rng.shuffle([0, 1, 2, 3, 4]), kcol = rng.shuffle(KCOL.map((_, i) => i));
+      let best = null;
+      for (let t = 0; t < 400; t++) {
+        const perm = rng.shuffle([0, 1, 2, 3, 4]);      /* animal at lane i holds the kite at lane perm[i] */
+        if (d === 1 && perm.some((p, i) => Math.abs(p - i) > 1)) continue;
+        const who = perm.indexOf(at);
+        const S = perm.map((p, i) => this.curve(i, p, L.amp * (0.5 + rng()), rng() * 6.28, L.loop && i === who ? { t: 0.3 + rng() * 0.4, r: 0.45, dir: rng.chance(0.5) ? 1 : -1 } : null));
+        const X = S.map((_, i) => this.crossings(S, i));
+        if (X.some(x => x.length > L.each)) continue;
+        const n = X[who].length; if (n < L.lo || n > L.hi) continue;
+        if (d >= 2 && X.reduce((s, x) => s + x.length, 0) < 4) continue;
+        const scol = (() => { for (let u = 0; u < 30; u++) { const c = rng.shuffle([0, 1, 2, 3, 4]); if (c.every((x, i) => x !== kcol[perm[i]])) return c; } return [0, 1, 2, 3, 4]; })();
+        const q = { d, perm, who, animals, kites, kcol, scol, S: S.map(P => P.map(p => [+p.x.toFixed(3), +p.y.toFixed(3)])), X: X[who], answer: at, opts: [0, 1, 2, 3, 4] };
+        if (L.cloud && n) { const c = X[who][Math.floor(rng() * n)], P = S[who], k = Math.floor(c.a), p = P[k]; q.cloud = { x: +p.x.toFixed(3), y: +p.y.toFixed(3) }; }
+        if (L.cloud && !n) continue;
+        q.k = [d, perm.join(''), who, animals[who]];
+        best = q; break;
+      }
+      return best;
+    },
+    audit(q) { return [{ n: 5, at: q.answer, right: q.perm.filter(p => p === q.answer).length }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    /* unit -> stage: lane x, height 0 (the animal's hand) .. 1 (the kite's tail) */
+    toStage(p) { const g = this.geo(); return { x: g.ax + (p[0] - 2) * g.ap, y: (g.ay - 4) + ((g.ky + g.kh - 6) - (g.ay - 4)) * p[1] }; },
+    place(st) {
+      if (!st.kiteEls) return;
+      const g = this.geo(), q = st.q;
+      st.kiteEls.forEach((e, i) => place(e, Math.round(g.kx + (i - 2) * g.kp - g.kw / 2), g.ky, g.kw, g.kh));
+      st.aniEls.forEach((e, i) => place(e, Math.round(g.ax + (i - 2) * g.ap - g.aw / 2), g.ay, g.aw, g.aw));
+      place(st.layer, 0, 0, Stage.W, Stage.H); st.layer.setAttribute('width', Stage.W); st.layer.setAttribute('height', Stage.H);
+      this.drawStrings(st);
+      if (st.cloudEl) { const c = this.toStage([q.cloud.x, q.cloud.y]); place(st.cloudEl, Math.round(c.x - 56), Math.round(c.y - 32), 112, 64); }
+    },
+    path(st, P) { return P.map((p, i) => { const s = this.toStage(p); return (i ? 'L' : 'M') + s.x.toFixed(1) + ' ' + s.y.toFixed(1); }).join(''); },
+    drawStrings(st) {
+      const q = st.q, s = st.layer; while (s.firstChild) s.removeChild(s.firstChild);
+      q.S.forEach((P, i) => {
+        const d = this.path(st, P), col = q.d === 1 ? SCOL[q.scol[i]] : '#6B4A2E';
+        svg('path', { d, fill: 'none', stroke: '#FFF', 'stroke-width': 9, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.8 }, s);
+        svg('path', { d, fill: 'none', stroke: col, 'stroke-width': 4.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+      });
+      st.glowPaths = q.S.map(() => svg('path', { d: '', fill: 'none', stroke: GOLD, 'stroke-width': 9, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.85 }, s));
+      (st.lit || []).forEach((k, i) => { if (k > 0) st.glowPaths[i].setAttribute('d', this.path(st, q.S[i].slice(0, k + 1))); });
+    },
+    /* the stations along string i (every 3rd point), for his finger */
+    stations(st, i) { const P = st.q.S[i], out = []; for (let k = 0; k < P.length; k += 3) out.push({ id: 's' + k, rect: () => { const s = this.toStage(P[k]); return { x: s.x - 22, y: s.y - 22, w: 44, h: 44 }; } }); return out; },
+    async present(st) {
+      const q = st.q;
+      st.layer = svg('svg', { width: Stage.W, height: Stage.H }, Stage.el); Object.assign(st.layer.style, { position: 'absolute', left: '0px', top: '0px', zIndex: 4, pointerEvents: 'none', overflow: 'visible' }); st.els.push(st.layer);
+      st.lit = [0, 0, 0, 0, 0];
+      st.kiteEls = q.kites.map((sh, i) => { const e = piece(st, 6, KITE[sh](KCOL[q.kcol[i]]) + '<path d="M50 84Q40 96 50 104Q60 112 50 116" fill="none" stroke="' + INK + '" stroke-width="2.5"/>', 100, 116); K.reg(st, 'k' + i, e, {}); return e; });
+      st.aniEls = q.animals.map((a, i) => { const e = W2X.thing(st, 10, 10, 6, ''); e.appendChild(W5U.propImg(a)); K.reg(st, 'a' + i, e, { slide: this.stations(st, i) }); return e; });
+      if (q.cloud) { st.cloudEl = W2X.thing(st, 10, 10, 7, ''); st.cloudEl.style.pointerEvents = 'none'; st.cloudEl.innerHTML = '<svg viewBox="0 0 140 80" width="100%" height="100%"><path d="M26 70Q4 70 6 52Q8 36 28 38Q30 14 56 16Q72 2 92 14Q116 10 120 34Q138 38 134 54Q130 70 110 70Z" fill="#FFF" stroke="#C9D3E0" stroke-width="5"/></svg>'; }
+      this.place(st);
+      st.kiteEls.forEach((e, i) => K.pop(st, e, 50 * i)); st.aniEls.forEach((e, i) => K.pop(st, e, 120 + 50 * i));
+      K.task(st, [[W5U.prop(q.animals[q.who])], [W3X.ic(KITE[0]('#FFF') , 50)], ['q']]);
+      K.say(st, B7N[q.animals[q.who]] + '的风筝是哪个？');
+    },
+    onGesture(st, name, p) {
+      const id = p.id || '';
+      if (name === 'pass' && /^a\d$/.test(id)) { const i = +id.slice(1), k = +String(p.at).slice(1); if (k <= st.lit[i] + 6) { st.lit[i] = Math.max(st.lit[i], k); st.glowPaths[i].setAttribute('d', this.path(st, st.q.S[i].slice(0, st.lit[i] + 1))); } return 'free'; }
+      if (name === 'pick' || (name === 'tap' && /^a\d$/.test(id))) return 'free';
+      const i = /^k\d$/.test(id) ? +id.slice(1) : -1;
+      if (name !== 'tap' || i < 0 || st.picked) return false;
+      st.picked = true; K.hop(st, st.kiteEls[i], 10); Session.submit(st, i); return 'ok';
+    },
+    next(st, strat) { if (st.picked || !st.kiteEls) return null; const q = st.q; return { g: 'tap', p: { id: 'k' + (strat === 'wrong' ? (q.answer + 1 + (st.gen % 4)) % 5 : q.answer) } }; },
+    ownerOf(q, k) { return q.animals[q.perm.indexOf(k)]; },
+    async feedback(st, ans) { K.wiggle(st, st.kiteEls[ans]); W5U.say(st, '这是' + B7N[this.ownerOf(st.q, ans)] + '的风筝'); await st.scope.wait(T(600)); },
+    /* a bead running along string i (up: from the animal; down: from the kite), stopping at the given crossings */
+    async bead(st, i, up, color, stops) {
+      const my = st, P = st.q.S[i].map(p => this.toStage(p)), seq = up ? P : P.slice().reverse(), b = W2X.thing(st, 30, 30, 52, '');
+      Object.assign(b.style, { borderRadius: '50%', background: color, boxShadow: '0 0 0 4px ' + INK + ', 0 0 16px 6px ' + color, pointerEvents: 'none' });
+      const stopAt = new Set((stops || []).map(x => Math.round(up ? x.a : P.length - 1 - x.a)));
+      for (let k = 0; k < seq.length; k++) {
+        if (k % 2 && !stopAt.has(k) && k < seq.length - 1) continue;
+        place(b, Math.round(seq[k].x - 15), Math.round(seq[k].y - 15), 30, 30);
+        if (stopAt.has(k)) { Fx.burst(seq[k].x, seq[k].y, { n: 8, dist: 34 }); Sfx.pop(); await pause(st, 150); }
+        await pause(st, 14); if (!Session.alive(my)) return b;
+      }
+      return b;
+    },
+    async explain(st, ans) {
+      const q = st.q, my = st, mine = q.perm.indexOf(ans);
+      W5U.blue(st, st.kiteEls[ans]);
+      const b1 = await this.bead(st, mine, false, BLUE); if (!Session.alive(my)) return;
+      W5U.blue(st, st.aniEls[mine]);
+      await st.scope.wait(250); if (!Session.alive(my)) return;
+      if (b1) b1.remove();
+      if (st.cloudEl) st.scope.anim(st.cloudEl, [{ opacity: 1 }, { opacity: 0.25 }], { duration: 400, fill: 'forwards' });
+      W5U.note(st, '跟着线走');
+      await this.bead(st, q.who, true, GOLD, q.X); if (!Session.alive(my)) return;
+      st.glowPaths[q.who].setAttribute('d', this.path(st, q.S[q.who]));
+      await st.scope.wait(150); if (!Session.alive(my)) return;
+      W5U.gold(st, st.kiteEls[q.answer]); K.hop(st, st.kiteEls[q.answer], 14);
+      await W5U.sum(st, '这个是' + B7N[q.animals[q.who]] + '的'); if (!Session.alive(my)) return;
+      await st.scope.wait(200);
+    },
+    rightEls(st) { return [st.kiteEls[st.q.answer]]; },
+    async reveal(st) {
+      const q = st.q, my = st;
+      Sfx.reveal(); st.glowPaths[q.who].setAttribute('d', this.path(st, q.S[q.who]));
+      if (st.cloudEl) st.cloudEl.style.opacity = '0.3';
+      W5U.gold(st, st.kiteEls[q.answer]); K.hop(st, st.kiteEls[q.answer], 14); this.cheerAll(st);
+      st.summary = '这个是' + B7N[q.animals[q.who]] + '的';
+      await W5U.sum(st, st.summary); if (!Session.alive(my)) return;
+      await st.scope.wait(T(400));
+    },
+    workEls(st) { return st.kiteEls || []; },
+    gestureHint(st) { if (st.aniEls) W3X.tapHint(st, st.aniEls[st.q.who]); },
+    snap(st) { return { lit: (st.lit || []).slice() }; },
+    lines() {
+      const out = [this.intro, '跟着线走'].concat(this.praise);
+      B7A.forEach(a => out.push(B7N[a] + '的风筝是哪个？', '这是' + B7N[a] + '的风筝', '这个是' + B7N[a] + '的'));
+      return uniq(out);
+    },
+  };
+  /* ---------------------------------------------------------------- B8 比！ 找不同 (reasoning; F17 Popping Candy: what differs in
+     a grid). Two boxes of sweets side by side (portrait: one above the other), the same but for one or two places. Tap the
+     sweet that differs (in either box: the same place counts).
+       L1 2 x 3, one place, its colour · L2 3 x 3, one place, its shape · L3 3 x 3, one place, a small detail (the way the
+       stripes go, a dot, a ring) · L4 4 x 4, two places: tap both (each tap marks it, tap again to take the mark off; judged
+       when two are marked) · L5 4 x 4, one place differs and two neighbours swapped places: "找出所有不一样！" - three to
+       find, empty circles on the task card show how many are still to find.
+     L1-L3 a pick from 6 / 9 places (the right place from a bag); L4-L5 a construction (a random play is right 1 in 120 / 560).
+     Wrong: his sweet and the one at the same place in the other box grow and flash ("这两颗一样哦"); a light goes over both
+     boxes row by row, one pair after another, and stops at the pair that differs: both ringed gold ("这两颗不一样"), then
+     what differs ("颜色不一样" / "形状不一样" / "花纹不一样" / "换了位置"). */
+  const CCOL = ['#FF6B5B', '#4FB3FF', '#5CC46E', '#FFC93C', '#B57BFF', '#FF8DC7'];
+  const CSH = ['round', 'heart', 'star', 'wrap'], CPAT = ['none', 's1', 's2', 'dot', 'ring'];
+  const candy = c => {
+    const f = CCOL[c.c], k = 'stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"';
+    let s = c.s === 'round' ? '<circle cx="50" cy="50" r="31" fill="' + f + '" ' + k + '/>'
+      : c.s === 'heart' ? '<path d="M50 82C22 62 14 46 20 32C26 18 44 18 50 32C56 18 74 18 80 32C86 46 78 62 50 82Z" fill="' + f + '" ' + k + '/>'
+        : c.s === 'star' ? '<polygon points="' + W2X.pts(W2X.star(50, 52, 36)) + '" fill="' + f + '" ' + k + '/>'
+          : '<path d="M22 50L6 34V66Z" fill="' + f + '" ' + k + '/><path d="M78 50L94 34V66Z" fill="' + f + '" ' + k + '/><ellipse cx="50" cy="50" rx="30" ry="22" fill="' + f + '" ' + k + '/>';
+    const w = 'stroke="#FFF" stroke-width="5" stroke-linecap="round"';
+    if (c.p === 's1') s += '<path d="M37 59L45 47M46 63L56 49M55 61L63 50" ' + w + '/>';
+    if (c.p === 's2') s += '<path d="M63 59L55 47M54 63L44 49M45 61L37 50" ' + w + '/>';
+    if (c.p === 'dot') s += '<circle cx="50" cy="52" r="7" fill="#FFF" stroke="' + INK + '" stroke-width="2.5"/>';
+    if (c.p === 'ring') s += '<circle cx="50" cy="52" r="11" fill="none" stroke="#FFF" stroke-width="5"/>';
+    return s;
+  };
+  const B8L = [null, { r: 2, c: 3, diff: ['c'] }, { r: 3, c: 3, diff: ['s'] }, { r: 3, c: 3, diff: ['p'] }, { r: 4, c: 4, two: 2 }, { r: 4, c: 4, two: 1, swap: true }];
+  W5R.B8 = {
+    kind0: 'diff5', verb: '比！', intro: '两盒糖不一样！', praise: ['眼睛真尖！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, L = B8L[d], N = L.r * L.c;
+      const rnd = () => ({ s: d <= 1 ? rng.pick(CSH) : rng.pick(CSH), c: rng.int(0, 5), p: d <= 2 ? 'none' : rng.pick(CPAT) });
+      const A = Array.from({ length: N }, rnd), B = A.map(x => Object.assign({}, x)), diffs = [];
+      const change = (i, what) => {
+        const x = B[i];
+        if (what === 'c') { x.c = rng.pick([0, 1, 2, 3, 4, 5].filter(v => v !== x.c)); }
+        else if (what === 's') { x.s = rng.pick(CSH.filter(v => v !== x.s)); }
+        else { x.p = x.p === 's1' ? 's2' : x.p === 's2' ? 's1' : rng.pick(CPAT.filter(v => v !== x.p)); }
+        diffs.push({ i, what });
+      };
+      if (!L.two) { const at = W5U.at(G, N, 'b8p' + d); change(at, L.diff[0]); return { d, rows: L.r, cols: L.c, A, B, diffs, answer: at, opts: A.map((_, i) => i), k: [d, at, A.map(x => x.s[0] + x.c + x.p[0]).join('')] }; }
+      const cells = rng.shuffle(A.map((_, i) => i));
+      if (L.swap) {
+        /* two neighbours (side by side or one above the other) that look different swap places */
+        let s = null;
+        for (const i of cells) { const nb = [i % L.c < L.c - 1 ? i + 1 : -1, i + L.c < N ? i + L.c : -1].filter(j => j >= 0 && JSON.stringify(A[j]) !== JSON.stringify(A[i])); if (nb.length) { s = [i, rng.pick(nb)]; break; } }
+        if (!s) return this.gen(G, o);
+        B[s[0]] = Object.assign({}, A[s[1]]); B[s[1]] = Object.assign({}, A[s[0]]);
+        diffs.push({ i: s[0], what: 'w' }, { i: s[1], what: 'w' });
+        const one = cells.find(i => !s.includes(i) && !s.some(j => Math.abs(j - i) === 1 || Math.abs(j - i) === L.c));
+        change(one, rng.pick(['c', 's', 'p']));
+      } else { change(cells[0], rng.pick(['c', 's', 'p'])); change(cells[1], rng.pick(['c', 's', 'p'])); }
+      const ans = diffs.map(x => x.i).sort((a, b) => a - b);
+      return { d, rows: L.r, cols: L.c, A, B, diffs, need: ans.length, answer: ans.join(','), k: [d, ans.join('.'), A.map(x => x.s[0] + x.c + x.p[0]).join('')] };
+    },
+    audit(q) { return q.need ? [{ build: true, chance: q.need === 2 ? 1 / 120 : 1 / 560 }] : [{ n: q.opts.length, at: q.answer, right: q.A.filter((x, i) => JSON.stringify(x) !== JSON.stringify(q.B[i])).length }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    /* the two boxes: cell size, gaps, their places (landscape side by side, portrait one above the other) */
+    geo(q) {
+      const L = K.L(), c = q.cols === 3 && q.rows === 2 ? 120 : q.cols === 3 ? (L ? 110 : 104) : (L ? 90 : 88), gap = q.cols === 4 ? (L ? 8 : 6) : 10, pad = 14;
+      const bw = q.cols * c + (q.cols - 1) * gap + 2 * pad, bh = q.rows * c + (q.rows - 1) * gap + 2 * pad;
+      if (L) { const x0 = Math.round(512 - bw - 18), y0 = q.rows === 4 ? 116 : Math.round(320 - bh / 2); return { c, gap, pad, bw, bh, box: [{ x: x0, y: y0 }, { x: 530, y: y0 }] }; }
+      const y0 = q.rows === 4 ? 202 : 206, x0 = Math.round(352 - bw / 2);
+      return { c, gap, pad, bw, bh, box: [{ x: x0, y: y0 }, { x: x0, y: y0 + bh + (q.rows === 4 ? 16 : 22) }] };
+    },
+    cellRect(q, k, i) { const g = this.geo(q), b = g.box[k], r = Math.floor(i / q.cols), cc = i % q.cols; return { x: b.x + g.pad + cc * (g.c + g.gap), y: b.y + g.pad + r * (g.c + g.gap), w: g.c, h: g.c }; },
+    place(st) {
+      if (!st.boxes) return;
+      const q = st.q, g = this.geo(q);
+      st.boxes.forEach((e, k) => place(e, g.box[k].x, g.box[k].y, g.bw, g.bh));
+      st.cells.forEach((list, k) => list.forEach((e, i) => { const r = this.cellRect(q, k, i); place(e, r.x, r.y, r.w, r.h); }));
+    },
+    async present(st) {
+      const q = st.q;
+      st.marks = [];
+      st.boxes = [0, 1].map(k => { const e = W2X.thing(st, 10, 10, 3, ''); Object.assign(e.style, { borderRadius: '26px', background: '#FFF8EC', boxShadow: '0 0 0 5px ' + INK + ', 0 0 0 11px ' + (k ? '#FF8DC7' : '#4FB3FF') + ', 0 0 0 14px ' + INK, pointerEvents: 'none' }); return e; });
+      st.cells = [q.A, q.B].map((list, k) => list.map((c, i) => { const e = piece(st, 6, '<rect x="4" y="4" width="92" height="92" rx="16" fill="#FFF" stroke="#E8D9C4" stroke-width="4"/>' + candy(c), 100, 100); K.reg(st, (k ? 'b' : 'a') + i, e, {}); return e; }));
+      this.place(st);
+      st.boxes.forEach((e, k) => K.pop(st, e, 80 * k)); st.cells.forEach((l, k) => l.forEach((e, i) => K.pop(st, e, 80 * k + 20 * i)));
+      const ic = W3X.ic('<rect x="6" y="20" width="40" height="60" rx="6" fill="#FFF" ' + S4 + '/><rect x="54" y="20" width="40" height="60" rx="6" fill="#FFF" ' + S4 + '/><circle cx="26" cy="38" r="7" fill="#FF8DC7"/><circle cx="26" cy="62" r="7" fill="#4FB3FF"/><circle cx="74" cy="38" r="7" fill="#FF8DC7"/><circle cx="74" cy="62" r="7" fill="#5CC46E"/>', 54);
+      if (q.need) {
+        st.pipBox = el('span', ''); Object.assign(st.pipBox.style, { display: 'flex', gap: '6px', alignItems: 'center' });
+        st.pips = Array.from({ length: q.need }, () => { const p = el('span', '', st.pipBox); Object.assign(p.style, { width: '26px', height: '26px', borderRadius: '50%', boxShadow: '0 0 0 3px ' + INK, background: '#FFF', display: 'inline-block' }); return p; });
+        K.task(st, [[ic], [{ node: st.pipBox }], ['q']]);
+        if (q.d === 5) K.say(st, '找出所有不一样！'); else W3X.say2(st, '有两颗不一样，', '都找出来！');
+      } else { K.task(st, [[ic], ['q']]); K.say(st, '哪颗糖不一样？'); }
+    },
+    /* a mark on both sweets of place i (L4 / L5) */
+    mark(st, i, on) {
+      st.cells.forEach(l => { const e = l[i]; let m = e.querySelector('.b8mk'); if (on && !m) { m = el('div', 'b8mk', e); Object.assign(m.style, { position: 'absolute', inset: '-6px', borderRadius: '20px', boxShadow: '0 0 0 6px #FF9F43', pointerEvents: 'none' }); } if (!on && m) m.remove(); });
+      st.pips.forEach((p, k) => { p.style.background = k < st.marks.length ? '#FF9F43' : '#FFF'; });
+    },
+    onGesture(st, name, p) {
+      const m = /^([ab])(\d+)$/.exec(p.id || ''); if (name !== 'tap' || !m || st.picked) return false;
+      const i = +m[2], q = st.q;
+      K.pop(st, st.cells[m[1] === 'a' ? 0 : 1][i]);
+      if (!q.need) { st.picked = true; Session.submit(st, i); return 'ok'; }
+      const at = st.marks.indexOf(i);
+      if (at >= 0) { st.marks.splice(at, 1); this.mark(st, i, false); Sfx.back(); return 'ok'; }
+      st.marks.push(i); this.mark(st, i, true); Sfx.place();
+      if (st.marks.length >= q.need) { st.picked = true; st.scope.timeout(() => Session.submit(st, st.marks.slice().sort((a, b) => a - b).join(',')), 350); }
+      return 'ok';
+    },
+    next(st, strat) {
+      const q = st.q; if (st.picked || !st.cells) return null;
+      const right = q.need ? q.answer.split(',').map(Number) : [q.answer], side = st.gen % 2 ? 'b' : 'a';
+      if (!q.need) return { g: 'tap', p: { id: side + (strat === 'wrong' ? (q.answer + 1) % q.A.length : q.answer) } };
+      const bad = st.marks.find(i => !right.includes(i)); if (strat !== 'wrong' && bad != null) return { g: 'tap', p: { id: side + bad } };
+      if (strat === 'wrong') { const w = q.A.findIndex((_, i) => !right.includes(i) && !st.marks.includes(i)); return { g: 'tap', p: { id: side + (st.marks.length ? w : right[0]) } }; }
+      const miss = right.find(i => !st.marks.includes(i)); return miss == null ? null : { g: 'tap', p: { id: side + miss } };
+    },
+    evaluate(st, ans) { return String(ans) === String(st.q.answer); },
+    /* his places that are the same in both boxes */
+    wrongs(st, ans) { const right = st.q.need ? st.q.answer.split(',').map(Number) : [st.q.answer]; return String(ans).split(',').map(Number).filter(i => !right.includes(i)); },
+    async feedback(st, ans) { const w = this.wrongs(st, ans); w.forEach(i => K.wiggle(st, st.cells[0][i])); W5U.say(st, '这两颗一样哦'); await st.scope.wait(T(600)); },
+    whatLine(w) { return w === 'c' ? '颜色不一样' : w === 's' ? '形状不一样' : w === 'p' ? '花纹不一样' : '换了位置'; },
+    async explain(st, ans) {
+      const q = st.q, my = st, w = this.wrongs(st, ans);
+      const had = st.marks; st.marks = []; had.forEach(i => this.mark(st, i, false));
+      /* 1. his sweet and its twin grow and flash, ringed blue */
+      const pair = i => [st.cells[0][i], st.cells[1][i]];
+      w.forEach(i => pair(i).forEach(e => st.scope.anim(e, [{ transform: 'scale(1)' }, { transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 700, iterations: 2 })));
+      const rings = w.length ? W5U.blue(st, [].concat(...w.map(pair))) : W5U.blue(st, st.boxes[0]);
+      await st.scope.wait(700); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      /* 2. a light goes over the rows of both boxes; at a row with a difference it stops: gold on both sweets */
+      const g = this.geo(q), bars = [0, 1].map(k => { const b = W2X.thing(st, 10, 10, 8, ''); Object.assign(b.style, { borderRadius: '14px', background: 'rgba(255,236,140,.45)', boxShadow: '0 0 18px 6px rgba(255,236,140,.6)', pointerEvents: 'none' }); return b; });
+      const rowsWith = new Set(q.diffs.map(x => Math.floor(x.i / q.cols))), last = Math.max(...rowsWith);
+      for (let r = 0; r <= last; r++) {
+        bars.forEach((b, k) => { const c = this.cellRect(q, k, r * q.cols); place(b, c.x - 6, c.y - 6, g.bw - 2 * g.pad + 12, g.c + 12); });
+        if (rowsWith.has(r)) { q.diffs.filter(x => Math.floor(x.i / q.cols) === r).forEach(x => { W5U.gold(st, pair(x.i)); K.hop(st, st.cells[1][x.i], 10); }); Sfx.reveal(); await pause(st, 350); }
+        else await pause(st, 160);
+        if (!Session.alive(my)) return;
+      }
+      bars.forEach(b => b.remove());
+      await W5U.sum(st, '这两颗不一样'); if (!Session.alive(my)) return;
+      await W5U.sum(st, this.whatLine(q.diffs[0].what)); if (!Session.alive(my)) return;
+      await st.scope.wait(200);
+    },
+    rightEls(st) { const q = st.q; return [].concat(...q.diffs.map(x => [st.cells[0][x.i], st.cells[1][x.i]])); },
+    async reveal(st) {
+      const q = st.q, my = st;
+      if (st.marks) st.marks.forEach(i => this.mark(st, i, false));
+      Sfx.reveal(); q.diffs.forEach(x => { W5U.gold(st, [st.cells[0][x.i], st.cells[1][x.i]]); K.hop(st, st.cells[1][x.i], 12); });
+      this.cheerAll(st);
+      st.summary = this.whatLine(q.diffs[q.diffs.length - 1].what);
+      await W5U.sum(st, st.summary); if (!Session.alive(my)) return;
+      await st.scope.wait(T(400));
+    },
+    workEls(st) { return st.boxes || []; },
+    snap(st) { return { marks: (st.marks || []).slice() }; },
+    lines() { return uniq([this.intro, '哪颗糖不一样？', '有两颗不一样，', '都找出来！', '找出所有不一样！', '这两颗一样哦', '这两颗不一样', '颜色不一样', '形状不一样', '花纹不一样', '换了位置'].concat(this.praise)); },
+  };
+})();
 /* ================================================================ ③ 睡衣小英雄·积木塔 (pjmasks5, from level 1): J5 三角拼图 ·
    J6 数图形填表 · J7 拍下所有分法 · J8 按什么分的 (reasoning). docs/W5-DESIGN.md §5 ③. One function, no top-level names;
    each rule is W5R.<id> (registered in games.js). Package B. */
@@ -1371,8 +2113,12 @@ const W5U = {
   /* a plain positioned piece of the question (no tap of its own unless registered) */
   const thing = (st, z, cls) => { const d = el('div', cls || 'item', Stage.el); d.style.position = 'absolute'; d.style.zIndex = z || 5; place(d, 0, 0, 10, 10); st.els.push(d); return d; };
   const mid = e => { const b = box(e); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; };
-  const say = (st, t) => W5U.note(st, t);
   const ff = st => st.explaining && st.ff;
+  /* a line inside an explanation (a tap cuts it, and after a tap it is not said) */
+  const say = (st, t) => (ff(st) ? Promise.resolve('ff') : W5U.note(st, t));
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine) */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
 
   /* ================================================================ J5 拼！ 用三角形拼 (tri5)
      A silhouette on a pale grid (cells of 96); a tray of pieces: the four little right triangles (half a cell: ◤ ◥ ◣ ◢, one
@@ -1682,9 +2428,7 @@ const W5U = {
         });
         rings = W5U.blue(st, st.holes);
       }
-      await say(st, this.LINE[ans] || this.LINE.gap);
-      if (!Session.alive(my)) return;
-      await st.scope.wait(T(350)); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       await W5U.beat(st); if (!Session.alive(my)) return;
       /* the wrong ones go back */
       W5U.hide(rings);
@@ -1694,7 +2438,7 @@ const W5U = {
       Sfx.back();
       await st.scope.wait(T(260)); if (!Session.alive(my)) return;
       /* the helper puts the missing pieces, gold-edged, one by one */
-      const plan = this.fillPlan(st), step = Math.max(140, Math.min(300, 1500 / Math.max(1, plan.length)));
+      const plan = this.fillPlan(st), step = Math.max(110, Math.min(260, 1000 / Math.max(1, plan.length)));
       let said = false;
       for (const s of plan) {
         if (!Session.alive(my)) return;
@@ -1710,7 +2454,7 @@ const W5U = {
       if (!Session.alive(my)) return;
       W5U.gold(st, st.boardEl, 10);
       await W5U.sum(st, '看，拼满了');
-      await st.scope.wait(T(300));
+      await st.scope.wait(T(150));
     },
     rightEls(st) { return [st.boardEl]; },
     async reveal(st) {
@@ -1810,7 +2554,7 @@ const W5U = {
         else if (d === 4) { if (most < 0) most = W5U.at(G, 4, 'j6m'); const m = rng.int(4, 6); cnt = kinds.map((_, i) => (i === most ? m : rng.int(2, m - 1))); }
         else { if (!pair) pair = bagPick(G, 'j6pair', PAIRS6); cnt = kinds.map(() => rng.int(1, 6)); const a = kinds.indexOf(pair[0]), b = kinds.indexOf(pair[1]); if (cnt[a] < cnt[b]) { const x = cnt[a]; cnt[a] = cnt[b]; cnt[b] = x; } if (cnt[a] === cnt[b]) continue; }
         const tot = cnt.reduce((a, b) => a + b, 0);
-        if (tot > 16 || (d === 4 && tot < 12) || (d === 5 && tot < 11)) continue;
+        if (tot > (d === 5 ? 14 : 16) || (d === 4 && tot < 12) || (d === 5 && tot < 10)) continue;
         break;
       }
       /* the parts: the picture's squares in order; a square takes the kind it likes while that kind has parts left */
@@ -1835,7 +2579,7 @@ const W5U = {
     decor(G) { W3X.decor2(G, this.chars, true); },
     geo(st) {
       const L = K.L(), n = st.q.kinds.length;
-      if (L) return { L, s: 92, px: 188, py: n > 4 ? 132 : 150, rw: 400, rh: 92, rx: 598, ry: n > 4 ? 112 : Math.round(338 - (n * 92 + (n - 1) * 8) / 2), per: 1, gap: 8, done: [906, 596, 100] };
+      if (L) return { L, s: 92, px: 188, py: n > 4 ? 132 : 150, rw: 400, rh: 92, rx: 598, ry: n > 4 ? 102 : Math.round(338 - (n * 92 + (n - 1) * 8) / 2), per: 1, gap: n > 4 ? 6 : 8, done: [906, 600, 96] };
       return { L, s: 88, px: 176, py: 210, rw: 330, rh: 92, rx: 14, ry: 582, per: 2, gap: 4, cgap: 16, done: [566, 884, 110] };
     },
     rowBox(st, k) { const g = this.geo(st); if (g.per === 1) return { x: g.rx, y: g.ry + k * (g.rh + g.gap), w: g.rw, h: g.rh }; const r = Math.floor(k / 2), c = k % 2; return { x: g.rx + c * (g.rw + g.cgap), y: g.ry + r * (g.rh + g.gap), w: g.rw, h: g.rh }; },
@@ -1919,7 +2663,7 @@ const W5U = {
       st.partEls.forEach(e => { e.style.opacity = '.3'; Input.unbind(e); }); q.parts.forEach((_, i) => delete st.map['g' + i]);
       $$('.task', Stage.el).forEach(t => t.remove());
       if (q.d === 4) {
-        st.rows.forEach((R, k) => { R.row.style.zIndex = 8; K.reg(st, 'r' + k, R.row, {}); K.pop(st, R.row, 60 * k); });
+        st.rows.forEach((R, k) => { R.row.style.zIndex = 8; R.icon.style.zIndex = 9; R.disp.style.zIndex = 9; K.reg(st, 'r' + k, R.row, {}); K.pop(st, R.row, 60 * k); });
         K.task(st, [[{ node: icon6('tri', 44, '#FF6B5B') }], ['q']]);
         K.say(st, '哪种最多？');
       } else {
@@ -1946,8 +2690,8 @@ const W5U = {
       const my = st, q = st.q, a = this.parse(ans), bad = a.vals.map((v, i) => (v !== q.cnt[i] ? i : -1)).filter(i => i >= 0);
       if (bad.length) {
         const k = bad[0], rings = W5U.blue(st, st.rows[k].row);
-        await say(st, this.wrongLine(st, ans)); if (!Session.alive(my)) return;
-        await st.scope.wait(T(250)); W5U.hide(rings);
+        await fbDone(st); if (!Session.alive(my)) return;
+        W5U.hide(rings);
         await W5U.beat(st); if (!Session.alive(my)) return;
         st.partEls.forEach(e => { e.style.opacity = '1'; });
         let n = 0, turned = null;
@@ -1956,7 +2700,7 @@ const W5U = {
           if (!Session.alive(my)) return;
           n++; const e = st.partEls[i]; e._shape.setAttribute('stroke', '#E0A100'); e._shape.setAttribute('stroke-width', 8); K.hop(st, e, 12);
           if (q.parts[i].kind === 'sq' && q.parts[i].rot && turned == null) turned = i;
-          await W5U.count(st, 300, n);
+          await W5U.count(st, 150, n);
         }
         if (turned != null && !ff(st)) {
           const e = st.partEls[turned], p = q.parts[turned], c = 46;
@@ -1966,23 +2710,23 @@ const W5U = {
         if (!Session.alive(my)) return;
         bad.forEach(i => { st.vals[i] = q.cnt[i]; this.show(st, i); K.pop(st, st.rows[i].disp); });
         W5U.gold(st, bad.map(i => st.rows[i].row), 6);
-        await W5U.sum(st, KN6[q.kinds[k]] + '有' + CNQ(q.cnt[k]) + '个');
-        await st.scope.wait(T(300));
+        if (turned == null || ff(st)) await W5U.sum(st, KN6[q.kinds[k]] + '有' + CNQ(q.cnt[k]) + '个');
+        await st.scope.wait(T(200));
         return;
       }
       if (q.d === 4) {
         const rings = W5U.blue(st, st.rows[+a.x].row);
-        await say(st, this.wrongLine(st, ans)); if (!Session.alive(my)) return;
-        await st.scope.wait(T(300)); W5U.hide(rings);
+        await fbDone(st); if (!Session.alive(my)) return;
+        W5U.hide(rings);
         W5U.gold(st, st.rows[q.most].row, 6); K.hop(st, st.rows[q.most].row, 10);
         await W5U.sum(st, KN6[q.kinds[q.most]] + '最多');
         await st.scope.wait(T(300));
         return;
       }
       const rings = W5U.blue(st, W5U.cardOf(st, +a.x));
-      await say(st, this.wrongLine(st, ans)); if (!Session.alive(my)) return;
-      await st.scope.wait(T(250)); W5U.hide(rings);
-      const [i, j] = q.pair; W5U.stay(st, [st.rows[i].row, st.rows[j].row]); K.hop(st, st.rows[i].disp, 10);
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      const [i, j] = q.pair; W5U.stay(st, st.rows[i].row); W5U.stay(st, st.rows[j].row); K.hop(st, st.rows[i].disp, 10);
       await W5U.sum(st, '多' + CNQ(q.diff) + '个'); if (!Session.alive(my)) return;
       W5U.gold(st, W5U.cardOf(st, q.diff));
       await st.scope.wait(T(500));
@@ -2022,7 +2766,7 @@ const W5U = {
       const out = [this.intro, '数一数，填表！', '哪种最多？', '有一行不对哦', '转一转，还是方的', '表填对啦！'].concat(this.praise);
       KIND6.forEach(k => { out.push(KN6[k] + '最多', KN6[k] + '不是最多'); for (let n = 1; n <= 9; n++) out.push(KN6[k] + '不是' + CNQ(n) + '个'); for (let n = 1; n <= 6; n++) out.push(KN6[k] + '有' + CNQ(n) + '个'); });
       PAIRS6.forEach(([a, b]) => out.push(KN6[a] + '比' + KN6[b] + '多几个？'));
-      for (let n = 1; n <= 9; n++) out.push('不是' + CNQ(n) + '个', '多' + CNQ(n) + '个');
+      for (let n = 1; n <= 7; n++) out.push('不是' + CNQ(n) + '个'); for (let n = 1; n <= 5; n++) out.push('多' + CNQ(n) + '个');
       return uniq(out);
     },
   };
@@ -2173,10 +2917,10 @@ const W5U = {
       (st.frames || []).forEach(e => e.remove());
       st.frames = Array.from({ length: N - 1 }, (_, i) => { const e = this.frame(st), b = this.slotBox(st, i); place(e, b.x, b.y, b.w, b.h); return e; });
       const rings = W5U.blue(st, miss.map(a => st.frames[a - 1]));
-      await say(st, '还少了' + CNQ(miss.length) + '种'); if (!Session.alive(my)) return;
-      await st.scope.wait(T(200)); W5U.hide(rings);
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
       await W5U.beat(st); if (!Session.alive(my)) return;
-      const per = Math.max(110, Math.min(260, 1300 / (N - 1)));
+      const per = Math.max(100, Math.min(220, 1000 / (N - 1)));
       st.newPh = [];
       for (let a = 1; a <= N - 1; a++) {
         if (!Session.alive(my)) return;
@@ -2186,11 +2930,11 @@ const W5U = {
         const e = thing(st, 6, 'card'), b = this.slotBox(st, a - 1); e.style.zIndex = 6; place(e, b.x, b.y, b.w, b.h);
         const np = { a, slot: a - 1, el: e }; st.photos.push(np); this.drawPhoto(st, np); st.newPh.push(e);
         Sfx.pop(); K.pop(st, e); W5U.gold(st, e, 4); this.drawDiagram(st, true);
-        if (st.newPh.length === 1) { await W5U.sum(st, CN[a] + '和' + CN[N - a]); await st.scope.wait(T(150)); } else await st.scope.wait(T(per));
+        if (st.newPh.length === 1) { await say(st, CN[a] + '和' + CN[N - a]); await st.scope.wait(T(150)); } else await st.scope.wait(T(per));
       }
       if (!Session.alive(my)) return;
       await W5U.sum(st, CN[N] + '有' + CNQ(N - 1) + '种分法');
-      await st.scope.wait(T(300));
+      await st.scope.wait(T(150));
     },
     rightEls(st) { return st.newPh || []; },
     async reveal(st) {
@@ -2347,24 +3091,23 @@ const W5U = {
       const my = st, q = st.q, bad = this.firstBad(st, ans), a = String(ans).split(',').map(Number), w = String(q.answer).split(',').map(Number);
       const i = bad[0], his = st.boxEls[a[i]], rings = W5U.blue(st, st.mini[i]);
       his._toys.forEach((t, k) => { K.hop(st, t, 22); t.classList.add('glow'); });
-      await say(st, '这箱都是' + this.word(q, q.boxes[a[i]])); if (!Session.alive(my)) return;
-      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       K.hop(st, st.mini[i], 16);
       await say(st, '它是' + this.word(q, q.toys[i])); if (!Session.alive(my)) return;
-      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      await st.scope.wait(T(40)); if (!Session.alive(my)) return;
       W5U.hide(rings); his._toys.forEach(t => t.classList.remove('glow'));
       /* the toys go where they belong */
       for (const j of bad) {
         const m = st.mini[j], from = m.getBoundingClientRect(), dst = st.boxEls[w[j]]._top;
         dst.appendChild(m); const to = m.getBoundingClientRect();
-        if (!fast()) m.animate([{ transform: 'translate(' + (from.left - to.left) / Stage.s + 'px,' + (from.top - to.top) / Stage.s + 'px)' }, { transform: 'none' }], { duration: 420, easing: EASE.glide });
+        if (!fast()) m.animate([{ transform: 'translate(' + (from.left - to.left) / Stage.s + 'px,' + (from.top - to.top) / Stage.s + 'px)' }, { transform: 'none' }], { duration: 340, easing: EASE.glide });
       }
       Sfx.place();
-      await st.scope.wait(T(440)); if (!Session.alive(my)) return;
+      await st.scope.wait(T(340)); if (!Session.alive(my)) return;
       const right = st.boxEls[w[i]]; right._toys.forEach(t => { K.hop(st, t, 16); t.classList.add('glow'); });
       W5U.gold(st, uniq(bad.map(j => st.boxEls[w[j]])), 6);
       await W5U.sum(st, this.word(q, q.boxes[w[i]]) + '放这里');
-      await st.scope.wait(T(300));
+      await st.scope.wait(T(60));
     },
     rightEls(st, ans) { const w = String(st.q.answer).split(',').map(Number); return uniq(this.firstBad(st, ans).map(j => st.boxEls[w[j]])); },
     async reveal(st) {
@@ -2386,11 +3129,1128 @@ const W5U = {
     snap(st) { return { put: (st.put || []).join(',') }; },
     lines() {
       const out = [this.intro, '新玩具放哪里？'].concat(this.praise), words = [];
-      Object.values(TCN).forEach(c => words.push(c + '的', '大' + c + '的', '小' + c + '的'));
-      Object.values(TSN).forEach(s => words.push(s)); Object.values(TZN).forEach(z => words.push(z));
+      Object.values(TCN).forEach(c => words.push(c + '的')); ['红', '蓝'].forEach(c => words.push('大' + c + '的', '小' + c + '的'));
+      ['circle', 'square', 'tri'].forEach(s => words.push(TSN[s])); Object.values(TZN).forEach(z => words.push(z));
       words.forEach(x => out.push('这箱都是' + x, '它是' + x, x + '放这里'));
       return uniq(out);
     },
+  };
+})();
+/* ================================================================ ④ 汪汪队·积木站 (paw5, from level 2): A5 画路线 · A6 看箭头走 ·
+   A7 对号入座 (the symbols + − = brought in, a number sentence read back into the picture) · A8 排座位 (reasoning).
+   docs/W5-DESIGN.md §5 ④. One function, no top-level names; each rule is W5R.<id> (registered in games.js). Package B. */
+(() => {
+  const INK = '#2B2118', GOLD = '#FFC93C';
+  const lvOf = o => Math.min(5, Math.max(1, o.level || 1));
+  const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
+  const thing = (st, z, cls) => { const d = el('div', cls || 'item', Stage.el); d.style.position = 'absolute'; d.style.zIndex = z || 5; place(d, 0, 0, 10, 10); st.els.push(d); return d; };
+  const mid = e => { const b = box(e); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; };
+  const ff = st => st.explaining && st.ff;
+  /* a line inside an explanation (a tap cuts it, and after a tap it is not said) */
+  const say = (st, t) => (ff(st) ? Promise.resolve('ff') : W5U.note(st, t));
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine) */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
+  const thumb = (id, px) => { const s = el('span', ''); Object.assign(s.style, { display: 'block', width: px + 'px', height: px + 'px', borderRadius: '50%', overflow: 'hidden', background: '#fff', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none', flex: '0 0 auto' }); const i = img('assets/thumbs/' + id + '.png', '', s); Object.assign(i.style, { width: '100%', height: '100%', objectFit: 'cover' }); return s; };
+  const PUP = { chase: '阿奇', skye: '天天', marshall: '毛毛', rubble: '小砾', rocky: '灰灰', zuma: '路马' };
+
+  /* ================================================================ A6 走！ 看箭头走 (arrows5)
+     A town mat seen from above (5 x 5 cells of 96), six landmarks; 天天 (Skye) is the piece; an arrow card on the task card.
+     Tap the landmark where she ends.
+       L1 one direction, 1-3 arrows (the session's first question also says "往右走两格！") · L2 two directions, 3-4 arrows
+       L3 three legs (→ ↑ →), 4-6 arrows, she starts on a landmark · L4 arrows with numbers (→3 ↑2)
+       L5 the other way round: start and end (a flag) given, five route cards ("哪张路线卡对？"): one right; the others turn one
+          leg round, go one too far or one short, or swap the two numbers
+     Right: the landmark at the end (its type from a bag: the right one's place among the six is balanced). Wrong: his
+     landmark ringed blue ("多走了一格" / "少走了一格" / "方向不对哦"), 天天 walks it arrow by arrow (each arrow lights,
+     a tick per cell, "往上" at a turn), the right landmark gold ("到了游泳池"). L5: his card blue, she walks the right
+     card to the flag, "这张能到旗子". */
+  const LM = ['school', 'park', 'bakery', 'fire', 'pool', 'hospital'];
+  const LMN = { school: '学校', park: '公园', bakery: '面包店', fire: '消防站', pool: '游泳池', hospital: '医院' };
+  const LMSVG = {
+    school: '<rect x="14" y="40" width="72" height="50" rx="4" fill="#FFD27A" stroke="#2B2118" stroke-width="4"/><path d="M8 42L50 14L92 42Z" fill="#E8414B" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/><rect x="40" y="62" width="20" height="28" fill="#8A5A2B" stroke="#2B2118" stroke-width="3"/><circle cx="50" cy="32" r="6" fill="#fff" stroke="#2B2118" stroke-width="3"/><rect x="22" y="52" width="12" height="12" fill="#BFE3FF" stroke="#2B2118" stroke-width="2.5"/><rect x="66" y="52" width="12" height="12" fill="#BFE3FF" stroke="#2B2118" stroke-width="2.5"/>',
+    park: '<rect x="8" y="70" width="84" height="20" rx="8" fill="#7ED36A" stroke="#2B2118" stroke-width="4"/><rect x="44" y="44" width="10" height="34" fill="#9A6433" stroke="#2B2118" stroke-width="3"/><circle cx="49" cy="34" r="24" fill="#4FBF63" stroke="#2B2118" stroke-width="4"/><circle cx="20" cy="64" r="9" fill="#FF7FA8" stroke="#2B2118" stroke-width="3"/><circle cx="80" cy="62" r="9" fill="#FFC93C" stroke="#2B2118" stroke-width="3"/>',
+    bakery: '<rect x="14" y="40" width="72" height="50" rx="4" fill="#FFF1D6" stroke="#2B2118" stroke-width="4"/><path d="M10 40L18 22H82L90 40Z" fill="#FF9FB8" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/><path d="M26 40V48M42 40V48M58 40V48M74 40V48" stroke="#2B2118" stroke-width="3"/><ellipse cx="50" cy="70" rx="22" ry="12" fill="#E2A15B" stroke="#2B2118" stroke-width="4"/><path d="M40 64L44 76M50 62L52 78M60 64L58 76" stroke="#9A6433" stroke-width="3"/>',
+    fire: '<rect x="12" y="34" width="76" height="56" rx="4" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><path d="M8 36L50 12L92 36Z" fill="#B8282F" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/><rect x="26" y="54" width="48" height="36" fill="#FFF8EC" stroke="#2B2118" stroke-width="4"/><path d="M26 66H74M26 78H74" stroke="#2B2118" stroke-width="3"/><circle cx="50" cy="28" r="6" fill="#FFC93C" stroke="#2B2118" stroke-width="3"/>',
+    pool: '<rect x="8" y="22" width="84" height="64" rx="14" fill="#fff" stroke="#2B2118" stroke-width="4"/><rect x="16" y="30" width="68" height="48" rx="9" fill="#4FB3FF"/><path d="M20 46Q28 40 36 46T52 46T68 46T84 46M20 60Q28 54 36 60T52 60T68 60T84 60" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M76 14V40M88 14V40M76 22H88M76 32H88" stroke="#2B2118" stroke-width="3.5"/>',
+    hospital: '<rect x="14" y="26" width="72" height="64" rx="4" fill="#fff" stroke="#2B2118" stroke-width="4"/><rect x="40" y="36" width="20" height="40" fill="#E8414B"/><rect x="30" y="46" width="40" height="20" fill="#E8414B"/><rect x="42" y="78" width="16" height="12" fill="#BFE3FF" stroke="#2B2118" stroke-width="2.5"/>',
+  };
+  const DIRS = { R: [1, 0], L: [-1, 0], U: [0, -1], D: [0, 1] };
+  const DIRN = { R: '右', L: '左', U: '上', D: '下' };
+  const ROT = { R: 0, D: 90, L: 180, U: 270 };
+  const OPP = { R: 'L', L: 'R', U: 'D', D: 'U' };
+  const PERP = { R: ['U', 'D'], L: ['U', 'D'], U: ['R', 'L'], D: ['R', 'L'] };
+  /* the cells a route passes (start first); segs = [[dir, n], ...] */
+  const walk = (s, segs) => { const out = [s.slice()]; let c = s.slice(); segs.forEach(([d, n]) => { for (let i = 0; i < n; i++) { c = [c[0] + DIRS[d][0], c[1] + DIRS[d][1]]; out.push(c.slice()); } }); return out; };
+  const inG = c => c[0] >= 0 && c[1] >= 0 && c[0] < 5 && c[1] < 5;
+  const eqC = (a, b) => a[0] === b[0] && a[1] === b[1];
+  /* an arrow (pointing right before turning), with a numeral under it (L4-L5) */
+  function arrowSvg(dir, n, px, col) {
+    const s = svg('svg', { viewBox: n ? '0 0 80 48' : '0 0 48 48', width: n ? px * 80 / 48 : px, height: px }); s.style.overflow = 'visible'; s.style.pointerEvents = 'none';
+    const g = svg('g', { transform: 'rotate(' + ROT[dir] + ' 24 24)' }, s);
+    svg('path', { d: 'M6 24H36M26 12L38 24L26 36', fill: 'none', stroke: col || INK, 'stroke-width': 8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, g);
+    if (n) { const t = svg('text', { x: 63, y: 39, 'text-anchor': 'middle', 'font-size': 40, 'font-weight': 900, fill: '#E8414B', stroke: INK, 'stroke-width': 1.5, 'font-family': 'system-ui,sans-serif' }, s); t.textContent = n; }
+    s._g = g; return s;
+  }
+  /* a route written as arrows: one per cell (L1-L3) or one per leg with its number (L4-L5) */
+  function routeNode(segs, nums, px) {
+    const d = el('span', ''); Object.assign(d.style, { display: 'flex', alignItems: 'center', gap: nums ? '2px' : '0px', pointerEvents: 'none' }); d._arrows = [];
+    segs.forEach(([dir, n]) => { if (nums) { const a = arrowSvg(dir, n, px); d.appendChild(a); d._arrows.push({ a, n }); } else for (let i = 0; i < n; i++) { const a = arrowSvg(dir, 0, px); d.appendChild(a); d._arrows.push({ a, n: 1 }); } });
+    return d;
+  }
+  const FLAG = '<svg viewBox="0 0 60 60" width="100%" height="100%" style="pointer-events:none;overflow:visible"><path d="M16 56V6" stroke="#2B2118" stroke-width="5" stroke-linecap="round"/><path d="M18 8H50L42 20L50 32H18Z" fill="#E8414B" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/></svg>';
+
+  W5R.A6 = {
+    kind0: 'arrows5', verb: '走！', intro: '跟着箭头走！', praise: ['一步不差！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      for (let t = 0; t < 400; t++) {
+        let segs;
+        if (d === 1) { const dir = bagPick(G, 'a6d', ['R', 'L', 'U', 'D']); segs = [[dir, rng.int(1, 3)]]; }
+        else if (d === 2) { const a = rng.pick(['R', 'L', 'U', 'D']), b = rng.pick(PERP[a]), tot = rng.int(3, 4), n1 = rng.int(1, tot - 1); segs = [[a, n1], [b, tot - n1]]; }
+        else if (d === 3) { const a = rng.pick(['R', 'L', 'U', 'D']), b = rng.pick(PERP[a]), tot = rng.int(4, 6), n1 = rng.int(1, tot - 2), n2 = rng.int(1, tot - n1 - 1); segs = [[a, n1], [b, n2], [a, tot - n1 - n2]]; }
+        else { const a = rng.pick(['R', 'L', 'U', 'D']), b = rng.pick(PERP[a]), three = d === 4 && rng.chance(0.4); segs = three ? [[a, rng.int(1, 2)], [b, rng.int(1, 3)], [a, rng.int(1, 2)]] : [[a, rng.int(1, 4)], [b, rng.int(1, 4)]]; }
+        const start = [rng.int(0, 4), rng.int(0, 4)], path = walk(start, segs);
+        if (!path.every(inG) || path.slice(1).some(c => eqC(c, start))) continue;
+        const end = path[path.length - 1];
+        if (d === 5) {
+          /* five cards: the right one + four that end elsewhere */
+          const key = s => s.map(x => x.join('')).join(' '), cand = [];
+          const add = (s, why) => { if (s.some(x => x[1] < 1)) return; const p = walk(start, s); if (eqC(p[p.length - 1], end) || !p.every(inG) || cand.some(c => key(c.s) === key(s)) || key(s) === key(segs)) return; cand.push({ s, why }); };
+          segs.forEach((x, i) => add(segs.map((y, j) => (j === i ? [OPP[y[0]], y[1]] : y)), 'dir'));
+          segs.forEach((x, i) => add(segs.map((y, j) => (j === i ? [y[0], y[1] + 1] : y)), 'more'));
+          segs.forEach((x, i) => add(segs.map((y, j) => (j === i ? [y[0], y[1] - 1] : y)), 'less'));
+          if (segs.length === 2 && segs[0][1] !== segs[1][1]) add([[segs[0][0], segs[1][1]], [segs[1][0], segs[0][1]]], 'swap');
+          if (cand.length < 4) continue;
+          const pick = rng.shuffle(cand).slice(0, 4), right = { s: segs, why: 'ok' }, cards = W5U.deal(G, right, pick, 'a6c');
+          return { k: [d, start.join(''), key(segs), pick.map(c => key(c.s)).join('|')], d, start, segs, end, cards, nums: true, answer: cards.indexOf(right) };
+        }
+        /* the six landmarks: the right one (type from a bag) at the end; near misses first (one too far, one short, the
+           last leg the other way), then anywhere off the route */
+        const ans = W5U.at(G, 6, 'a6l' + d), last = segs[segs.length - 1][0], cells = [end];
+        const near = [[end[0] + DIRS[last][0], end[1] + DIRS[last][1]], path[path.length - 2], walk(path[path.length - 1 - segs[segs.length - 1][1]], [[OPP[last], segs[segs.length - 1][1]]]).pop()];
+        if (d === 3) cells.push(start.slice());
+        near.forEach(c => { if (cells.length < 6 && inG(c) && !eqC(c, start) && !cells.some(x => eqC(x, c))) cells.push(c); });
+        const free = rng.shuffle(Array.from({ length: 25 }, (_, i) => [i % 5, Math.floor(i / 5)]).filter(c => !path.some(p => eqC(p, c)) && !cells.some(x => eqC(x, c))));
+        while (cells.length < 6 && free.length) cells.push(free.pop());
+        if (cells.length < 6) continue;
+        const others = rng.shuffle(cells.slice(1)), at = [];
+        LM.forEach((_, i) => { at[i] = i === ans ? end : others.pop(); });
+        const startLm = d === 3 ? at.findIndex(c => eqC(c, start)) : -1;
+        return { k: [d, start.join(''), segs.map(x => x.join('')).join(' '), at.map(c => c.join('')).join('')], d, start, segs, end, at, startLm, nums: d >= 4, answer: ans };
+      }
+      return null;
+    },
+    audit(q) { return q.cards ? [{ n: 5, at: q.answer, right: q.cards.filter(c => c.why === 'ok').length }] : [{ n: 6, at: q.answer, right: q.at.filter(c => eqC(c, q.end)).length }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    geo(st) {
+      const L = K.L(), l5 = !!st.q.cards;
+      if (L) return l5 ? { L, u: 96, mx: 150, my: 118, cx: 690, cy: 108, cw: 184, ch: 92, cg: 12 } : { L, u: 96, mx: 272, my: 118 };
+      return l5 ? { L, u: 96, mx: 112, my: 214, cy: 724, cw: 120, ch: 120 } : { L, u: 96, mx: 112, my: 230 };
+    },
+    cellXY(st, c) { const g = this.geo(st); return { x: g.mx + c[0] * g.u, y: g.my + c[1] * g.u }; },
+    place(st) {
+      const q = st.q, g = this.geo(st);
+      if (!st.mat) return;
+      place(st.mat, g.mx - 14, g.my - 14, 5 * g.u + 28, 5 * g.u + 28);
+      (st.lms || []).forEach((e, i) => { const p = this.cellXY(st, q.at[i]); place(e, p.x, p.y, g.u, g.u); });
+      if (st.flag) { const p = this.cellXY(st, q.end); place(st.flag, p.x + 14, p.y + 6, 70, 70); }
+      const c = st.cur || q.start, p = this.cellXY(st, c), sm = q.startLm >= 0 && eqC(c, q.start); place(st.tok, p.x + (sm ? 46 : 18), p.y + (sm ? 46 : 18), sm ? 52 : 60, sm ? 52 : 60);
+      if (st.cards) st.cards.forEach((e, i) => { if (g.L) place(e, g.cx, g.cy + i * (g.ch + g.cg), g.cw, g.ch); else { const x = Math.round(352 - (5 * g.cw + 4 * 12) / 2 + i * (g.cw + 12)); place(e, x, g.cy, g.cw, g.ch); } });
+    },
+    async present(st) {
+      const q = st.q, G = st.G;
+      st.mat = thing(st, 3, 'item');
+      let m = '<svg viewBox="0 0 508 508" width="100%" height="100%" style="pointer-events:none"><rect x="2" y="2" width="504" height="504" rx="22" fill="#CFEFB0" stroke="#2B2118" stroke-width="4"/>';
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) m += '<rect x="' + (18 + i * 96) + '" y="' + (18 + j * 96) + '" width="88" height="88" rx="12" fill="#B6E39A"/>';
+      for (let i = 0; i < 6; i++) m += '<path d="M' + (14 + i * 96) + ' 14V494M14 ' + (14 + i * 96) + 'H494" stroke="#E9E4D8" stroke-width="8" stroke-linecap="round"/>';
+      st.mat.innerHTML = m + '</svg>';
+      if (!q.cards) st.lms = q.at.map((c, i) => { const e = thing(st, 6, 'item'); e.innerHTML = '<svg viewBox="0 0 100 100" width="100%" height="100%" style="pointer-events:none">' + LMSVG[LM[i]] + '</svg>'; K.reg(st, 'l' + i, e, {}); return e; });
+      else { st.flag = thing(st, 6, 'item'); st.flag.innerHTML = FLAG; }
+      st.tok = thing(st, 7, 'item'); st.tok.appendChild(thumb('skye', 60)); st.cur = q.start.slice();
+      if (q.cards) {
+        W5U.cards(st, q.cards.map(c => routeNode(c.s, true, K.L() ? 40 : 30)), q.cards.map((_, i) => i));
+        st.cards.forEach((c, i) => K.pop(st, c, 60 * i));
+      }
+      this.place(st);
+      K.pop(st, st.mat); (st.lms || []).forEach((e, i) => K.pop(st, e, 40 * i));
+      if (q.cards) {
+        K.task(st, [[{ node: thumb('skye', 46) }], [{ node: (() => { const s = el('span', ''); s.style.display = 'block'; s.style.width = '50px'; s.style.height = '50px'; s.innerHTML = FLAG; return s; })() }], ['q']]);
+        K.say(st, '哪张路线卡对？');
+        return;
+      }
+      st.route = routeNode(q.segs, q.nums, 40);
+      K.task(st, [[q.startLm >= 0 ? W2X.icon(LMSVG[LM[q.startLm]]) : { node: thumb('skye', 46) }, { node: st.route }]]);
+      if (q.d === 1 && !G.a6said) { G.a6said = true; const [dir, n] = q.segs[0]; W3X.say2(st, '往' + DIRN[dir] + '走' + CNQ(n) + '格！', '天天走到哪里？'); }
+      else K.say(st, '天天走到哪里？');
+    },
+    onGesture(st, name, p) {
+      if (name !== 'tap' || st.picked) return false;
+      const q = st.q;
+      if (q.cards) return W5U.tapCard(st, name, p);
+      const m = /^l(\d)$/.exec(p.id || ''); if (!m) return false;
+      st.picked = true; K.pop(st, st.lms[+m[1]]); Session.submit(st, +m[1]);
+      return 'ok';
+    },
+    /* why his landmark is not it: past the end on the last leg / on the way / elsewhere */
+    whyLine(st, i) {
+      const q = st.q, c = q.at[i], path = walk(q.start, q.segs), last = q.segs[q.segs.length - 1][0], end = q.end;
+      for (let k = 1; k <= 5; k++) if (eqC(c, [end[0] + DIRS[last][0] * k, end[1] + DIRS[last][1] * k])) return '多走了' + CNQ(k) + '格';
+      const j = path.findIndex(p => eqC(p, c)); if (j >= 0 && j < path.length - 1) return '少走了' + CNQ(path.length - 1 - j) + '格';
+      return '方向不对哦';
+    },
+    cardLine(st, i) { const w = st.q.cards[i].why; return w === 'more' ? '多走了一格' : w === 'less' ? '少走了一格' : w === 'swap' ? '顺序不对哦' : '方向不对哦'; },
+    async feedback(st, ans) {
+      const q = st.q;
+      if (q.cards) { K.wiggle(st, st.cards[ans]); W5U.say(st, this.cardLine(st, ans)); }
+      else { K.wiggle(st, st.lms[ans]); W5U.say(st, this.whyLine(st, ans)); }
+      await st.scope.wait(T(600));
+    },
+    /* 天天 walks the route cell by cell (the arrow of each cell lights; a tick a cell; "往上" at a turn) */
+    async walkIt(st, segs, arrows) {
+      const my = st, q = st.q, per = Math.max(110, Math.min(200, 1300 / walk(q.start, segs).length));
+      st.cur = q.start.slice(); this.place(st);
+      let k = 0, ai = 0;
+      for (let s = 0; s < segs.length; s++) {
+        const [dir, n] = segs[s];
+        if (s > 0) Voice.say('往' + DIRN[dir], { tag: 'explain' });
+        for (let i = 0; i < n; i++) {
+          if (!Session.alive(my)) return;
+          const a = arrows && arrows[ai]; if (a) { a.a._g.querySelector('path').setAttribute('stroke', '#E0A100'); }
+          if (arrows && (!q.nums || i === n - 1)) ai++;
+          const from = this.cellXY(st, st.cur); st.cur = [st.cur[0] + DIRS[dir][0], st.cur[1] + DIRS[dir][1]]; const to = this.cellXY(st, st.cur);
+          place(st.tok, to.x + 18, to.y + 18, 60, 60);
+          if (!ff(st)) st.tok.animate([{ transform: 'translate(' + (from.x - to.x) + 'px,' + (from.y - to.y) + 'px)' }, { transform: 'none' }], { duration: T(per * 0.8), easing: EASE.glide });
+          k++; await W5U.count(st, per, k);
+          await st.scope.wait(T(Math.max(0, per - 190)));
+        }
+      }
+    },
+    /* 1. his landmark (card) blue; 2. she walks the route; 3. the right landmark (card) gold: "到了游泳池" / "这张能到旗子" */
+    async explain(st, ans) {
+      const my = st, q = st.q, rings = W5U.blue(st, q.cards ? st.cards[ans] : st.lms[ans]);
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      await W5U.beat(st); if (!Session.alive(my)) return;
+      await this.walkIt(st, q.segs, q.cards ? null : st.route && st.route._arrows); if (!Session.alive(my)) return;
+      if (q.cards) { W5U.gold(st, st.cards[q.answer]); await W5U.sum(st, '这张能到旗子'); }
+      else { W5U.gold(st, st.lms[q.answer]); K.hop(st, st.tok, 14); await W5U.sum(st, '到了' + LMN[LM[q.answer]]); }
+      await st.scope.wait(T(150));
+    },
+    rightEls(st) { return [st.q.cards ? st.cards[st.q.answer] : st.lms[st.q.answer]]; },
+    async reveal(st) {
+      const my = st, q = st.q; Sfx.reveal();
+      const e = q.cards ? st.cards[q.answer] : st.lms[q.answer];
+      st.cur = q.end.slice(); this.place(st); K.hop(st, st.tok, 16);
+      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      W5U.gold(st, e); this.cheerAll(st);
+      st.summary = q.cards ? '这张能到旗子' : '到了' + LMN[LM[q.answer]]; W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    next(st, strat) {
+      if (st.picked) return null; const q = st.q;
+      if (q.cards) { if (!st.cards) return null; const i = strat === 'wrong' ? (q.answer + 1 + st.gen % 4) % 5 : q.answer; return { g: 'tap', p: { id: 'card' + i } }; }
+      if (!st.lms) return null;
+      const i = strat === 'wrong' ? (q.answer + 1 + st.gen % 5) % 6 : q.answer; return { g: 'tap', p: { id: 'l' + i } };
+    },
+    workEls(st) { return st.cards || st.lms || []; },
+    snap(st) { return { cur: (st.cur || []).join(',') }; },
+    lines() {
+      const out = [this.intro, '天天走到哪里？', '哪张路线卡对？', '这张能到旗子', '方向不对哦', '顺序不对哦'].concat(this.praise);
+      Object.values(DIRN).forEach(d => { out.push('往' + d); for (let n = 1; n <= 3; n++) out.push('往' + d + '走' + CNQ(n) + '格！'); });
+      for (let n = 1; n <= 8; n++) out.push('多走了' + CNQ(n) + '格', '少走了' + CNQ(n) + '格');
+      LM.forEach(l => out.push('到了' + LMN[l]));
+      return uniq(out);
+    },
+  };
+  /* ================================================================ A8 坐！ 排座位 (seat5, the reasoning test)
+     The PAW bus seen from the side, a row of 3-5 seats ("left / right" = the child's own screen left / right, as the cards
+     draw it); the pups' heads are the pieces; clue cards come one by one, each said aloud (pictures: heads, arrows,
+     brackets, a little seat row, a little house for "not going"). Drag a pup onto a seat (or tap the pup, then the seat);
+     tap a seated pup and it comes back; all seats full, then "出发".
+       L1 3 seats, 3 pups, 2 clues (the middle + left of) · L2 3 seats, 4 pups (one stays home), 2-3 clues with next to /
+       not next to · L3 4 seats, 4 pups, 3 clues with "最左边" · L4 4 seats, 3 clues that chain (X left of Y, Y left of Z)
+       L5 5 seats, 5 pups, 4 clues, one of them a "not" ("小砾不坐两头" / "X 不挨着 Y")
+     Every set of clues has exactly one seating. A random seating is right 1 time in 6 (L1, only reached by stepping down) to
+     1 in 120. Wrong: the first clue his seating breaks flashes blue, its pups wiggle ("天天不在毛毛左边"); the clues light up
+     one by one and the pups jump into their seats ("天天在毛毛左边"); "全都对上了". */
+  const DOGS = ['chase', 'skye', 'marshall', 'rubble', 'rocky', 'zuma'];
+  const A8L = [null, { S: 3, D: 3, n: [2, 2], need: ['mid', 'left'], pool: ['mid', 'left'] }, { S: 3, D: 4, n: [2, 3], need: ['out', 'nx'], pool: ['out', 'next', 'notnext', 'left', 'mid', 'first'] },
+    { S: 4, D: 4, n: [3, 3], need: ['first'], pool: ['first', 'left', 'next', 'notnext'] }, { S: 4, D: 4, n: [3, 3], need: ['chain'], pool: ['left', 'first', 'next'] },
+    { S: 5, D: 5, n: [4, 4], need: ['neg'], pool: ['notends', 'notnext', 'left', 'next', 'first', 'mid'] }];
+  const holds = (c, ar) => {
+    const S = ar.length, p = x => ar.indexOf(x), a = p(c.x), b = c.y ? p(c.y) : -1;
+    if (c.t === 'out') return a < 0;
+    if (a < 0 || (c.y && b < 0)) return false;
+    if (c.t === 'mid') return S % 2 === 1 && a === (S - 1) / 2;
+    if (c.t === 'left') return a < b;
+    if (c.t === 'next') return Math.abs(a - b) === 1;
+    if (c.t === 'notnext') return Math.abs(a - b) !== 1;
+    if (c.t === 'first') return a === 0;
+    if (c.t === 'notends') return a > 0 && a < S - 1;
+    return false;
+  };
+  const clueLine = c => { const X = PUP[c.x], Y = c.y ? PUP[c.y] : ''; return { mid: X + '在中间', left: X + '在' + Y + '左边', next: X + '挨着' + Y, notnext: X + '不挨着' + Y, first: X + '坐最左边', notends: X + '不坐两头', out: X + '不去' }[c.t]; };
+  const breakLine = c => { const X = PUP[c.x], Y = c.y ? PUP[c.y] : ''; return { mid: X + '不在中间', left: X + '不在' + Y + '左边', next: X + '没挨着' + Y, notnext: X + '不挨着' + Y, first: X + '不在最左边', notends: X + '不坐两头', out: X + '不去' }[c.t]; };
+  /* every seating of S seats from these pups */
+  const seatings = (S, dogs) => { const out = [], rec = (cur, left) => { if (cur.length === S) { out.push(cur.slice()); return; } left.forEach((d, i) => rec(cur.concat(d), left.filter((_, j) => j !== i))); }; rec([], dogs); return out; };
+  const HOUSE = '<path d="M14 50L50 18L86 50V88H14Z" fill="#FFD27A" stroke="#2B2118" stroke-width="6" stroke-linejoin="round"/><rect x="40" y="58" width="20" height="30" fill="#8A5A2B" stroke="#2B2118" stroke-width="4"/>';
+  W5R.A8 = {
+    kind0: 'seat5', verb: '坐！', intro: '帮狗狗排座位！', praise: ['排得全都对！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, L = A8L[d];
+      for (let t = 0; t < 300; t++) {
+        const dogs = rng.shuffle(DOGS).slice(0, L.D), target = rng.shuffle(dogs).slice(0, L.S), all = seatings(L.S, dogs);
+        const cand = [];
+        dogs.forEach(x => {
+          if (!target.includes(x)) { cand.push({ t: 'out', x }); return; }
+          ['mid', 'first', 'notends'].forEach(k => cand.push({ t: k, x }));
+          dogs.forEach(y => { if (y !== x && target.includes(y)) ['left', 'next', 'notnext'].forEach(k => { if (k === 'left' || x < y) cand.push({ t: k, x, y }); }); });
+        });
+        const ok = cand.filter(c => L.pool.includes(c.t) && holds(c, target)), pick = [];
+        const req = L.need.map(k => { const f = ok.filter(c => (k === 'nx' ? ['next', 'notnext'].includes(c.t) : k === 'neg' ? ['notends', 'notnext'].includes(c.t) : k === 'chain' ? c.t === 'left' : c.t === k)); return f.length ? rng.pick(f) : null; });
+        if (req.some(r => !r)) continue;
+        req.forEach(r => pick.push(r));
+        if (L.need[0] === 'chain') { const a = pick[0], nxt = ok.filter(c => c.t === 'left' && c.x === a.y); if (!nxt.length) continue; pick.push(rng.pick(nxt)); }
+        let sols = all.filter(ar => pick.every(c => holds(c, ar)));
+        /* then the clue that leaves the fewest seatings, until one is left */
+        while (sols.length > 1 && pick.length < L.n[1]) {
+          let best = null, bn = sols.length;
+          rng.shuffle(ok).forEach(c => { if (pick.includes(c)) return; const n = sols.filter(ar => holds(c, ar)).length; if (n < bn) { bn = n; best = c; } });
+          if (!best) break; pick.push(best); sols = sols.filter(ar => holds(best, ar));
+        }
+        if (sols.length !== 1 || pick.length < L.n[0] || pick.length > L.n[1]) continue;
+        const clues = d === 4 ? pick : rng.shuffle(pick);
+        return { k: [d, target.join(','), clues.map(c => c.t + c.x + (c.y || '')).join(' ')], d, S: L.S, dogs: rng.shuffle(dogs), target, clues, answer: target.join(',') };
+      }
+      return null;
+    },
+    audit(q) { return [{ build: true, chance: 1 / seatings(q.S, q.dogs).length }]; },
+    decor(G) { K.L() ? W3X.decor2(G, this.chars) : W2X.decorDone(G, this.chars); },
+    geo(st) {
+      const L = K.L(), q = st.q, n = q.clues.length;
+      if (L) return { L, cw: n > 3 ? 214 : 240, ch: 92, cy: 104, cper: 4, cgap: 12, sw: 106, sy: 248, sg: 14, by: 222, bh: 176, dy: 452, ds: 104, dg: 22, done: [902, 262, 104] };
+      return { L, cw: 330, ch: 92, cy: 210, cper: 2, cgap: 12, sw: 106, sy: 470, sg: 8, by: 444, bh: 176, dy: 672, ds: 108, dg: 18, done: [566, 884, 110] };
+    },
+    seatBox(st, i) { const g = this.geo(st), S = st.q.S, w = S * g.sw + (S - 1) * g.sg, x0 = (g.L ? 492 : 352) - w / 2; return { x: Math.round(x0 + i * (g.sw + g.sg)), y: g.sy, w: g.sw, h: g.sw }; },
+    place(st) {
+      const q = st.q, g = this.geo(st);
+      if (!st.bus) return;
+      W5U.lay(st.clueEls, Stage.W / 2, g.cy + (Math.ceil(q.clues.length / g.cper) * (g.ch + g.cgap) - g.cgap) / 2, g.cw, g.ch, g.cgap, g.cgap, g.cper);
+      const a = this.seatBox(st, 0), b = this.seatBox(st, q.S - 1);
+      place(st.bus, a.x - 40, g.by, b.x + b.w - a.x + (g.L ? 150 : 100), g.bh);
+      st.seatEls.forEach((e, i) => { const s = this.seatBox(st, i); place(e, s.x, s.y, s.w, s.h); });
+      const waiting = q.dogs.filter(x => !st.seat.includes(x)), pos = W5U.grid(q.dogs.length, Stage.W / 2, g.dy + g.ds / 2, g.ds, g.ds, g.dg, 0);
+      q.dogs.forEach((x, k) => { const e = st.dogEls[k], si = st.seat.indexOf(x); if (si >= 0) { const s = this.seatBox(st, si); place(e, s.x + 4, s.y + 4, s.w - 8, s.h - 8); } else { const p = pos[k]; place(e, p.x, p.y, g.ds, g.ds); } });
+      if (st.doneBtn) { st.doneBtn._done.x = g.done[0]; st.doneBtn._done.y = g.done[1]; K.placeDone(st.doneBtn); }
+    },
+    /* a clue card's picture */
+    clueNode(st, c) {
+      const S = st.q.S, d = el('span', ''); Object.assign(d.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', pointerEvents: 'none', width: '100%', height: '100%' });
+      const head = x => thumb(x, 58), sym = h => { const s = el('span', '', d); s.innerHTML = h; s.style.display = 'flex'; return s; };
+      const row = (who, at, ends) => { const s = svg('svg', { viewBox: '0 0 ' + (S * 34 + 6) + ' 40', width: S * 30 + 6, height: 36 }); s.style.pointerEvents = 'none'; for (let i = 0; i < S; i++) svg('rect', { x: 4 + i * 34, y: 6, width: 28, height: 28, rx: 6, fill: ends && (i === 0 || i === S - 1) ? '#5B4A3A' : i === at ? '#FFC93C' : '#fff', stroke: INK, 'stroke-width': 3 }, s); return s; };
+      if (c.t === 'out') { d.appendChild(head(c.x)); sym('<svg viewBox="0 0 100 100" width="52" height="52">' + HOUSE + '</svg>'); }
+      else if (c.t === 'left') { d.appendChild(head(c.x)); sym('<svg viewBox="0 0 40 40" width="40" height="40"><path d="M30 8L14 20L30 32" fill="none" stroke="#2B2118" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>'); d.appendChild(head(c.y)); }
+      else if (c.t === 'next') { const b = el('span', '', d); Object.assign(b.style, { display: 'flex', gap: '0px', padding: '3px 6px', borderRadius: '30px', boxShadow: '0 0 0 4px ' + GOLD }); b.appendChild(head(c.x)); b.appendChild(head(c.y)); }
+      else if (c.t === 'notnext') { d.appendChild(head(c.x)); sym('<svg viewBox="0 0 24 56" width="20" height="54"><rect x="4" y="2" width="16" height="52" rx="4" fill="#B97A3C" stroke="#2B2118" stroke-width="4"/></svg>'); d.appendChild(head(c.y)); }
+      else { d.appendChild(head(c.x)); d.appendChild(row(c.x, c.t === 'mid' ? (S - 1) / 2 : c.t === 'first' ? 0 : -1, c.t === 'notends')); }
+      return d;
+    },
+    async present(st) {
+      const q = st.q;
+      st.seat = Array(q.S).fill(null); st.sel = null;
+      st.bus = thing(st, 3, 'item');
+      st.bus.innerHTML = '<svg viewBox="0 0 400 176" width="100%" height="100%" preserveAspectRatio="none" style="pointer-events:none"><rect x="6" y="8" width="380" height="140" rx="30" fill="#E8554A" stroke="#2B2118" stroke-width="6"/><rect x="6" y="104" width="380" height="20" fill="#2E6FD8"/><rect x="368" y="30" width="16" height="70" rx="6" fill="#BFE3FF" stroke="#2B2118" stroke-width="4"/></svg>' +
+        '<svg viewBox="0 0 400 176" width="100%" height="100%" style="pointer-events:none;position:absolute;left:0;top:0"><circle cx="80" cy="148" r="24" fill="#2B2118"/><circle cx="80" cy="148" r="10" fill="#C9D3E0"/><circle cx="318" cy="148" r="24" fill="#2B2118"/><circle cx="318" cy="148" r="10" fill="#C9D3E0"/></svg>';
+      st.bus.style.position = 'absolute';
+      st.seatEls = Array.from({ length: q.S }, (_, i) => { const e = thing(st, 5, 'item'); Object.assign(e.style, { borderRadius: '18px', background: '#DFF3FF', boxShadow: 'inset 0 0 0 4px ' + INK }); K.reg(st, 's' + i, e, {}); return e; });
+      st.dogEls = q.dogs.map((x, k) => { const e = thing(st, 8, 'item'); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' }); const h = thumb(x, 92); h.style.width = h.style.height = '88%'; e.appendChild(h); K.reg(st, 'd' + k, e, { drag: true, drops: () => st.seatEls.map((s, i) => ({ id: 's' + i, rect: () => box(s) })) }); return e; });
+      st.clueEls = q.clues.map(c => { const e = thing(st, 4, 'card'); e.style.zIndex = 4; e.appendChild(this.clueNode(st, c)); e.style.visibility = 'hidden'; return e; });
+      st.doneBtn = K.done(st, 'paw'); K.reg(st, 'done', st.doneBtn, {});
+      this.place(st);
+      K.pop(st, st.bus); st.dogEls.forEach((e, i) => K.pop(st, e, 60 * i));
+      /* the clues one by one, each said as it comes (the pups can be moved meanwhile) */
+      const lines = q.clues.map(clueLine);
+      st.lead = lines.slice(0, -1); st.prompt = lines[lines.length - 1];
+      q.clues.forEach((c, i) => st.scope.timeout(() => { const e = st.clueEls[i]; if (e.style.visibility !== 'hidden') return; e.style.visibility = ''; K.pop(st, e); if (!st.picked) Voice.say(lines[i], { tag: 'prompt' }); }, T(300 + 1250 * i)));
+      K.task(st, [[{ node: thumb(q.dogs[0], 46) }], [{ node: (() => { const s = el('span', ''); s.innerHTML = '<svg viewBox="0 0 60 40" width="60" height="40"><rect x="3" y="4" width="54" height="28" rx="9" fill="#E8554A" stroke="#2B2118" stroke-width="3"/><circle cx="15" cy="33" r="6" fill="#2B2118"/><circle cx="45" cy="33" r="6" fill="#2B2118"/></svg>'; return s; })() }]]);
+    },
+    select(st, k) { st.sel = st.sel === k ? null : k; st.dogEls.forEach((e, i) => { e.style.outline = i === st.sel ? '6px solid ' + GOLD : ''; e.style.borderRadius = '50%'; }); },
+    sit(st, k, i) {
+      const x = st.q.dogs[k], was = st.seat.indexOf(x);
+      if (was >= 0) st.seat[was] = null;
+      st.seat[i] = x; st.dogEls[k].style.transform = '';
+      if (st.sel != null) this.select(st, st.sel);
+      this.place(st); K.pop(st, st.dogEls[k]); Sfx.place();
+      st.doneBtn.classList.toggle('ready', st.seat.every(Boolean));
+      return 'ok';
+    },
+    onGesture(st, name, p) {
+      if (st.picked || !st.seatEls) return false;
+      const id = p.id || ''; let m;
+      if (name === 'drop' && (m = /^d(\d)$/.exec(id))) { const s = /^s(\d)$/.exec(p.to || ''); st.dogEls[+m[1]].style.transform = ''; return s ? this.sit(st, +m[1], +s[1]) : 'free'; }
+      if (name !== 'tap') return false;
+      if ((m = /^d(\d)$/.exec(id))) { const x = st.q.dogs[+m[1]], i = st.seat.indexOf(x); if (i >= 0) { st.seat[i] = null; this.place(st); Sfx.back(); st.doneBtn.classList.remove('ready'); return 'ok'; } this.select(st, +m[1]); return 'ok'; }
+      if ((m = /^s(\d)$/.exec(id))) {
+        const i = +m[1];
+        if (st.sel != null) return this.sit(st, st.sel, i);
+        if (st.seat[i]) { st.seat[i] = null; this.place(st); Sfx.back(); st.doneBtn.classList.remove('ready'); return 'ok'; }
+        K.wiggle(st, st.seatEls[i]); return 'free';
+      }
+      if (id === 'done') {
+        if (!st.seat.every(Boolean)) { K.wiggle(st, st.doneBtn); return 'free'; }
+        st.picked = true; Session.submit(st, st.seat.join(',')); return 'ok';
+      }
+      return false;
+    },
+    broken(st, ans) { const ar = String(ans).split(','); return st.q.clues.findIndex(c => !holds(c, ar)); },
+    async feedback(st, ans) {
+      const c = st.q.clues[Math.max(0, this.broken(st, ans))];
+      [c.x, c.y].filter(Boolean).forEach(x => { const k = st.q.dogs.indexOf(x); if (k >= 0) K.wiggle(st, st.dogEls[k]); });
+      W5U.say(st, breakLine(c));
+      await st.scope.wait(T(600)); await st.scope.guard(Voice.afterSay(60));
+    },
+    /* 1. the clue he broke blue, its pups wiggle; 2. the clues light up one by one, the pups jump into their seats ("天天在
+       毛毛左边"); 3. the seats ringed gold: "全都对上了" */
+    async explain(st, ans) {
+      const my = st, q = st.q, b = Math.max(0, this.broken(st, ans)), c = q.clues[b];
+      st.clueEls.forEach(e => { e.style.visibility = ''; });
+      const rings = W5U.blue(st, st.clueEls[b]);
+      [c.x, c.y].filter(Boolean).forEach(x => { const k = q.dogs.indexOf(x); if (k >= 0) K.wiggle(st, st.dogEls[k]); });
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      st.seat = q.target.slice(); this.place(st);
+      st.dogEls.forEach(e => K.hop(st, e, 18)); Sfx.place();
+      for (let i = 0; i < q.clues.length; i++) { if (!Session.alive(my)) return; const e = st.clueEls[i]; e.style.boxShadow = '0 0 0 6px ' + GOLD; K.pop(st, e); await st.scope.wait(T(90)); }
+      await say(st, clueLine(c)); if (!Session.alive(my)) return;
+      await st.scope.wait(T(150)); if (!Session.alive(my)) return;
+      W5U.gold(st, st.seatEls, 10);
+      await W5U.sum(st, '全都对上了');
+      await st.scope.wait(T(150));
+    },
+    rightEls(st) { return st.seatEls; },
+    async reveal(st) {
+      const my = st; Sfx.reveal();
+      st.dogEls.forEach(e => K.hop(st, e, 14));
+      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      W5U.gold(st, st.seatEls, 10); this.cheerAll(st);
+      st.summary = '全都对上了'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    /* tests: seat by seat (a wrong pup in a seat is tapped back first), then 出发. 'wrong': the first two swapped */
+    next(st, strat) {
+      if (st.picked || !st.seatEls) return null;
+      const q = st.q, want = q.target.slice(); if (strat === 'wrong') { const t = want[0]; want[0] = want[1]; want[1] = t; }
+      for (let i = 0; i < q.S; i++) if (st.seat[i] && st.seat[i] !== want[i]) return { g: 'tap', p: { id: 's' + i } };
+      for (let i = 0; i < q.S; i++) if (!st.seat[i]) { const k = q.dogs.indexOf(want[i]), r = box(st.seatEls[i]); return { g: 'drop', p: { id: 'd' + k, to: 's' + i }, to: { x: r.x + r.w / 2, y: r.y + r.h / 2 } }; }
+      return { g: 'tap', p: { id: 'done' } };
+    },
+    gestureHint(st) { const k = st.q.dogs.findIndex(x => !st.seat.includes(x)); if (k < 0) return; const a = mid(st.dogEls[k]), b = mid(st.seatEls[0]); Hand.busy++; Hand.drag(st.scope, a.x, a.y, a.x + (b.x - a.x) * 0.5, a.y + (b.y - a.y) * 0.5, 600).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+    workEls(st) { return st.dogEls || []; },
+    snap(st) { return { seat: (st.seat || []).join(',') }; },
+    lines() {
+      const out = [this.intro, '全都对上了'].concat(this.praise);
+      DOGS.forEach(x => { ['mid', 'first', 'notends', 'out'].forEach(t => out.push(clueLine({ t, x }), breakLine({ t, x }))); DOGS.forEach(y => { if (y !== x) ['left', 'next', 'notnext'].forEach(t => { if (t === 'left' || x < y) out.push(clueLine({ t, x, y }), breakLine({ t, x, y })); }); }); });
+      return uniq(out);
+    },
+  };
+  /* ================================================================ A7 填！ 对号入座：故事变算式 (roles5, boost −1: the first round is L1)
+     A little story above (two panels: before / after, or one panel for the stories without a movement), a number sentence
+     below; the child puts every part of the story into the slot of its ROLE. Drawn as §3.3 says everywhere in 积木城: what
+     went away = a grey dashed outline where it stood + a grey trail out of the door; what is still here = solid, one frame
+     round the group; what came = a sparkle; together = a brace. The explanation always says both ("走了两只，" "还剩三只！").
+     The first question of a session (L1-L2) first shows the symbol (not scored, not a hint): "走了，" "就写减号！" - a duck
+     slides out of the door and its trail becomes "−" / "又来了，" "也写加号！" - one comes in with a sparkle, "+".
+       L1 went / came (≤ 5): four picture cards (the group at the start, the group that went / came, the group at the end,
+          and one that came / went the other way), the symbols printed; a card in a slot shows its count under it
+       L2 number blocks (three right + two off by one from the whole), symbols printed; + the two stories without a
+          movement: together (2 red fish, 3 yellow fish, "一共？") and the other part (5 fish, 2 of them red: "黄的？") ≤ 7
+       L3 the symbol is a slot too (+ and − blocks); ≤ 9
+       L4 read a sentence back into the picture: 6 − 2 = 4 is given, each number goes onto the group it tells about (three
+          groups + one group that is not in the story); ≤ 10
+       L5 listen (no picture; the task card writes it in pictures): "这里有六只小鸭。" "走了两只。" "还剩几只？" - build the
+          whole sentence from number and symbol blocks; ≤ 10
+     Judged by ROLE: 5 − 3 = 2 is true but wrong for "5 ducks, 2 went away" - what went away is after the minus, what is left
+     after the equals (his own confusion, 10/17). Together: either part first. A random filling is right 1 time in 24 (L1,
+     L4), 1 in 60 or 120 (L2, L3, L5). Wrong: the first slot that is wrong ringed blue while the story plays again ("走了的是
+     两只" / "还剩三只哦" / "一共是五只" / "这是减法故事"); every number flies from its group into its slot, the group
+     glowing ("走了两只，" "还剩三只！"); the sentence read: "五减二等于三". */
+  const A7ANI = { duck: '小鸭', chick: '小鸡', bunny: '小兔' };
+  const FISHP = c => '<path d="M20 50Q46 22 72 50Q46 78 20 50Z" fill="' + c + '" stroke="#2B2118" stroke-width="5"/><path d="M70 50L92 34V66Z" fill="' + c + '" stroke="#2B2118" stroke-width="5" stroke-linejoin="round"/><circle cx="34" cy="46" r="4" fill="#2B2118"/>';
+  const FISH = { red: W2X.icon(FISHP('#E8414B')), yellow: W2X.icon(FISHP('#FFC93C')) };
+  const DOOR_OUT = W2X.icon('<rect x="8" y="14" width="40" height="76" rx="6" fill="#B97A3C" stroke="#2B2118" stroke-width="5"/><path d="M92 52H58M70 38L56 52L70 66" fill="none" stroke="#9AA3AD" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>');
+  const DOOR_IN = W2X.icon('<rect x="8" y="14" width="40" height="76" rx="6" fill="#B97A3C" stroke="#2B2118" stroke-width="5"/><path d="M56 52H90M78 38L92 52L78 66" fill="none" stroke="#2B2118" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><path d="M74 20L77 27L84 28L78 32L80 39L74 35L68 39L70 32L64 28L71 27Z" fill="#FFC93C" stroke="#2B2118" stroke-width="2"/>');
+  const EQIC = W2X.icon('<rect x="2" y="30" width="26" height="36" rx="5" fill="#fff" stroke="#2B2118" stroke-width="4" stroke-dasharray="6 4"/><path d="M33 48h10" stroke="#2B2118" stroke-width="6"/><rect x="48" y="30" width="26" height="36" rx="5" fill="#fff" stroke="#2B2118" stroke-width="4" stroke-dasharray="6 4"/><path d="M79 42h18M79 54h18" stroke="#2B2118" stroke-width="5"/>');
+  const SPARK = '<svg viewBox="0 0 30 30" width="22" height="22" style="position:absolute;right:-6px;top:-8px;pointer-events:none"><path d="M15 1L18 12L29 15L18 18L15 29L12 18L1 15L12 12Z" fill="#FFE45C" stroke="#2B2118" stroke-width="2" stroke-linejoin="round"/></svg>';
+  const SYM = { '+': '加', '−': '减' };
+  /* the three roles of a story, in the order of the sentence */
+  const ROLES = { go: ['start', 'gone', 'left'], come: ['start', 'came', 'all'], join: ['red', 'yellow', 'all'], part: ['all', 'red', 'yellow'] };
+  const OPOF = { go: '−', come: '+', join: '+', part: '−' };
+  const roleLine = (r, n, u) => ({ start: '一开始是' + CNQ(n) + u, gone: '走了的是' + CNQ(n) + u, came: '来了的是' + CNQ(n) + u, left: '还剩' + CNQ(n) + u + '哦', all: '一共是' + CNQ(n) + u, red: '红的是' + CNQ(n) + u, yellow: '黄的是' + CNQ(n) + u })[r];
+  const eqLine = (a, op, b, c) => CN[a] + SYM[op] + CN[b] + '等于' + CN[c];
+  /* the two lines while the numbers fly (the first number flies without one) */
+  const flyLines = q => ({ go: [null, '走了' + CNQ(q.v[1]) + q.u + '，', '还剩' + CNQ(q.v[2]) + q.u + '！'], come: [null, '来了' + CNQ(q.v[1]) + q.u + '，', '一共' + CNQ(q.v[2]) + q.u + '！'], join: [null, '合起来，', '一共' + CNQ(q.v[2]) + '条！'], part: [null, '拿走红的，', '黄的' + CNQ(q.v[2]) + '条！'] })[q.type];
+  /* the story said: two sentences (and at L5 the question) */
+  const storyLines = q => { const u = q.u, A = A7ANI[q.ani];
+    if (q.type === 'go') return ['这里有' + CNQ(q.v[0]) + u + A + '。', '走了' + CNQ(q.v[1]) + u + '。', '还剩几只？'];
+    if (q.type === 'come') return ['这里有' + CNQ(q.v[0]) + u + A + '。', '又来了' + CNQ(q.v[1]) + u + '。', '一共几只？'];
+    if (q.type === 'join') return ['有' + CNQ(q.v[0]) + '条红鱼，', CNQ(q.v[1]) + '条黄鱼。', '一共几条？'];
+    return ['一共' + CNQ(q.v[0]) + '条鱼，', CNQ(q.v[1]) + '条是红的。', '黄的有几条？']; };
+
+  W5R.A7 = {
+    kind0: 'roles5', verb: '填！', intro: '故事变算式！', praise: ['每个数都放对啦！'], props: ['duck', 'chick', 'bunny', 'fish'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, hi = [0, 5, 7, 9, 10, 10][d];
+      let type = d === 1 || !G.a7first ? bagPick(G, 'a7m' + d, ['go', 'come']) : bagPick(G, 'a7t' + d, ['go', 'come', 'join', 'part', 'go', 'come']);
+      G.a7first = true;
+      const ani = bagPick(G, 'a7a', Object.keys(A7ANI)), fish = type === 'join' || type === 'part', u = fish ? '条' : '只';
+      let v;
+      for (let t = 0; t < 200; t++) {
+        const whole = rng.int(d === 1 ? 3 : 4, hi), p = rng.int(1, whole - 1), r = whole - p;
+        if (p === r) continue;
+        v = type === 'go' ? [whole, p, r] : type === 'come' ? [r, p, whole] : type === 'join' ? [p, r, whole] : [whole, p, r];
+        break;
+      }
+      const op = OPOF[type], roles = ROLES[type], q = { d, type, ani, fish, u, v, op, roles };
+      const whole = Math.max(...v), others = [];
+      [1, -1, 2, -2, 3].forEach(k => { const x = whole + k; if (others.length < 2 && x >= 1 && x <= 10 && !v.includes(x) && !others.includes(x)) others.push(x); });
+      if (d === 1) {
+        const chg = type === 'go' ? 'gone' : 'came', wrongChg = type === 'go' ? 'came' : 'gone';
+        q.pics = rng.shuffle([{ r: 'start', n: v[0] }, { r: chg, n: v[1] }, { r: roles[2], n: v[2] }, { r: wrongChg, n: v[1] }]);
+        q.answer = ['start', chg, roles[2]].join(',');
+      } else if (d === 4) {
+        const oani = fish ? rng.pick(['chick', 'bunny']) : rng.pick(Object.keys(A7ANI).filter(a => a !== ani));
+        let on = 2; while (v.includes(on)) on++;
+        q.other = { ani: oani, n: on };
+        /* the four groups the numbers can go on, in the picture's order */
+        q.tags = type === 'go' ? ['start', 'other', 'gone', 'left'] : type === 'come' ? ['start', 'other', 'came', 'all'] : ['red', 'yellow', 'other', 'all'];
+        q.blocks = v.slice();
+        q.answer = q.tags.map(r => (r === 'other' ? '' : v[roles.indexOf(r)])).join(',');
+      } else {
+        q.blocks = rng.shuffle(v.concat(others)).concat(d >= 3 ? ['+', '−'] : []);
+        q.answer = d === 2 ? v.join(',') : [v[0], op, v[1], v[2]].join(',');
+      }
+      q.k = [d, type, ani, v.join('.')];
+      q.fact = factOf(op === '+' ? '+' : '-', v[0], v[1]);
+      return q;
+    },
+    /* right: by role; together: either part first */
+    evaluate(st, ans) {
+      const q = st.q; if (ans === q.answer) return true;
+      if (q.type !== 'join' || q.d === 1 || q.d === 4) return false;
+      const a = String(ans).split(','), w = String(q.answer).split(',');
+      if (q.d === 2) return a[0] === w[1] && a[1] === w[0] && a[2] === w[2];
+      return a[0] === w[2] && a[1] === w[1] && a[2] === w[0] && a[3] === w[3];
+    },
+    audit(q) { const n = q.d === 1 || q.d === 4 ? 24 : q.d === 2 ? 60 : 120; return [{ build: true, chance: (q.type === 'join' && q.d !== 1 && q.d !== 4 ? 2 : 1) / n }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    geo(st) {
+      const q = st.q, L = K.L(), H = q.d === 4 ? 312 : 216, s = L ? 104 : 100;
+      const two = !q.fish, py = L ? 96 : 206;
+      const panels = q.d === 5 ? [] : two ? (L ? [[124, py, 360, H], [540, py, 360, H]] : [[22, py, 300, H], [382, py, 300, H]]) : (L ? [[Math.round(512 - (q.d === 4 ? 300 : 280)), py, q.d === 4 ? 600 : 560, H]] : [[22, py, 660, H]]);
+      const eqY = q.d === 5 ? (L ? 214 : 300) : py + H + (L ? 20 : 18);
+      return { L, s, sw: q.d === 1 ? (L ? 150 : 136) : s, H, panels, eqY, eqCx: L ? 470 : 304, by: eqY + s + (q.d === 1 ? 50 : L ? 26 : 30), bs: q.d === 1 ? [L ? 150 : 136, s] : [L ? 100 : 96, L ? 100 : 96] };
+    },
+    /* the sentence row: [slot] op [slot] = [slot] (L3 / L5: the op is a slot) */
+    eqLayout(st) {
+      const q = st.q, g = this.geo(st), opSlot = q.d === 3 || q.d === 5, items = [['n', 0], opSlot ? ['o', 1] : ['s', q.op], ['n', opSlot ? 2 : 1], ['s', '='], ['n', opSlot ? 3 : 2]];
+      const w = it => (it[0] === 's' ? 52 : it[0] === 'n' ? g.sw : g.s), tot = items.reduce((a, it) => a + w(it), 0) + 8 * (items.length - 1);
+      let x = g.eqCx - tot / 2; const out = items.map(it => { const b = { kind: it[0], v: it[1], x: Math.round(x), y: g.eqY, w: w(it), h: g.s }; x += w(it) + 8; return b; });
+      return { items: out, right: Math.round(x - 8) };
+    },
+    homeBox(st, j) {
+      const q = st.q, g = this.geo(st), n = q.blocks ? q.blocks.length : q.pics.length, [bw, bh] = g.bs;
+      if (q.d === 4) { const it = this.eqLayout(st).items.filter(i => i.kind === 'n')[j]; return { x: it.x, y: it.y, w: it.w, h: it.h }; }
+      const per = g.L ? n : (n > 5 ? 4 : n), p = W5U.grid(n, g.L ? 512 : 352, g.by + (Math.ceil(n / per) * (bh + 12) - 12) / 2, bw, bh, 12, 12, per)[j];
+      return { x: p.x, y: p.y, w: bw, h: bh };
+    },
+    place(st) {
+      const q = st.q, g = this.geo(st);
+      if (!st.eqEls) return;
+      if (st.sceneL !== g.L) this.drawScene(st);
+      const E = this.eqLayout(st);
+      E.items.forEach((it, i) => place(st.eqEls[i], it.x, it.y, it.w, it.h));
+      const ex = E.items[0].x - 10, ew = E.right - E.items[0].x + 20; place(st.eqBox, ex, g.eqY - 10, ew, g.s + 20);
+      (st.blockEls || []).forEach((e, j) => { const at = st.at[j]; let b; if (at && at[0] === 'q') b = this.slotBox(st, at[1]); else if (at && at[0] === 't') b = box(st.tagEls[at[1]]); else b = this.homeBox(st, j); place(e, b.x + (b.w - parseFloat(e.style.width || b.w)) / 2, b.y, parseFloat(e.style.width) || b.w, b.h); });
+      (st.counts || []).forEach((c, i) => { if (!c) return; const b = this.slotBox(st, i); place(c, b.x + b.w / 2 - 40, b.y + b.h + 2, 80, 40); });
+      (st.slots || []).forEach((sl, i) => { const full = st.at.some(x => x && ((x[0] === 'q' && x[1] === i) || (q.d === 4 && x[0] === 'e' && x[1] === i))); sl.el.style.borderColor = full ? 'transparent' : (sl.op ? '#E8414B' : '#2E6FD8'); });
+      if (st.doneBtn) { st.doneBtn._done.x = E.right + 22; st.doneBtn._done.y = g.eqY - 2; K.placeDone(st.doneBtn); }
+    },
+    slotBox(st, i) { const it = this.eqLayout(st).items.filter(x => x.kind !== 's')[i]; return { x: it.x, y: it.y, w: it.w, h: it.h }; },
+    /* ---------------------------------------------------------------- the story picture (rebuilt when the stage turns) */
+    drawScene(st) {
+      const q = st.q, g = this.geo(st);
+      (st.panelEls || []).forEach(e => e.remove()); (st.tagEls || []).forEach(e => e.remove());
+      st.sceneL = g.L; st.panelEls = []; st.grp = {}; st.tagEls = [];
+      if (q.d === 5) return;
+      const mk = (P, z) => { const e = thing(st, z || 3, 'item'); place(e, P[0], P[1], P[2], P[3]); Object.assign(e.style, { borderRadius: '22px', background: 'rgba(255,248,236,.94)', boxShadow: '0 0 0 4px ' + INK }); st.panelEls.push(e); return e; };
+      const L4 = q.d === 4, top = L4 ? 104 : 28, gh = L4 ? 180 : 168;
+      /* a group: n pictures in rows inside (x, y, w, h) of panel p; kind: 'plain' | 'gone' | 'came' | 'framed' */
+      const group = (p, role, src, n, x, y, w, h, kind) => {
+        const e = el('div', '', p); Object.assign(e.style, { position: 'absolute', left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', pointerEvents: 'none', borderRadius: '16px' });
+        let per = Math.max(1, Math.min(n, Math.floor((w - 8) / 60))); if (Math.ceil(n / per) * 60 > h) per = Math.max(1, Math.min(n, Math.floor((w - 8) / 46)));
+        const rows = Math.ceil(n / per), sz = Math.max(30, Math.min(56, Math.floor((w - 8) / per) - 4, Math.floor((h - 8) / rows) - 4));
+        for (let i = 0; i < n; i++) {
+          const r = Math.floor(i / per), inRow = Math.min(per, n - r * per), c = i % per, cell = el('div', '', e);
+          Object.assign(cell.style, { position: 'absolute', width: sz + 'px', height: sz + 'px', left: Math.round(w / 2 - (inRow * (sz + 4)) / 2 + c * (sz + 4)) + 'px', top: Math.round(h / 2 - (rows * (sz + 4)) / 2 + r * (sz + 4)) + 'px' });
+          if (kind === 'gone') { Object.assign(cell.style, { border: '4px dashed ' + W5U.GREY, borderRadius: '14px', boxSizing: 'border-box', background: 'rgba(154,163,173,.14)' }); const im = img(src, '', cell); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain', opacity: '.28', filter: 'grayscale(1)' }); }
+          else { const im = img(src, '', cell); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain' }); if (kind === 'came') cell.insertAdjacentHTML('beforeend', SPARK); }
+        }
+        if (kind === 'framed') e.style.boxShadow = '0 0 0 4px ' + INK;
+        st.grp[role] = e; return e;
+      };
+      const src = q.fish ? null : W5U.prop(q.ani);
+      if (!q.fish) {
+        const [A, B] = g.panels.map(P => mk(P)), w1 = g.panels[0][2], w2 = g.panels[1][2];
+        const arr = thing(st, 4, 'item'); arr.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%" style="pointer-events:none"><path d="M8 30H44M32 16L48 30L32 44" fill="none" stroke="#2B2118" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        place(arr, g.panels[0][0] + w1 + 4, g.panels[0][1] + g.H / 2 - 22, g.panels[1][0] - g.panels[0][0] - w1 - 8, 44); st.panelEls.push(arr);
+        /* the door of the after picture */
+        const door = el('div', '', B); Object.assign(door.style, { position: 'absolute', left: '8px', top: (top + 4) + 'px', width: '40px', height: (gh - 8) + 'px', borderRadius: '8px', background: '#B97A3C', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' });
+        if (L4) { group(A, 'start', src, q.v[0], 12, top, w1 * 0.62, gh, 'plain'); group(A, 'other', W5U.prop(q.other.ani), q.other.n, w1 * 0.66, top, w1 * 0.32, gh, 'plain'); }
+        else group(A, 'start', src, q.v[0], 14, top, w1 - 28, gh, 'plain');
+        const cw = Math.round((w2 - 60) * 0.42);
+        if (q.type === 'go') {
+          const gone = group(B, 'gone', src, q.v[1], 56, top, cw, gh, 'gone');
+          group(B, 'left', src, q.v[2], 64 + cw, top, w2 - 72 - cw, gh, 'framed');
+          /* the ones that went: faded at the door, a grey trail out */
+          const t = svg('svg', { width: w2, height: g.H }, B); Object.assign(t.style, { position: 'absolute', left: '0', top: '0', pointerEvents: 'none', overflow: 'visible' });
+          const y = top + gh / 2; svg('path', { d: 'M' + (56 + cw * 0.8) + ' ' + y + 'L22 ' + y, stroke: W5U.GREY, 'stroke-width': 6, 'stroke-dasharray': '3 10', 'stroke-linecap': 'round', fill: 'none' }, t); svg('path', { d: W5U.arrowHead({ x: 60, y }, { x: 14, y }, 18), fill: W5U.GREY }, t);
+          st.trail = t; void gone;
+        } else {
+          group(B, 'came', src, q.v[1], 56, top, cw, gh, 'came');
+          group(B, 'old', src, q.v[0], 64 + cw, top, w2 - 72 - cw, gh, 'plain');
+          const all = el('div', '', B); Object.assign(all.style, { position: 'absolute', left: '52px', top: (top - 4) + 'px', width: (w2 - 60) + 'px', height: (gh + 8) + 'px', borderRadius: '18px', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' }); st.grp.all = all;
+        }
+      } else {
+        const A = mk(g.panels[0]), w = g.panels[0][2], fw = L4 ? Math.round(w * 0.3) : Math.round(w * 0.42), fy = top, fh = L4 ? 96 : 120;
+        group(A, 'red', FISH.red, q.v[q.type === 'join' ? 0 : 1], 20, fy, fw, fh, 'plain');
+        const yel = group(A, 'yellow', FISH.yellow, q.v[q.type === 'join' ? 1 : 2], 30 + fw, fy, fw, fh, 'plain');
+        if (q.type === 'part' && q.d !== 4) { const cv = el('div', 'a7cover', yel); Object.assign(cv.style, { position: 'absolute', inset: '-4px', borderRadius: '16px', background: '#7FB2D9', boxShadow: '0 0 0 4px ' + INK, display: 'flex', alignItems: 'center', justifyContent: 'center' }); cv.innerHTML = ICONS.q; cv.firstChild.style.width = '54px'; cv.firstChild.style.height = '54px'; st.cover = cv; }
+        if (L4) group(A, 'other', W5U.prop(q.other.ani), q.other.n, 44 + 2 * fw, fy, w - 60 - 2 * fw, fh, 'plain');
+        /* together: a brace under both */
+        const all = el('div', '', A); Object.assign(all.style, { position: 'absolute', left: '16px', top: (fy - 4) + 'px', width: (2 * fw + 18) + 'px', height: (fh + 40) + 'px', pointerEvents: 'none' }); st.grp.all = all;
+        const b = svg('svg', { width: 2 * fw + 18, height: fh + 40 }, all); b.style.overflow = 'visible';
+        const by = fh + 10, x0 = 4, x1 = 2 * fw + 14, m = (x0 + x1) / 2;
+        svg('path', { d: 'M' + x0 + ' ' + by + 'Q' + x0 + ' ' + (by + 14) + ' ' + (x0 + 20) + ' ' + (by + 14) + 'L' + (m - 16) + ' ' + (by + 14) + 'Q' + m + ' ' + (by + 14) + ' ' + m + ' ' + (by + 28) + 'Q' + m + ' ' + (by + 14) + ' ' + (m + 16) + ' ' + (by + 14) + 'L' + (x1 - 20) + ' ' + (by + 14) + 'Q' + x1 + ' ' + (by + 14) + ' ' + x1 + ' ' + by, stroke: INK, 'stroke-width': 6, fill: 'none', 'stroke-linecap': 'round' }, b);
+        if (q.type === 'part' && q.d !== 4) { const t = el('div', '', all); Object.assign(t.style, { position: 'absolute', left: (m - 34) + 'px', top: (by + 30) + 'px' }); t.appendChild(UI.num(q.v[0], 40)); }
+        else if (q.d !== 4) { const t = el('div', '', all); Object.assign(t.style, { position: 'absolute', left: (m - 22) + 'px', top: (by + 30) + 'px', width: '44px', height: '44px' }); t.innerHTML = ICONS.q; }
+      }
+      /* L4: a dashed tag for a number at every group (above it; "together" below the brace) */
+      if (L4) {
+        st.tagEls = q.tags.map((r, i) => {
+          const e = thing(st, 6, 'item'), G0 = W5U.rect(st.grp[r]), s = 92;
+          const x = r === 'all' && q.fish ? G0.x + G0.w / 2 - s / 2 : r === 'all' ? G0.x + G0.w - s - 6 : G0.x + G0.w / 2 - s / 2, y = r === 'all' && q.fish ? G0.y + G0.h - 2 : G0.y - s - 6;
+          place(e, Math.round(x), Math.round(y), s, s);
+          Object.assign(e.style, { borderRadius: '18px', border: '5px dashed #2E6FD8', background: 'rgba(223,243,255,.85)', boxSizing: 'border-box' });
+          K.reg(st, 't' + i, e, {});
+          return e;
+        });
+      }
+    },
+    numBlock(v) { const e = el('div', ''); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none' }); if (v === '+' || v === '−') e.innerHTML = '<svg viewBox="0 0 40 40" width="58" height="58"><rect x="6" y="16" width="28" height="8" rx="4" fill="#2B2118"/>' + (v === '+' ? '<rect x="16" y="6" width="8" height="28" rx="4" fill="#2B2118"/>' : '') + '</svg>'; else { const n = UI.num(v, 62); e.appendChild(n); } return e; },
+    picCard(p) {
+      const q = this._q, e = el('div', ''); Object.assign(e.style, { position: 'relative', width: '100%', height: '100%', pointerEvents: 'none' });
+      const n = p.n, per = Math.min(n, 5), sz = 26, row = el('div', '', e); Object.assign(row.style, { position: 'absolute', left: '14px', right: '14px', top: '50%', transform: 'translateY(-50%)', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '3px' });
+      for (let i = 0; i < n; i++) { const c = el('div', '', row); Object.assign(c.style, { position: 'relative', width: sz + 'px', height: sz + 'px' }); if (p.r === 'gone') { Object.assign(c.style, { border: '3px dashed ' + W5U.GREY, borderRadius: '8px', boxSizing: 'border-box' }); const im = img(W5U.prop(q.ani), '', c); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain', opacity: '.28', filter: 'grayscale(1)' }); } else { const im = img(W5U.prop(q.ani), '', c); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain' }); if (p.r === 'came') c.insertAdjacentHTML('beforeend', SPARK.replace('width="22" height="22"', 'width="14" height="14"')); } }
+      if (p.r === 'gone' || p.r === 'came') { const ar = el('div', '', e); Object.assign(ar.style, { position: 'absolute', left: '2px', top: '4px', width: '40px', height: '30px' }); ar.innerHTML = '<svg viewBox="0 0 40 30" width="40" height="30"><rect x="1" y="2" width="12" height="26" rx="3" fill="#B97A3C" stroke="#2B2118" stroke-width="2.5"/>' + (p.r === 'gone' ? '<path d="M38 15H18M24 9L17 15L24 21" fill="none" stroke="#9AA3AD" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>' : '<path d="M16 15H36M30 9L37 15L30 21" fill="none" stroke="#2B2118" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>') + '</svg>'; }
+      if (p.r === 'left' || p.r === 'all') row.style.boxShadow = '0 0 0 3px ' + INK, row.style.borderRadius = '10px', row.style.padding = '3px';
+      return e;
+    },
+    async present(st) {
+      const q = st.q, G = st.G; this._q = q;
+      st.at = []; st.sel = null; st.counts = [];
+      this.drawScene(st);
+      /* the sentence row */
+      st.eqBox = thing(st, 3, 'item'); Object.assign(st.eqBox.style, { borderRadius: '22px', background: 'rgba(255,248,236,.9)', boxShadow: '0 0 0 4px ' + INK });
+      const E = this.eqLayout(st);
+      st.slots = [];
+      st.eqEls = E.items.map((it, i) => {
+        const e = thing(st, 5, 'item');
+        if (it.kind === 's') { Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' }); e.innerHTML = it.v === '=' ? '<svg viewBox="0 0 40 40" width="46" height="46"><rect x="6" y="11" width="28" height="7" rx="3.5" fill="#2B2118"/><rect x="6" y="23" width="28" height="7" rx="3.5" fill="#2B2118"/></svg>' : this.numBlock(it.v).innerHTML; e._sym = it.v; return e; }
+        Object.assign(e.style, { borderRadius: '16px', border: '5px dashed ' + (it.kind === 'o' ? '#E8414B' : '#2E6FD8'), background: '#fff', boxSizing: 'border-box' });
+        const k = st.slots.length; st.slots.push({ el: e, op: it.kind === 'o' }); if (q.d !== 4) K.reg(st, 'q' + k, e, {});
+        return e;
+      });
+      /* the lesson: the first question of the session (L1-L2) shows where the symbol comes from */
+      if (q.d <= 2 && !G.a7les && (q.type === 'go' || q.type === 'come')) { G.a7les = true; this.place(st); await this.lesson(st); if (!Session.alive(st)) return; }
+      /* the blocks: L1 picture cards, L2-L3 / L5 number (and symbol) blocks, L4 the given sentence's numbers */
+      const items = q.d === 1 ? q.pics : q.blocks;
+      st.blockEls = items.map((p, j) => {
+        const e = W3X.card(st, null, 8), b = this.homeBox(st, j); place(e, b.x, b.y, b.w, b.h);
+        e.appendChild(q.d === 1 ? this.picCard(p) : this.numBlock(p));
+        K.reg(st, 'b' + j, e, { drag: true, drops: () => this.drops(st, j) });
+        if (q.d === 4) st.at[j] = ['e', j];
+        return e;
+      });
+      st.doneBtn = K.done(st, 'check', 0, 0, 100); K.reg(st, 'done', st.doneBtn, {});
+      this.place(st);
+      st.blockEls.forEach((e, i) => K.pop(st, e, 60 * i));
+      const S = storyLines(q);
+      if (q.d === 5) {
+        const sent = q.type === 'go' ? [[W5U.prop(q.ani), { qty: q.v[0] }], [DOOR_OUT, { qty: q.v[1] }], ['q']] : q.type === 'come' ? [[W5U.prop(q.ani), { qty: q.v[0] }], [DOOR_IN, { qty: q.v[1] }], ['q']] : q.type === 'join' ? [[FISH.red, { qty: q.v[0] }], [FISH.yellow, { qty: q.v[1] }], ['q']] : [[FISH.red, FISH.yellow, { qty: q.v[0] }], [FISH.red, { qty: q.v[1] }], [FISH.yellow, 'q']];
+        K.task(st, sent);
+        st.lead = ['听故事，列算式！', S[0], S[1]]; st.lead.forEach(l => Voice.say(l, { tag: 'prompt' })); K.say(st, S[2]);
+      } else {
+        K.task(st, [[EQIC]]);
+        st.lead = [S[0], S[1]]; st.lead.forEach(l => Voice.say(l, { tag: 'prompt' })); K.say(st, q.d === 4 ? '把数放回图里！' : '放进算式里！');
+      }
+    },
+    /* the symbol, once a session: "走了，" "就写减号！" (a duck slides out, its trail becomes −) / "又来了，" "也写加号！" */
+    async lesson(st) {
+      const my = st, q = st.q, g = this.geo(st), sym = st.eqEls[1], go = q.type === 'go';
+      sym.style.opacity = '0';
+      /* a little stage of its own where the blocks will come: a door, one animal going out (coming in) */
+      const W = 420, H = 124, cx = g.L ? 512 : 352, card = thing(st, 30, 'item'); place(card, Math.round(cx - W / 2), g.by, W, H);
+      Object.assign(card.style, { borderRadius: '22px', background: '#FFF8EC', boxShadow: '0 0 0 4px ' + INK, overflow: 'visible' });
+      card.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="100%" style="position:absolute;left:0;top:0;overflow:visible;pointer-events:none"><rect x="' + (go ? 20 : 20) + '" y="14" width="46" height="96" rx="8" fill="#B97A3C" stroke="#2B2118" stroke-width="5"/></svg>';
+      const a = img(W5U.prop(q.ani), '', card); Object.assign(a.style, { position: 'absolute', width: '70px', height: '70px', top: '26px', left: go ? '300px' : '30px' });
+      const tr = svg('path', { d: 'M300 62H300', stroke: go ? W5U.GREY : '#FFC93C', 'stroke-width': 12, 'stroke-linecap': 'round', fill: 'none' }, card.firstChild);
+      W3X.say2(st, go ? '走了，' : '又来了，', go ? '就写减号！' : '也写加号！');
+      const t0 = performance.now(), dur = T(1100);
+      await new Promise(res => { const f = () => { if (!Session.alive(my)) return res(); const k = dur ? Math.min(1, (performance.now() - t0) / dur) : 1, x = go ? 300 - 230 * k : 30 + 230 * k;
+        a.style.left = x + 'px'; a.style.opacity = go ? String(1 - 0.75 * k) : '1'; tr.setAttribute('d', go ? 'M' + (x + 60) + ' 62H330' : 'M80 62H' + (x + 10));
+        if (k < 1) requestAnimationFrame(f); else res(); }; f(); });
+      if (!Session.alive(my)) return;
+      if (!go) { const b = box(card); Fx.burst(Stage.toScreen(b.x + 300, b.y + 60).x, Stage.toScreen(b.x + 300, b.y + 60).y, { n: 10, dist: 40 }); }
+      /* the trail (the arms) becomes the symbol and goes to its place */
+      const m = thing(st, 31, 'item'), mb = box(card), sb = box(sym); place(m, Math.round(mb.x + W / 2 - 40), Math.round(mb.y + 22), 80, 80);
+      m.innerHTML = this.numBlock(q.op).innerHTML; m.style.display = 'flex'; m.style.alignItems = 'center'; m.style.justifyContent = 'center';
+      tr.setAttribute('opacity', 0.25); K.pop(st, m);
+      await st.scope.wait(T(350)); if (!Session.alive(my)) return;
+      await st.scope.anim(m, [{ transform: 'none' }, { transform: 'translate(' + (sb.x + sb.w / 2 - mb.x - W / 2) + 'px,' + (sb.y + sb.h / 2 - mb.y - 62) + 'px)' }], { duration: T(550), easing: EASE.glide, fill: 'forwards' });
+      if (!Session.alive(my)) return;
+      m.remove(); sym.style.opacity = ''; K.pop(st, sym); Sfx.pop();
+      await st.scope.guard(Voice.afterSay(100)); if (!Session.alive(my)) return;
+      await st.scope.anim(card, [{ opacity: 1 }, { opacity: 0 }], { duration: T(200), fill: 'forwards' });
+      card.remove(); st.lead = null;
+    },
+    drops(st, j) {
+      const q = st.q;
+      if (q.d === 4) return st.tagEls.map((e, i) => ({ id: 't' + i, rect: () => box(e) }));
+      const isSym = q.d !== 1 && (q.blocks[j] === '+' || q.blocks[j] === '−');
+      return st.slots.map((s, i) => ({ id: 'q' + i, rect: () => box(s.el), op: s.op })).filter(x => (q.d === 1 || q.d === 2 ? true : x.op === isSym));
+    },
+    /* block j goes into slot / tag (the one there goes home) */
+    put(st, j, where) {
+      const q = st.q, [kind, i] = where;
+      if (kind === 'q') { const isSym = q.d !== 1 && (q.blocks[j] === '+' || q.blocks[j] === '−'); if ((q.d === 3 || q.d === 5) && st.slots[i].op !== isSym) { st.blockEls[j].style.transform = ''; K.wiggle(st, st.slots[i].el); return 'free'; } }
+      const old = st.at.findIndex((a, k) => k !== j && a && a[0] === kind && a[1] === i);
+      if (old >= 0) st.at[old] = q.d === 4 ? ['e', old] : null;
+      st.at[j] = [kind, i]; st.blockEls[j].style.transform = '';
+      if (st.sel != null) this.select(st, st.sel);
+      if (q.d === 1) this.showCounts(st);
+      this.place(st); K.pop(st, st.blockEls[j]); Sfx.place();
+      st.doneBtn.classList.toggle('ready', this.full(st));
+      return 'ok';
+    },
+    back(st, j) { st.at[j] = st.q.d === 4 ? ['e', j] : null; if (st.q.d === 1) this.showCounts(st); this.place(st); Sfx.back(); st.doneBtn.classList.remove('ready'); return 'ok'; },
+    full(st) { const q = st.q; return q.d === 4 ? st.at.every(a => a[0] === 't') : st.slots.every((_, i) => st.at.some(a => a && a[0] === 'q' && a[1] === i)); },
+    /* L1: a picture in a slot shows its count under it */
+    showCounts(st) {
+      (st.counts || []).forEach(c => c && c.remove()); st.counts = [];
+      st.slots.forEach((s, i) => { const j = st.at.findIndex(a => a && a[0] === 'q' && a[1] === i); if (j < 0) return; const c = thing(st, 6, 'item'); Object.assign(c.style, { display: 'flex', justifyContent: 'center' }); c.appendChild(UI.num(st.q.pics[j].n, 38)); st.counts[i] = c; });
+    },
+    select(st, j) { st.sel = st.sel === j ? null : j; st.blockEls.forEach((e, k) => { e.style.outline = k === st.sel ? '7px solid ' + GOLD : ''; e.style.outlineOffset = '3px'; }); },
+    onGesture(st, name, p) {
+      if (st.picked || !st.blockEls) return false;
+      const id = p.id || '', q = st.q; let m;
+      if (name === 'drop' && (m = /^b(\d)$/.exec(id))) { const j = +m[1], t = /^([qt])(\d)$/.exec(p.to || ''); if (!t) { st.blockEls[j].style.transform = ''; return 'free'; } return this.put(st, j, [t[1], +t[2]]); }
+      if (name !== 'tap') return false;
+      if ((m = /^b(\d)$/.exec(id))) { const j = +m[1], a = st.at[j]; if (a && a[0] !== 'e') return this.back(st, j); this.select(st, j); return 'ok'; }
+      if ((m = /^([qt])(\d)$/.exec(id))) {
+        const i = +m[2], j = st.at.findIndex(a => a && a[0] === m[1] && a[1] === i);
+        if (st.sel != null) return this.put(st, st.sel, [m[1], i]);
+        if (j >= 0) return this.back(st, j);
+        return 'free';
+      }
+      if (id === 'done') {
+        if (!this.full(st)) { K.wiggle(st, st.doneBtn); return 'free'; }
+        st.picked = true; if (st.sel != null) this.select(st, st.sel);
+        Session.submit(st, this.value(st)); return 'ok';
+      }
+      return false;
+    },
+    value(st) {
+      const q = st.q;
+      if (q.d === 4) return q.tags.map((_, i) => { const j = st.at.findIndex(a => a[0] === 't' && a[1] === i); return j >= 0 ? q.blocks[j] : ''; }).join(',');
+      return st.slots.map((_, i) => { const j = st.at.findIndex(a => a && a[0] === 'q' && a[1] === i); return q.d === 1 ? q.pics[j].r : q.blocks[j]; }).join(',');
+    },
+    /* the first place that is wrong, in reading order: { i (slot / tag), line: that place's role and its number } */
+    firstBad(st, ans) {
+      const q = st.q, a = String(ans).split(','), w = String(q.answer).split(',');
+      if (q.d === 4) { const i = a.findIndex((x, k) => x !== w[k] && x !== ''); const r = q.tags[i]; return { i, line: r === 'other' ? A7ANI[q.other.ani] + '不在故事里' : roleLine(r, q.v[q.roles.indexOf(r)], q.u) }; }
+      const opS = q.d === 3 || q.d === 5, num = opS ? [0, 2, 3] : [0, 1, 2];
+      /* the role each number place wants (together: the two parts either way round) */
+      const want = num.map((p, k) => q.roles[k]);
+      if (q.type === 'join' && q.d !== 1 && a[num[0]] === w[num[1]]) { want[0] = 'yellow'; want[1] = 'red'; }
+      for (let i = 0; i < a.length; i++) {
+        if (opS && i === 1) { if (a[1] !== q.op) return { i, line: q.op === '−' ? '这是减法故事' : '这是加法故事' }; continue; }
+        const k = num.indexOf(i), r = want[k], ri = q.roles.indexOf(r), ok = q.d === 1 ? a[i] === w[k] : a[i] === String(q.v[ri]);
+        if (!ok) return { i, line: roleLine(r, q.v[ri], q.u) };
+      }
+      return { i: 0, line: roleLine(q.roles[0], q.v[0], q.u) };
+    },
+    /* the sentence is heard to its end before the story plays again */
+    async feedback(st, ans) { const b = this.firstBad(st, ans); W5U.say(st, b.line); await st.scope.wait(T(600)); await st.scope.guard(Voice.afterSay(60)); },
+    /* 1. the wrong place blue while the story's change plays again; 2. every number flies from its group into its slot (L4:
+       from the sentence onto its group), the group glowing - "走了两只，" "还剩三只！"; 3. "五减二等于三" */
+    async explain(st, ans) {
+      const my = st, q = st.q, b = this.firstBad(st, ans);
+      const target = q.d === 4 ? st.tagEls[b.i] : st.slots[b.i].el, rings = W5U.blue(st, target);
+      this.replay(st);
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      await W5U.beat(st); if (!Session.alive(my)) return;
+      if (st.cover) { st.cover.style.transition = 'opacity .3s'; st.cover.style.opacity = '0'; }
+      /* everything back home, then each right one flies */
+      st.blockEls.forEach((e, j) => { st.at[j] = q.d === 4 ? ['e', j] : null; }); if (q.d === 1) this.showCounts(st); this.place(st);
+      const lines = flyLines(q), order = [0, 1, 2];
+      for (const k of order) {
+        if (!Session.alive(my)) return;
+        const role = q.roles[k], grp = st.grp[role];
+        let j, where;
+        if (q.d === 1) { j = q.pics.findIndex(p => p.r === (k === 0 ? 'start' : k === 1 ? (q.type === 'go' ? 'gone' : 'came') : q.roles[2])); where = ['q', k]; }
+        else if (q.d === 4) { j = k; where = ['t', q.tags.indexOf(role)]; }
+        else { j = q.blocks.findIndex((x, jj) => x === q.v[k] && !st.at[jj]); where = ['q', q.d === 2 ? k : [0, 2, 3][k]]; }
+        if (grp) { grp.classList.add('glow'); st.scope.timeout(() => grp.classList.remove('glow'), 1600); }
+        const e = st.blockEls[j], from = box(e); st.at[j] = where; if (q.d === 1) this.showCounts(st); this.place(st); const to = box(e);
+        const src = q.d === 4 ? from : (grp ? W5U.rect(grp) : from);
+        if (!ff(st)) e.animate([{ transform: 'translate(' + (src.x + src.w / 2 - to.x - to.w / 2) + 'px,' + (src.y + src.h / 2 - to.y - to.h / 2) + 'px) scale(.6)' }, { transform: 'none' }], { duration: T(320), easing: EASE.glide });
+        Sfx.place();
+        if (lines[k]) await say(st, lines[k]); else await st.scope.wait(T(100));
+        await st.scope.wait(T(30));
+      }
+      if (q.d === 3 || q.d === 5) { const j = q.blocks.indexOf(q.op); st.at[j] = ['q', 1]; this.place(st); K.pop(st, st.blockEls[j]); }
+      if (!Session.alive(my)) return;
+      W5U.gold(st, q.d === 4 ? q.roles.map(r => st.tagEls[q.tags.indexOf(r)]) : st.eqBox, 6);
+      await W5U.sum(st, eqLine(q.v[0], q.op, q.v[1], q.v[2]));
+      await st.scope.wait(T(40));
+    },
+    /* the story's change again: the ones that went fade out by the door / the ones that came sparkle */
+    replay(st) {
+      const q = st.q, gg = st.grp[q.type === 'go' ? 'gone' : q.type === 'come' ? 'came' : 'yellow'];
+      if (!gg || ff(st)) return;
+      if (q.type === 'come') { W5U.came(st, gg); return; }
+      st.scope.anim(gg, [{ opacity: 1 }, { opacity: 0.25 }, { opacity: 1 }], { duration: 800 });
+      if (st.trail) st.scope.anim(st.trail, [{ opacity: 0 }, { opacity: 1 }], { duration: 600 });
+    },
+    rightEls(st) { const q = st.q; return q.d === 4 ? q.roles.map(r => st.tagEls[q.tags.indexOf(r)]) : [st.eqBox]; },
+    async reveal(st) {
+      const my = st, q = st.q; Sfx.reveal();
+      st.blockEls.forEach(e => K.hop(st, e, 12));
+      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      W5U.gold(st, q.d === 4 ? q.roles.map(r => st.tagEls[q.tags.indexOf(r)]) : st.eqBox, 6); this.cheerAll(st);
+      st.summary = eqLine(q.v[0], q.op, q.v[1], q.v[2]); W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    /* tests: every block to the slot of its role (a wrong one tapped back first), then 好了. 'wrong': the last two roles
+       swapped - the child's own 5 − 3 = 2 */
+    next(st, strat) {
+      if (st.picked || !st.blockEls) return null;
+      const q = st.q, w = String(q.answer).split(',');
+      if (strat === 'wrong') { const a = q.d === 4 ? q.tags.indexOf(q.roles[1]) : w.length - 2, b = q.d === 4 ? q.tags.indexOf(q.roles[2]) : w.length - 1, t = w[a]; w[a] = w[b]; w[b] = t; }
+      const kind = q.d === 4 ? 't' : 'q', n = q.d === 4 ? q.tags.length : st.slots.length;
+      const valOf = j => (q.d === 1 ? q.pics[j].r : String(q.blocks[j]));
+      for (let i = 0; i < n; i++) {
+        const j = st.at.findIndex(a => a && a[0] === kind && a[1] === i);
+        if (j >= 0 && valOf(j) !== w[i]) return { g: 'tap', p: { id: kind + i } };
+        if (j < 0 && w[i] !== '') {
+          const jj = (q.d === 1 ? q.pics : q.blocks).findIndex((x, k) => valOf(k) === w[i] && !(st.at[k] && st.at[k][0] === kind));
+          if (jj < 0) continue;
+          const r = kind === 'q' ? box(st.slots[i].el) : box(st.tagEls[i]);
+          return { g: 'drop', p: { id: 'b' + jj, to: kind + i }, to: { x: r.x + r.w / 2, y: r.y + r.h / 2 } };
+        }
+      }
+      return { g: 'tap', p: { id: 'done' } };
+    },
+    gestureHint(st) { const e = (st.blockEls || [])[0], t = st.q.d === 4 ? st.tagEls[0] : st.slots[0].el; if (!e || !t) return; const a = mid(e), b = mid(t); Hand.busy++; Hand.drag(st.scope, a.x, a.y, a.x + (b.x - a.x) * 0.5, a.y + (b.y - a.y) * 0.5, 600).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+    workEls(st) { return st.blockEls || []; },
+    snap(st) { return { at: (st.at || []).map(a => (a ? a.join('') : '-')).join(' ') }; },
+    lines() {
+      const out = [this.intro, '放进算式里！', '把数放回图里！', '听故事，列算式！', '走了，', '就写减号！', '又来了，', '也写加号！', '合起来，', '拿走红的，', '这是减法故事', '这是加法故事', '还剩几只？', '一共几只？', '一共几条？', '黄的有几条？'].concat(this.praise);
+      for (let n = 1; n <= 10; n++) {
+        ['start', 'gone', 'came', 'left', 'all'].forEach(r => out.push(roleLine(r, n, '只')));
+        ['all', 'red', 'yellow'].forEach(r => out.push(roleLine(r, n, '条')));
+        out.push('走了' + CNQ(n) + '只，', '还剩' + CNQ(n) + '只！', '来了' + CNQ(n) + '只，', '一共' + CNQ(n) + '只！', '一共' + CNQ(n) + '条！', '黄的' + CNQ(n) + '条！');
+        out.push('走了' + CNQ(n) + '只。', '又来了' + CNQ(n) + '只。', '有' + CNQ(n) + '条红鱼，', CNQ(n) + '条黄鱼。', '一共' + CNQ(n) + '条鱼，', CNQ(n) + '条是红的。');
+        Object.values(A7ANI).forEach(A => out.push('这里有' + CNQ(n) + '只' + A + '。'));
+        for (let m = 1; m <= 10; m++) { if (n + m <= 10 && n !== m) out.push(eqLine(n, '+', m, n + m)); if (n - m >= 1 && m !== n - m) out.push(eqLine(n, '−', m, n - m)); }
+      }
+      Object.values(A7ANI).forEach(A => out.push(A + '不在故事里'));
+      return uniq(out);
+    },
+  };
+  /* ================================================================ A5 画！ 画路线 (route5)
+     L1-L3 a block-wall maze seen from above (cells of 96): 阿奇's police car at the start, the kitten at the end, bones to
+     pick up, puddles to keep out of. L4-L5 a block castle seen from the side (3-4 floors, ladders between them): a locked
+     door just before the kitten and a key somewhere (L5 also a sleeping teddy on one way). The maze always has several ways.
+     The finger draws: press on the car (or on the line's end) and drag - the line follows cell by cell into open
+     neighbours only (a wall stops it); dragging back along it takes it back; let go and it stays, touch its end to go on;
+     tap the car to clear it. The line reaching the kitten is the answer (the car drives it).
+       L1 4 x 4, "路上捡骨头！" · L2 5 x 5, "捡骨头，" "不踩水坑！" · L3 6 x 6, "两根骨头都要捡！"
+       L4 castle, 3 floors: "先拿钥匙，" "再开门！" (the line may go through the locked door; without the key first it is
+          not right) · L5 castle, 4 floors, key + door + "别吵醒小熊！"
+     Right: at the kitten, every bone (the key before the door) on the way, no puddle / teddy. Each maze is drawn so that at
+     most 1 in 5 of all the ways to the kitten is right, and the shortest is not. Wrong: the car drives his line and stops
+     where it goes wrong, ringed blue ("踩到水坑啦" / "门还锁着呢" / "吵醒小熊啦"; or at the end the bone it missed:
+     "骨头没拿到哦"); a gold line is drawn ("走这边，拿骨头") and the car drives it to the kitten, ringed gold. */
+  const ck = c => c[0] + ',' + c[1];
+  const ek = (a, b) => [ck(a), ck(b)].sort().join('|');
+  /* every simple way from a to b (null when there are more than cap) */
+  function allPaths(nb, a, b, cap) {
+    const out = [], seen = new Set([ck(a)]), path = [a]; let steps = 0;
+    const rec = c => { if (out.length > cap || steps++ > cap * 40) return; if (c[0] === b[0] && c[1] === b[1]) { out.push(path.slice()); return; } nb(c).forEach(n => { const k = ck(n); if (seen.has(k)) return; seen.add(k); path.push(n); rec(n); path.pop(); seen.delete(k); }); };
+    rec(a); return out.length > cap || steps > cap * 40 ? null : out;
+  }
+  W5R.A5 = {
+    kind0: 'route5', verb: '画！', intro: '画出路线！', praise: ['路线画得好！'], props: ['bone', 'policecar', 'kitten', 'puddle', 'key', 'teddy'],
+    /* the open neighbours of a cell */
+    nbOf(q) { return c => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [c[0] + dx, c[1] + dy]).filter(n => n[0] >= 0 && n[1] >= 0 && n[0] < q.cols && n[1] < q.rows && this.open(q, c, n)); },
+    open(q, a, b) { if (q.castle && a[1] !== b[1]) return q.ladders.includes(Math.min(a[1], b[1]) + ':' + a[0]) && a[0] === b[0]; return !q.walls.includes(ek(a, b)); },
+    /* is a whole path right? (and where it first goes wrong) */
+    judge(q, path) {
+      const has = c => path.some(p => p[0] === c[0] && p[1] === c[1]);
+      for (let i = 0; i < path.length; i++) {
+        const c = path[i], k = ck(c);
+        if ((q.puddles || []).includes(k)) return { ok: false, why: 'puddle', at: c };
+        if (q.bear && q.bear === k) return { ok: false, why: 'bear', at: c };
+        if (q.door && q.door === k && !path.slice(0, i).some(p => ck(p) === q.key)) return { ok: false, why: 'door', at: c };
+      }
+      const last = path[path.length - 1];
+      if (!last || ck(last) !== ck(q.goal)) return { ok: false, why: 'short', at: last };
+      const miss = (q.bones || []).find(b => !has(b.split(',').map(Number)));
+      if (miss) return { ok: false, why: 'bone', at: miss.split(',').map(Number) };
+      return { ok: true };
+    },
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      for (let t = 0; t < 2000; t++) {
+        const q = d <= 3 ? this.maze(G, rng, d) : this.castleQ(G, rng, d);
+        if (!q) continue;
+        const nb = this.nbOf(q), paths = allPaths(nb, q.start, q.goal, 3000);
+        if (!paths || paths.length < 5) continue;
+        if (!this.items(q, paths, rng, d)) continue;
+        const ok = paths.filter(p => this.judge(q, p).ok);
+        if (!ok.length || ok.length / paths.length > 0.2) continue;
+        const short = paths.reduce((a, p) => (p.length < a.length ? p : a), paths[0]);
+        if (this.judge(q, short).ok) continue;
+        q.right = ok.reduce((a, p) => (p.length < a.length ? p : a), ok[0]).map(ck);
+        q.wrongPath = short.map(ck);
+        q.chance = ok.length / paths.length; q.nPaths = paths.length;
+        q.k = [d, q.cols, q.walls.join(' ') + (q.ladders || []).join(' '), (q.bones || []).join(' '), (q.puddles || []).join(' '), q.key || '', q.bear || '', ck(q.start)];
+        q.answer = 'ok';
+        return q;
+      }
+      return null;
+    },
+    /* a maze: a random spanning tree of the cells, then a few more openings (several ways) */
+    maze(G, rng, d) {
+      const n = d + 3, walls = new Set(), cells = [];
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { cells.push([x, y]); if (x < n - 1) walls.add(ek([x, y], [x + 1, y])); if (y < n - 1) walls.add(ek([x, y], [x, y + 1])); }
+      const seen = new Set(), stack = [[rng.int(0, n - 1), rng.int(0, n - 1)]]; seen.add(ck(stack[0]));
+      while (stack.length) {
+        const c = stack[stack.length - 1], nx = rng.shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [c[0] + dx, c[1] + dy]).filter(p => p[0] >= 0 && p[1] >= 0 && p[0] < n && p[1] < n && !seen.has(ck(p))));
+        if (!nx.length) { stack.pop(); continue; }
+        walls.delete(ek(c, nx[0])); seen.add(ck(nx[0])); stack.push(nx[0]);
+      }
+      const extra = [0, 3, 4, 6][d], rest = rng.shuffle(Array.from(walls));
+      for (let i = 0; i < extra && rest.length; i++) walls.delete(rest.pop());
+      const corner = bagPick(G, 'a5c', [0, 1, 2, 3]), C = [[0, 0], [n - 1, 0], [n - 1, n - 1], [0, n - 1]];
+      return { d, cols: n, rows: n, walls: Array.from(walls).sort(), start: C[corner], goal: C[(corner + 2) % 4] };
+    },
+    /* a castle: floors (row 0 the top), ladders between floors, a wall or two; the kitten at an end of the top floor behind
+       the door, the start at the other side of the ground floor */
+    castleQ(G, rng, d) {
+      const F = d === 4 ? 3 : 4, C = 6, walls = [], ladders = [], left = rng.chance(0.5), gx = left ? 0 : C - 1, door = left ? 1 : C - 2;
+      for (let y = 0; y < F - 1; y++) { const cols = rng.shuffle([0, 1, 2, 3, 4, 5].filter(x => !(y === 0 && (x === gx || x === door)))).slice(0, d === 4 ? 4 : rng.int(3, 4)); cols.forEach(x => ladders.push(y + ':' + x)); }
+      for (let y = 1; y < F; y++) if (rng.chance(0.6)) { const x = rng.int(0, C - 2); walls.push(ek([x, y], [x + 1, y])); }
+      return { d, castle: true, cols: C, rows: F, walls: walls.sort(), ladders: ladders.sort(), start: [left ? C - 1 : 0, F - 1], goal: [gx, 0], door: ck([door, 0]) };
+    },
+    /* bones / puddles / key / teddy where they make the shortest way wrong and keep at least one way right */
+    items(q, paths, rng, d) {
+      const cnt = {}, k0 = ck(q.start), k1 = ck(q.goal), short = paths.reduce((a, p) => Math.min(a, p.length), 99), onShort = new Set();
+      paths.forEach(p => p.forEach(c => { cnt[ck(c)] = (cnt[ck(c)] || 0) + 1; }));
+      paths.filter(p => p.length === short).forEach(p => p.forEach(c => onShort.add(ck(c))));
+      const free = Object.keys(cnt).filter(k => k !== k0 && k !== k1 && k !== q.door);
+      const off = rng.shuffle(free.filter(k => !onShort.has(k) && cnt[k] / paths.length <= 0.5));
+      if (!off.length) return false;
+      const rare = off.filter(k => cnt[k] / paths.length <= (d === 5 ? 0.4 : 0.2));
+      if (d === 1) { if (!rare.length) return false; q.bones = [rare[0]]; }
+      else if (d === 2) { q.bones = [off[0]]; const p = rng.shuffle(free.filter(k => onShort.has(k) && k !== off[0])); if (!p.length) return false; q.puddles = p.slice(0, rng.int(1, 2)); }
+      else if (d === 3) { if (off.length < 2) return false; q.bones = off.slice(0, 2); }
+      else { if (!rare.length) return false; q.key = rare[0]; if (d === 5) { const b = rng.shuffle(free.filter(k => onShort.has(k) && k !== q.key)); if (!b.length) return false; q.bear = b[0]; } }
+      return true;
+    },
+    audit(q) { return [{ build: true, chance: q.chance }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    geo(st) {
+      const q = st.q, L = K.L(), u = 96, rh = q.castle ? 118 : 96, w = q.cols * u, h = q.rows * rh;
+      return { L, u, rh, w, h, x: Math.round((L ? 512 : 352) - w / 2), y: Math.round((L ? 400 : 524) - h / 2) };
+    },
+    cellC(st, c) { const g = this.geo(st); return { x: g.x + (c[0] + 0.5) * g.u, y: g.y + (c[1] + 0.5) * g.rh }; },
+    place(st) {
+      const q = st.q, g = this.geo(st);
+      if (!st.board) return;
+      place(st.board, g.x, g.y, g.w, g.h); place(st.art, g.x - 14, g.y - 14, g.w + 28, g.h + 28); place(st.lineEl, g.x, g.y, g.w, g.h);
+      st.things.forEach(t => { const c = this.cellC(st, t.c), s = t.s; place(t.el, Math.round(c.x - s / 2), Math.round(c.y - s / 2 + (t.dy || 0)), s, s); });
+      this.drawLine(st);
+      this.moveCar(st, st.carAt || q.start);
+    },
+    moveCar(st, c) { st.carAt = c; const p = this.cellC(st, c), s = st.q.castle ? 70 : 78; place(st.car, Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s); },
+    /* the picture: maze floor and block walls, or the castle (floors, ladders, the door) */
+    drawArt(st) {
+      const q = st.q, g = this.geo(st), u = g.u, rh = g.rh, W = g.w + 28, H = g.h + 28;
+      let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="100%" style="pointer-events:none;overflow:visible"><g transform="translate(14 14)">';
+      if (!q.castle) {
+        s += '<rect x="-14" y="-14" width="' + W + '" height="' + H + '" rx="20" fill="#BFE7A2" stroke="#2B2118" stroke-width="5"/>';
+        for (let y = 0; y < q.rows; y++) for (let x = 0; x < q.cols; x++) s += '<rect x="' + (x * u + 5) + '" y="' + (y * rh + 5) + '" width="' + (u - 10) + '" height="' + (rh - 10) + '" rx="12" fill="#DDF3C8"/>';
+        const bar = (x1, y1, x2, y2) => '<path d="M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2 + '" stroke="#2B2118" stroke-width="18" stroke-linecap="round"/><path d="M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2 + '" stroke="#E2A15B" stroke-width="10" stroke-linecap="round"/>';
+        q.walls.forEach(e => { const [a, b] = e.split('|').map(t => t.split(',').map(Number)); if (a[0] !== b[0]) { const x = Math.max(a[0], b[0]) * u; s += bar(x, a[1] * rh + 4, x, (a[1] + 1) * rh - 4); } else { const y = Math.max(a[1], b[1]) * rh; s += bar(a[0] * u + 4, y, (a[0] + 1) * u - 4, y); } });
+        s += bar(0, 0, g.w, 0) + bar(g.w, 0, g.w, g.h) + bar(g.w, g.h, 0, g.h) + bar(0, g.h, 0, 0);
+      } else {
+        s += '<rect x="-14" y="-14" width="' + W + '" height="' + H + '" rx="12" fill="#D9D2C5" stroke="#2B2118" stroke-width="5"/>';
+        for (let y = 0; y < q.rows; y++) { s += '<rect x="0" y="' + (y * rh) + '" width="' + g.w + '" height="' + (rh - 14) + '" fill="#EFE9DD"/>'; s += '<rect x="-14" y="' + ((y + 1) * rh - 14) + '" width="' + W + '" height="14" fill="#B97A3C" stroke="#2B2118" stroke-width="4"/>'; }
+        q.ladders.forEach(l => { const [y, x] = l.split(':').map(Number), cx = x * u + u / 2, y0 = y * rh + rh / 2, y1 = (y + 1) * rh + rh / 2; s += '<path d="M' + (cx - 16) + ' ' + y0 + 'V' + y1 + 'M' + (cx + 16) + ' ' + y0 + 'V' + y1 + '" stroke="#8A5A2B" stroke-width="7" stroke-linecap="round"/>'; for (let r = y0 + 14; r < y1; r += 20) s += '<path d="M' + (cx - 16) + ' ' + r + 'H' + (cx + 16) + '" stroke="#8A5A2B" stroke-width="5"/>'; });
+        q.walls.forEach(e => { const [a, b] = e.split('|').map(t => t.split(',').map(Number)), x = Math.max(a[0], b[0]) * u; s += '<rect x="' + (x - 9) + '" y="' + (a[1] * rh + 4) + '" width="18" height="' + (rh - 18) + '" rx="4" fill="#9AA3AD" stroke="#2B2118" stroke-width="4"/>'; });
+        const [dx, dy] = q.door.split(',').map(Number); s += '<rect x="' + (dx * u + 22) + '" y="' + (dy * rh + 12) + '" width="' + (u - 44) + '" height="' + (rh - 28) + '" rx="10" fill="#9A6433" stroke="#2B2118" stroke-width="5"/><circle cx="' + (dx * u + u / 2) + '" cy="' + (dy * rh + rh / 2) + '" r="9" fill="#FFC93C" stroke="#2B2118" stroke-width="3"/>';
+      }
+      st.art.innerHTML = s + '</g></svg>';
+    },
+    drawLine(st, gold) {
+      const q = st.q, g = this.geo(st), L = gold || st.line;
+      st.lineEl.innerHTML = '';
+      const s = svg('svg', { viewBox: '0 0 ' + g.w + ' ' + g.h, width: '100%', height: '100%' }, st.lineEl); s.style.pointerEvents = 'none'; s.style.overflow = 'visible';
+      const pts = L.map(c => ((c[0] + 0.5) * g.u) + ',' + ((c[1] + 0.5) * g.rh)).join(' ');
+      if (L.length > 1) { svg('polyline', { points: pts, fill: 'none', stroke: INK, 'stroke-width': 22, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.5 }, s); svg('polyline', { points: pts, fill: 'none', stroke: gold ? GOLD : '#FF6B5B', 'stroke-width': 14, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s); }
+      const h = L[L.length - 1]; if (h && !gold) svg('circle', { cx: (h[0] + 0.5) * g.u, cy: (h[1] + 0.5) * g.rh, r: 14, fill: '#fff', stroke: INK, 'stroke-width': 5 }, s);
+      return s;
+    },
+    async present(st) {
+      const q = st.q;
+      st.line = []; st.active = false; st.press = null;
+      st.art = thing(st, 3, 'item'); this.drawArt(st);
+      st.lineEl = thing(st, 5, 'item');
+      st.things = [];
+      const add = (k, c, s, dy) => { const e = thing(st, 6, 'item'); e.appendChild(W5U.propImg(k)); st.things.push({ el: e, c, s, dy }); return e; };
+      st.goalEl = add('kitten', q.goal, 76);
+      st.boneEls = (q.bones || []).map(b => add('bone', b.split(',').map(Number), 62));
+      st.pudEls = (q.puddles || []).map(b => add('puddle', b.split(',').map(Number), 78));
+      if (q.key) st.keyEl = add('key', q.key.split(',').map(Number), 60);
+      if (q.bear) st.bearEl = add('teddy', q.bear.split(',').map(Number), 72);
+      st.car = thing(st, 7, 'item'); st.car.appendChild(q.castle ? thumb('chase', 64) : W5U.propImg('policecar'));
+      st.board = thing(st, 4, 'item');
+      const stations = []; for (let y = 0; y < q.rows; y++) for (let x = 0; x < q.cols; x++) stations.push({ id: 'c' + x + '_' + y, rect: () => { const g = this.geo(st); return { x: g.x + x * g.u, y: g.y + y * g.rh, w: g.u, h: g.rh }; } });
+      K.reg(st, 'board', st.board, { slide: stations });
+      this.place(st);
+      K.pop(st, st.art); st.things.forEach((t, i) => K.pop(st, t.el, 120 + 50 * i)); K.pop(st, st.car, 80);
+      const goal = q.castle ? [{ node: thumb('chase', 46) }] : [W5U.prop('policecar')];
+      K.task(st, [goal.concat((q.bones || []).length ? [W5U.prop('bone')] : q.key ? [W5U.prop('key')] : []), [W5U.prop('kitten')]]);
+      if (q.d === 1) K.say(st, '路上捡骨头！');
+      else if (q.d === 2) W3X.say2(st, '捡骨头，', '不踩水坑！');
+      else if (q.d === 3) K.say(st, '两根骨头都要捡！');
+      else W3X.say2(st, '先拿钥匙，', q.d === 4 ? '再开门！' : '别吵醒小熊！');
+    },
+    adj(a, b) { return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) === 1; },
+    /* the finger passes a cell (Input's slide stations; the tests send the same) */
+    onPass(st, c) {
+      const q = st.q, L = st.line, head = L[L.length - 1], k = ck(c);
+      if (!st.press) st.press = { at: k, moved: false };
+      if (!st.active) {
+        if (!L.length && k === ck(q.start)) { st.line = [c]; st.active = true; this.drawLine(st); return 'ok'; }
+        if (head && k === ck(head)) { st.active = true; return 'ok'; }
+        if (L.length && k === ck(q.start)) { st.active = true; st.fresh = true; return 'ok'; }
+        return 'free';
+      }
+      if (st.fresh) { if (this.adj(q.start, c) && this.open(q, q.start, c)) { st.fresh = false; st.line = [q.start]; } else return 'free'; }
+      const H = st.line[st.line.length - 1];
+      if (k === ck(H)) return 'free';
+      if (st.line.length > 1 && k === ck(st.line[st.line.length - 2])) { st.line.pop(); st.press.moved = true; this.drawLine(st); Sfx.back(); return 'ok'; }
+      let add = null;
+      if (this.adj(H, c) && this.open(q, H, c) && !st.line.some(p => ck(p) === k)) add = [c];
+      else if (Math.abs(H[0] - c[0]) + Math.abs(H[1] - c[1]) === 2) {
+        /* a corner cut by the finger: through the cell between, if that way is open */
+        const mids = [[H[0], c[1]], [c[0], H[1]], [(H[0] + c[0]) / 2, (H[1] + c[1]) / 2]].filter(m => Number.isInteger(m[0]) && Number.isInteger(m[1]) && this.adj(H, m) && this.adj(m, c));
+        const m = mids.find(m => this.open(q, H, m) && this.open(q, m, c) && !st.line.some(p => ck(p) === ck(m)) && !st.line.some(p => ck(p) === k));
+        if (m) add = [m, c];
+      }
+      if (!add) return 'free';
+      add.forEach(p => st.line.push(p)); st.press.moved = true; this.drawLine(st); Sfx.count(Math.min(9, st.line.length));
+      if (ck(st.line[st.line.length - 1]) === ck(q.goal)) { st.picked = true; st.active = false; st.res = this.judge(q, st.line); Session.submit(st, st.res.ok ? 'ok' : st.res.why); }
+      return 'ok';
+    },
+    onGesture(st, name, p) {
+      if (st.picked || !st.board || p.id !== 'board') return false;
+      const m = /^c(\d+)_(\d+)$/.exec(p.at || ''); if (!m) return false;
+      const c = [+m[1], +m[2]];
+      if (name === 'pass') return this.onPass(st, c);
+      if (name === 'pick') {
+        /* the finger is lifted: a tap on the car (nothing drawn this time) clears the line */
+        const pr = st.press; st.press = null; st.active = false; st.fresh = false;
+        if (pr && !pr.moved && pr.at === ck(st.q.start) && ck(c) === ck(st.q.start) && st.line.length > 1) { st.line = []; this.drawLine(st); K.pop(st, st.car); Sfx.back(); return 'ok'; }
+        return 'free';
+      }
+      return false;
+    },
+    LINE: { puddle: '踩到水坑啦', door: '门还锁着呢', bear: '吵醒小熊啦', bone: '骨头没拿到哦', short: '骨头没拿到哦' },
+    GOLD: { puddle: '走这边，绕过水坑', door: '走这边，拿钥匙', bear: '走这边，绕过小熊', bone: '走这边，拿骨头', short: '走这边，拿骨头' },
+    async feedback(st, ans) { W5U.say(st, this.LINE[ans] || this.LINE.bone); await st.scope.wait(T(600)); },
+    /* the car (or 阿奇) drives a line, stopping at `stop` */
+    async drive(st, line, stop) {
+      const my = st, per = Math.max(45, Math.min(110, 800 / Math.max(1, line.length)));
+      for (let i = 0; i < line.length; i++) {
+        if (!Session.alive(my)) return;
+        const from = this.cellC(st, st.carAt || line[0]); this.moveCar(st, line[i]); const to = this.cellC(st, line[i]);
+        if (!ff(st) && i) st.car.animate([{ transform: 'translate(' + (from.x - to.x) + 'px,' + (from.y - to.y) + 'px)' }, { transform: 'none' }], { duration: T(per), easing: 'linear' });
+        await st.scope.wait(T(per));
+        if (stop && ck(line[i]) === ck(stop)) return;
+      }
+    },
+    elAt(st, c) { const k = ck(c), t = st.things.find(x => ck(x.c) === k); return t ? t.el : null; },
+    /* 1. his line driven to where it goes wrong, ringed blue; 2. the gold way drawn, the car drives it to the kitten (gold) */
+    async explain(st, ans) {
+      const my = st, q = st.q, r = this.judge(q, st.line);
+      const stopAt = r.why === 'bone' || r.why === 'short' ? null : r.at;
+      await this.drive(st, st.line, stopAt); if (!Session.alive(my)) return;
+      let mark = this.elAt(st, r.at);
+      if (!mark) { mark = thing(st, 6, 'item'); const c = this.cellC(st, r.at), g = this.geo(st); place(mark, Math.round(c.x - g.u / 2 + 6), Math.round(c.y - g.rh / 2 + 6), g.u - 12, g.rh - 12); }
+      const rings = W5U.blue(st, mark);
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      const right = q.right.map(k => k.split(',').map(Number));
+      this.drawLine(st, right); Sfx.reveal();
+      if (!ff(st)) st.lineEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T(350) });
+      this.moveCar(st, q.start);
+      const said = W5U.sum(st, this.GOLD[r.why] || this.GOLD.bone);
+      await this.drive(st, right); if (!Session.alive(my)) return;
+      await said; if (!Session.alive(my)) return;
+      W5U.gold(st, st.goalEl, 8); K.hop(st, st.goalEl, 16);
+      await st.scope.wait(T(300));
+    },
+    rightEls(st) { return [st.goalEl]; },
+    async reveal(st) {
+      const my = st; Sfx.reveal();
+      await this.drive(st, st.line); if (!Session.alive(my)) return;
+      W5U.gold(st, st.goalEl, 8); K.hop(st, st.goalEl, 16); this.cheerAll(st);
+      st.summary = '接到小猫啦'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    /* tests: the right way cell by cell ('wrong': the shortest way, which misses a bone / steps in a puddle / opens the door
+       without the key); a line that is not on the way is taken back first */
+    next(st, strat) {
+      if (st.picked || !st.board) return null;
+      const want = (strat === 'wrong' ? st.q.wrongPath : st.q.right).map(k => k.split(',').map(Number)), L = st.line;
+      let i = 0; while (i < L.length && i < want.length && ck(L[i]) === ck(want[i])) i++;
+      const c = i < L.length ? (L.length > 1 ? L[L.length - 2] : null) : want[L.length];
+      if (!c) return null;
+      const p = this.cellC(st, c);
+      return { g: 'pass', p: { id: 'board', at: 'c' + c[0] + '_' + c[1] }, x: p.x, y: p.y };
+    },
+    /* a real finger: the cells of the right way in screen points (for a pointer test) */
+    realPath(st) { return st.q.right.map(k => { const c = this.cellC(st, k.split(',').map(Number)); return Stage.toScreen(c.x, c.y); }); },
+    gestureHint(st) { const q = st.q, n = this.nbOf(q)(q.start)[0]; if (!n) return; const a = this.cellC(st, q.start), b = this.cellC(st, n); Hand.busy++; Hand.drag(st.scope, a.x, a.y, b.x, b.y, 600).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+    workEls(st) { return st.car ? [st.car] : []; },
+    snap(st) { return { line: (st.line || []).map(ck).join(' ') }; },
+    lines() { return uniq([this.intro, '路上捡骨头！', '捡骨头，', '不踩水坑！', '两根骨头都要捡！', '先拿钥匙，', '再开门！', '别吵醒小熊！', '接到小猫啦'].concat(Object.values(this.LINE), Object.values(this.GOLD), this.praise)); },
   };
 })();
 /* ================================================================ ⑤ 葫芦娃·积木山 (huluwa5, from level 2): H5 剪纸对折 · H6 几个几个圈 ·
@@ -3018,16 +4878,17 @@ const W5U = {
           const cs = B[j].map(i => st.items[i].c), top = Math.min(...cs.map(c => c[1])) - up, mx = cs.reduce((s, c) => s + c[0], 0) / cs.length;
           const v = ask === 'groups' ? j + 1 : (j + 1) * q.per;
           badgeAt(st, mx, Math.max(30, top), v, 44); B[j].forEach(i => K.hop(st, st.items[i].el, 10));
-          await Count.beat(st.scope, 280, v);
+          await Count.beat(st.scope, 240, v);
         }
         st.lit = -1; this.drawVines(st);
       }
       if (ask === 'groups') return;
+      /* the loose ones: a tick each, the last one said (the total) */
       let v = ask === 'left' ? 0 : B.length * q.per;
-      for (const i of lo) {
+      for (let j = 0; j < lo.length; j++) {
         if (!Session.alive(my)) return;
-        v++; const c = st.items[i].c; badgeAt(st, c[0], c[1] - up + 6, v, 40); K.hop(st, st.items[i].el, 10);
-        await Count.beat(st.scope, 280, v);
+        v++; const i = lo[j], c = st.items[i].c; badgeAt(st, c[0], c[1] - up + 6, v, 40); K.hop(st, st.items[i].el, 10);
+        if (j === lo.length - 1) await Count.beat(st.scope, 260, v); else { Sfx.count(Math.min(20, v)); await st.scope.wait(220); }
       }
     },
     /* 1. his card blue + what it is not; 2. the bundles counted (and the loose ones), the right card gold + the answer */
@@ -3035,11 +4896,10 @@ const W5U = {
       const q = st.q, my = st, bad = this.bad(st, ans), k = bad[0] || 0, ask = this.askOf(q, k);
       W5U.blue(st, bad.map(j => this.chosenCard(st, ans, j)));
       W5U.note(st, this.lineNot(ask, q.asks === 2 ? +String(ans).split(',')[k] : ans));
-      await st.scope.wait(900); if (!Session.alive(my)) return;
+      await st.scope.wait(650); if (!Session.alive(my)) return;
       await this.countUp(st, ask); if (!Session.alive(my)) return;
       W5U.gold(st, bad.map(j => this.rightCard(st, j)));
       await W5U.sum(st, this.lineRight(ask, ask === 'groups' ? q.groups : ask === 'left' ? q.left : q.n));
-      await st.scope.wait(300);
     },
     rightEls(st, ans) { return this.bad(st, ans).map(j => this.rightCard(st, j)); },
     async reveal(st) {
@@ -3296,14 +5156,13 @@ const W5U = {
       const q = st.q, my = st, BL = '#9AD3FF', GL = '#FFE08A';
       if (q.ask === 'count') {
         W5U.blue(st, W5U.cardOf(st, ans)); W5U.note(st, '不是' + CNQ(ans) + '格');
-        await st.scope.wait(900); if (!Session.alive(my)) return;
-        const ms = this.countAnim(st, st.plotEls[0], GL, 170);
+        await st.scope.wait(650); if (!Session.alive(my)) return;
+        const ms = this.countAnim(st, st.plotEls[0], GL, 125);
         W5U.ring(st, st.plotEls[0]._sv, GOLD, 10);
         W5U.note(st, '两个半格，一格');
-        await st.scope.wait(Math.max(1200, ms)); if (!Session.alive(my)) return;
+        await st.scope.wait(Math.max(1050, ms)); if (!Session.alive(my)) return;
         W5U.gold(st, W5U.cardOf(st, q.answer));
-        await W5U.sum(st, this.lineIs(q.answer));
-        await st.scope.wait(300);
+        await W5U.sum(st, CNQ(q.answer) + '格！');
         return;
       }
       if (q.ask === 'same') {
@@ -3335,7 +5194,7 @@ const W5U = {
       const ms = Math.max(...R.map(i => this.countAnim(st, st.plotEls[i], GL, 110)));
       W5U.gold(st, this.rightEls(st)); Sfx.reveal();
       this.cheerAll(st);
-      st.summary = q.ask === 'count' ? this.lineIs(q.answer) : q.ask === 'same' ? '都是' + CNQ(q.pair) + '格！' : CNQ(this.sizeOf(q, q.answer)) + (q.ask === 'most' ? '格最大！' : '格最小！');
+      st.summary = q.ask === 'count' ? CNQ(q.answer) + '格！' : q.ask === 'same' ? '都是' + CNQ(q.pair) + '格！' : CNQ(this.sizeOf(q, q.answer)) + (q.ask === 'most' ? '格最大！' : '格最小！');
       W5U.sum(st, st.summary);
       await st.scope.wait(Math.max(T(900), ms));
       if (!Session.alive(my)) return;
@@ -3346,7 +5205,8 @@ const W5U = {
       const out = [this.intro, '哪块地最大？', '哪块地最小？', '哪两块一样大？', '这块地有几格？', '这两块不一样大', '两个半格，一格'].concat(this.praise);
       /* a plot of L1-L4 has 2-8 squares, the one of L5 6-12 (its cards 2-16); the biggest 6-8, the smallest 3-4, a pair 4-7,
          a plot of L3 3-8 */
-      for (let v = 2; v <= 12; v++) out.push(this.lineIs(v));
+      for (let v = 2; v <= 8; v++) out.push(this.lineIs(v));
+      for (let v = 6; v <= 12; v++) out.push(CNQ(v) + '格！');
       for (let v = 2; v <= 16; v++) out.push('不是' + CNQ(v) + '格');
       for (let v = 6; v <= 8; v++) out.push(CNQ(v) + '格最大！');
       for (let v = 3; v <= 4; v++) out.push(CNQ(v) + '格最小！');
@@ -3638,10 +5498,12 @@ const W5U = {
     let s = '<svg viewBox="0 0 200 200" width="100%" height="100%" style="pointer-events:none;display:block">';
     if (view === 'top') {
       s += '<rect x="0" y="0" width="200" height="200" fill="#D9C7A3"/><rect x="18" y="18" width="164" height="164" rx="10" fill="#A7A9AC" stroke="' + INK + '" stroke-width="4"/><rect x="26" y="26" width="148" height="148" rx="7" fill="#BEC0C3"/>';
-      things.forEach(t => { s += '<g transform="translate(' + (45 + 55 * t.c) + ' ' + (45 + 55 * t.r) + ')">' + plan(t.kind, t.face) + '</g>'; });
+      const one = things.length === 1;
+      things.forEach(t => { s += '<g transform="translate(' + (45 + 55 * t.c) + ' ' + (45 + 55 * t.r) + ') scale(' + (one ? 1.7 : 1.12) + ')">' + plan(t.kind, t.face) + '</g>'; });
     } else {
       s += '<rect x="0" y="0" width="200" height="200" fill="#CFE9F7"/><rect x="0" y="150" width="200" height="50" fill="#A7A9AC"/><rect x="0" y="150" width="200" height="9" fill="#8E9094"/><path d="M0 150H200" stroke="' + INK + '" stroke-width="3"/>';
-      seen(things, view).sort((a, b) => b.near - a.near).forEach(x => { const sc = 1 - 0.09 * x.near; s += '<g transform="translate(' + (45 + 55 * x.slot) + ' ' + (152 - 9 * x.near) + ') scale(' + sc.toFixed(2) + ')">' + side(x.t.kind, x.f) + '</g>'; });
+      const one = things.length === 1;
+      seen(things, view).sort((a, b) => b.near - a.near).forEach(x => { const sc = (one ? 1.75 : 1.14) * (1 - 0.09 * x.near); s += '<g transform="translate(' + (38 + 62 * x.slot) + ' ' + (152 - 10 * x.near) + ') scale(' + sc.toFixed(2) + ')">' + side(x.t.kind, x.f) + '</g>'; });
     }
     return s + '</svg>';
   };
@@ -3652,7 +5514,7 @@ const W5U = {
     s += '<path d="M76 300V352M324 300V352M112 292V318M288 292V318" stroke="' + INK + '" stroke-width="12" stroke-linecap="round"/><path d="M76 300V352M324 300V352" stroke="#8E9094" stroke-width="7" stroke-linecap="round"/>';
     s += '<polygon points="120,138 280,138 338,292 62,292" fill="#BEC0C3" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/><polygon points="62,292 338,292 338,308 62,308" fill="#8E9094" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>';
     for (let i = 1; i < 3; i++) { const a = gridPt(i - 0.5, -0.5), b = gridPt(i - 0.5, 2.5); s += '<path d="M' + R1(a[0]) + ' ' + R1(a[1] - 4) + 'L' + R1(b[0]) + ' ' + R1(b[1] - 4) + '" stroke="#A7A9AC" stroke-width="2" stroke-dasharray="6 6"/>'; }
-    things.slice().sort((a, b) => a.r - b.r).forEach(t => { const [x, y] = gridPt(t.c, t.r), sc = 0.78 + 0.1 * t.r; s += '<g transform="translate(' + R1(x) + ' ' + R1(y) + ') scale(' + sc.toFixed(2) + ')">' + side(t.kind, t.kind === 'teapot' ? t.face + 'F' : '') + '</g>'; });
+    things.slice().sort((a, b) => a.r - b.r).forEach(t => { const [x, y] = gridPt(t.c, t.r), sc = (things.length === 1 ? 1.6 : 1.22) * (0.8 + 0.1 * t.r); s += '<g transform="translate(' + R1(x) + ' ' + R1(y) + ') scale(' + sc.toFixed(2) + ')">' + side(t.kind, t.kind === 'teapot' ? t.face + 'F' : '') + '</g>'; });
     return s + '</svg>';
   };
   /* a place to take the photo from: a round pad with a camera looking at the table (the cloud: from above) */
@@ -3793,6 +5655,626 @@ const W5U = {
     snap(st) { return { view: st.q.view, fill: (st.fill || []).slice() }; },
     lines() { return uniq([this.intro, '这张在哪里拍的？', '这张呢？', '从这里拍不一样', '从这里拍是这样', '在这里拍的！'].concat(this.praise)); },
   };
+
+  /* ================================================================ X6 拉！ 拉直比一比 (F9 Fruit Party: how long is a bent line; S14 Who
+     Is Taller?). A grid mat on the ground, five vine ropes from five little posts on the left, each in its own lane, winding
+     along the grid lines with a knot at every grid point (L1-L3: count the pieces between knots); from L4 smooth curves with a
+     bead on every unit of length. Tap a rope (its whole lane, 88 high). The ropes are not pulled straight by the child - that
+     is the demonstration.
+       L1 straight ropes and ropes with one bend, 2-7 long, the longest 2 more than the next: "哪根最长？" · L2 zigzags, the
+       longest or the shortest (a bag); the rope whose ends are farthest apart is not the longest (closest: not the shortest) ·
+       L3 a straight rope above: "哪根和它一样长？" - one of the five bent ones · L4 smooth curves with beads: longest / shortest /
+       as long as the straight one · L5 one long winding rope (8-15): "这根有几格长？" - five number cards.
+     Wrong: his rope is pulled straight in its lane, its pieces numbered ("这根是六格"), blue; the right one pulled straight too,
+     the two now side by side from the same post, gold ("九格最长！"). */
+  /* a rope on the grid: from (0, y0) along the lines y = 0 / 1 of its lane: horizontal runs and steps across */
+  const gridRope = (rng, len, bends) => {
+    for (let t = 0; t < 200; t++) {
+      const runs = bends + 1, h = len - bends; if (h < runs) return null;
+      const a = Array(runs).fill(1); for (let k = runs; k < h; k++) a[rng.int(0, runs - 1)]++;
+      if (a.some(x => x > 7)) continue;
+      let x = 0, y = rng.pick([0, 1]); const pts = [[x, y]];
+      a.forEach((r, i) => { x += r; pts.push([x, y]); if (i < runs - 1) { y = 1 - y; pts.push([x, y]); } });
+      if (x > 8) continue;
+      return { pts, len };
+    }
+    return null;
+  };
+  /* a smooth rope: y = 0.5 + A sin(2π x / P + ph) (lane units), its span chosen so that it is exactly len long */
+  const arcLen = (A, P, ph, span) => { let L = 0, px = 0, py = 0.5 + A * Math.sin(ph); for (let i = 1; i <= 120; i++) { const x = span * i / 120, y = 0.5 + A * Math.sin(2 * Math.PI * x / P + ph); L += Math.hypot(x - px, y - py); px = x; py = y; } return L; };
+  const smoothRope = (rng, len, flat) => {
+    const A = flat ? 0.16 : rng.pick([0.36, 0.42, 0.48]), P = flat ? 2.6 : rng.pick([1.2, 1.5, 1.8]), ph = rng.pick([0, Math.PI]);
+    let lo = 0.5, hi = len; for (let k = 0; k < 26; k++) { const m = (lo + hi) / 2; if (arcLen(A, P, ph, m) < len) lo = m; else hi = m; }
+    const span = (lo + hi) / 2, pts = []; for (let i = 0; i <= 120; i++) { const x = span * i / 120; pts.push([R1(x * 100) / 100, R1((0.5 + A * Math.sin(2 * Math.PI * x / P + ph)) * 100) / 100]); }
+    return { pts, len, smooth: 1 };
+  };
+  /* a long rope that winds over a block of the grid (L5): a snake path */
+  const longRope = (rng, len) => {
+    for (let t = 0; t < 400; t++) {
+      const W = 7, H = 4, seen = new Set(), pts = [[0, rng.int(0, H)]]; seen.add(pts[0].join());
+      let dir = [1, 0], ok = true;
+      for (let k = 0; k < len; k++) {
+        const [x, y] = pts[pts.length - 1];
+        const opts = [[1, 0], [0, 1], [0, -1], [-1, 0]].filter(([dx, dy]) => { const nx = x + dx, ny = y + dy; return nx >= 0 && nx <= W && ny >= 0 && ny <= H && !seen.has(nx + ',' + ny); });
+        if (!opts.length) { ok = false; break; }
+        const keep = opts.find(o => o[0] === dir[0] && o[1] === dir[1]), d = keep && rng.chance(0.4) ? keep : rng.pick(opts);
+        dir = d; pts.push([x + d[0], y + d[1]]); seen.add(pts[pts.length - 1].join());
+      }
+      if (!ok) continue;
+      /* merge straight runs (fewer vertices; the knots still come at every unit) */
+      const out = [pts[0]]; for (let k = 1; k < pts.length - 1; k++) { const a = out[out.length - 1], b = pts[k], c = pts[k + 1]; if ((b[0] - a[0]) * (c[1] - b[1]) !== (b[1] - a[1]) * (c[0] - b[0])) out.push(b); } out.push(pts[pts.length - 1]);
+      const xs = out.map(p => p[0]); if (Math.max(...xs) - Math.min(...xs) < 4 || out.length - 2 < Math.min(6, Math.floor(len / 2))) continue;
+      return { pts: out, len };
+    }
+    return { pts: [[0, 0], [len, 0]], len };
+  };
+  const span = r => Math.hypot(r.pts[r.pts.length - 1][0] - r.pts[0][0], r.pts[r.pts.length - 1][1] - r.pts[0][1]);
+  const cum = pts => { const S = [0]; for (let i = 1; i < pts.length; i++) S.push(S[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return S; };
+  W5R.X6 = {
+    kind0: 'rope5', verb: '拉！', intro: '哪根绳子长？', praise: ['量得真准！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      if (d === 5) { const len = rng.int(8, 15), r = longRope(rng, len); return { d, k: [d, r.pts.join('|')], ropes: [r], ask: 'count', answer: len, opts: W5U.nums(G, len, 1, 19) }; }
+      const ask = d === 1 ? 'long' : d === 2 ? bagPick(G, 'x6a2', ['long', 'short']) : d === 3 ? 'same' : bagPick(G, 'x6a4', ['long', 'short', 'same']);
+      for (let t = 0; t < 300; t++) {
+        let lens, ref = null;
+        if (ask === 'same') { ref = rng.int(3, 6); lens = [ref].concat(rng.shuffle([ref - 2, ref - 1, ref + 1, ref + 2, ref + 1, ref - 1]).filter(x => x >= 2).slice(0, 4)); }
+        else if (d === 1) { const top = rng.int(5, 7), rest = rng.shuffle([2, 3, 4, 5].filter(x => x <= top - 2)); while (rest.length < 4) rest.push(rng.int(2, top - 2)); lens = [top].concat(rest.slice(0, 4)); }
+        else if (ask === 'long') { const top = rng.int(6, 9); lens = [top, top - 1].concat(Array.from({ length: 3 }, () => rng.int(3, top - 1))); }
+        else { const lo = rng.int(4, 5); lens = [lo, lo + 1].concat(Array.from({ length: 3 }, () => rng.int(lo + 1, 9))); }
+        /* the trap: the longest rope winds a lot and a slightly shorter one is straight (or the shortest is straight and a
+           longer one winds a lot), so the ends do not tell */
+        const wind = L => Math.max(1, Math.min(Math.floor((L - 1) / 2), rng.int(1, 4)));
+        const mk = (L, i) => {
+          if (d === 4) return smoothRope(rng, L, ask === 'long' ? i === 1 : ask === 'short' ? i === 0 : rng.chance(0.3));
+          if (d === 1) return gridRope(rng, L, L >= 3 && rng.chance(0.5) ? 1 : 0);
+          if (ask === 'long') return gridRope(rng, L, i === 0 ? Math.max(2, wind(L)) : i === 1 ? 0 : wind(L));
+          if (ask === 'short') return gridRope(rng, L, i === 0 ? 0 : i === 1 ? 2 : wind(L));
+          return gridRope(rng, L, i === 0 ? Math.max(2, wind(L)) : wind(L));
+        };
+        const ropes = lens.map(mk); if (ropes.some(r => !r)) continue;
+        if (ask === 'same' && span(ropes[0]) >= ref - 0.5) continue;
+        if (ask === 'long' && d > 1) { const S = ropes.map(span); if (!(Math.max(...S.slice(1)) > S[0] + 0.4)) continue; }
+        if (ask === 'short') { const S = ropes.map(span); if (!(Math.min(...S.slice(1)) < S[0] - 0.4)) continue; }
+        const deck = W5U.deal(G, ropes[0], ropes.slice(1), 'x6');
+        return { d, k: [d, ask, deck.map(r => r.len + ':' + r.pts.length).join('.'), rng.int(0, 99)], ropes: deck, ask, ref, answer: deck.indexOf(ropes[0]) };
+      }
+      const ropes = [3, 2, 5, 4, 7].map(L => ({ pts: [[0, 0], [L, 0]], len: L })); return { d, k: [d, 'x'], ropes, ask: 'long', answer: 4 };
+    },
+    audit(q) {
+      if (q.ask === 'count') return [{ n: q.opts.length, at: q.opts.indexOf(q.answer), right: q.opts.filter(v => v === q.answer).length }];
+      const L = q.ropes.map(r => r.len), want = q.ask === 'long' ? Math.max(...L) : q.ask === 'short' ? Math.min(...L) : q.ref;
+      return [{ n: L.length, at: q.answer, right: L.filter(x => x === want).length }];
+    },
+    /* u: one unit; x0: the posts; y0: the first lane's top line; lanes 2u apart (a rope uses its lane's two lines) */
+    geo(q) {
+      const L = K.L(), ref = q.ask === 'same';
+      if (q.ask === 'count') return L ? { u: 44, x0: 180, y0: 150, cy: 612, cs: 116, gap: 18, sy: 410 } : { u: 40, x0: 72, y0: 270, cy: 830, cs: 120, gap: 12, sy: 520 };
+      return L ? { u: 44, x0: 200, y0: ref ? 212 : 150, ry: 128 } : { u: 44, x0: 84, y0: ref ? 360 : 310, ry: 274 };
+    },
+    decor(G) { W3X.decor2(G, this.chars); },
+    /* rope i's own frame -> stage */
+    toStage(st, i, x, y) { const g = this.geo(st.q); return [g.x0 + x * g.u, g.y0 + (st.q.ask === 'count' ? 0 : 2 * i * g.u) + y * g.u]; },
+    place(st) {
+      const q = st.q, g = this.geo(q); if (!st.sv) return;
+      place(st.svEl, 0, 0, Stage.W, Stage.H); st.sv.setAttribute('viewBox', '0 0 ' + Stage.W + ' ' + Stage.H);
+      (st.lanes || []).forEach((e, i) => place(e, g.x0 - 46, Math.round(g.y0 + 2 * i * g.u - 0.5 * g.u), Math.round(9.5 * g.u + 46), 2 * g.u));
+      if (st.cards) W5U.lay(st.cards, Stage.W / 2, g.cy, g.cs, g.cs, g.gap);
+      this.draw(st);
+    },
+    cardSpot(st) { const g = this.geo(st.q); return { cx: Stage.W / 2, cy: g.cy || 612, size: g.cs || 116, gap: g.gap || 18 }; },
+    /* the mat, the posts, the reference rope, every rope (pulled straight by k[i] in 0..1) and its numbers */
+    draw(st) {
+      const q = st.q, g = this.geo(q), s = st.sv, u = g.u;
+      while (s.firstChild) s.removeChild(s.firstChild);
+      const n = q.ask === 'count' ? 1 : q.ropes.length, cols = q.ask === 'count' ? 15 : 10, rows = q.ask === 'count' ? 4 : 2 * n - 1;
+      const mx = g.x0 - 0.5 * u, my = g.y0 - 0.5 * u;
+      svg('rect', { x: mx, y: my, width: (cols + 1) * u, height: (rows + 1) * u + (q.ask === 'count' ? 3 * u : 0), rx: 18, fill: 'rgba(245,232,200,.86)', stroke: '#8A6A3E', 'stroke-width': 4 }, s);
+      const gr = svg('g', { stroke: 'rgba(138,106,62,.35)', 'stroke-width': 2 }, s);
+      for (let c = 0; c <= cols; c++) svg('line', { x1: g.x0 + c * u, y1: my + 0.2 * u, x2: g.x0 + c * u, y2: my + (rows + 0.8) * u + (q.ask === 'count' ? 3 * u : 0) }, gr);
+      for (let r = 0; r <= rows + (q.ask === 'count' ? 3 : 0); r++) svg('line', { x1: mx + 0.2 * u, y1: g.y0 + r * u, x2: g.x0 + (cols + 0.3) * u, y2: g.y0 + r * u }, gr);
+      if (q.ask === 'same') {
+        const y = g.ry; svg('rect', { x: g.x0 - 0.6 * u, y: y - 0.6 * u, width: (q.ref + 1.2) * u, height: 1.2 * u, rx: 14, fill: 'rgba(255,248,236,.9)', stroke: INK, 'stroke-width': 3 }, s);
+        this.ropeSvg(s, [[g.x0, y], [g.x0 + q.ref * u, y]], q.ref, q.d === 4, '#C98B4A');
+      }
+      q.ropes.forEach((r, i) => {
+        const k = (st.k || [])[i] || 0, S = cum(r.pts), base = q.ask === 'count' ? [g.x0, g.y0 + 5.5 * u] : this.toStage(st, i, 0, 0.5);
+        const P = r.pts.map((p, j) => { const a = this.toStage(st, i, p[0], p[1]), b = [base[0] + S[j] * u, base[1]]; return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]; });
+        const post = P[0];
+        svg('rect', { x: post[0] - 14, y: post[1] - 20, width: 14, height: 40, rx: 4, fill: '#8A5A2E', stroke: INK, 'stroke-width': 3 }, s);
+        this.ropeSvg(s, P, r.len, !!r.smooth, (st.tint || [])[i]);
+        (st.nums || [])[i] && this.numbers(st, s, P, r.len, st.nums[i]);
+      });
+    },
+    /* a rope through stage points P (len units long): a thick vine, knots on every unit (or beads) */
+    ropeSvg(s, P, len, smooth, tint) {
+      const d = 'M' + P.map(p => R1(p[0]) + ' ' + R1(p[1])).join('L');
+      svg('path', { d, fill: 'none', stroke: INK, 'stroke-width': 12, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+      svg('path', { d, fill: 'none', stroke: tint || '#B97A3C', 'stroke-width': 7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+      /* knots at whole units (grid ropes) / a bead in the middle of every unit (smooth) */
+      const L = cum(P), tot = L[L.length - 1], unit = tot / len;
+      const marks = []; for (let j = smooth ? 0.5 : 0; j <= len + 1e-6; j++) marks.push(j * unit);
+      marks.forEach(m => { let i = 1; while (i < L.length - 1 && L[i] < m) i++; const a = P[i - 1], b = P[i], seg = L[i] - L[i - 1], t = seg ? (m - L[i - 1]) / seg : 0; const x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
+        svg('circle', { cx: R1(x), cy: R1(y), r: smooth ? 7 : 5.5, fill: smooth ? '#FF9F43' : '#6B4423', stroke: INK, 'stroke-width': smooth ? 2.5 : 1.5 }, s); });
+    },
+    /* numbers on the pieces of a straightened rope (n of them shown so far) */
+    numbers(st, s, P, len, n) {
+      const L = cum(P), tot = L[L.length - 1], unit = tot / len;
+      for (let j = 0; j < Math.min(n, len); j++) {
+        const m = (j + 0.5) * unit; let i = 1; while (i < L.length - 1 && L[i] < m) i++; const a = P[i - 1], b = P[i], seg = L[i] - L[i - 1], t = seg ? (m - L[i - 1]) / seg : 0;
+        const x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t - 22;
+        svg('circle', { cx: R1(x), cy: R1(y), r: 13, fill: '#fff', stroke: INK, 'stroke-width': 2.5 }, s);
+        const tx = svg('text', { x: R1(x), y: R1(y + 6), 'text-anchor': 'middle', 'font-size': 17, 'font-weight': 900, fill: INK, 'font-family': 'system-ui,sans-serif' }, s); tx.textContent = j + 1;
+      }
+    },
+    present(st) {
+      const q = st.q;
+      st.k = q.ropes.map(() => 0); st.nums = q.ropes.map(() => 0); st.tint = q.ropes.map(() => null);
+      st.svEl = W2X.thing(st, Stage.W, Stage.H, 4, ''); st.svEl.style.pointerEvents = 'none';
+      st.sv = svg('svg', { width: '100%', height: '100%' }, st.svEl); st.sv.style.overflow = 'visible';
+      if (q.ask === 'count') { st.cards = numRow(st, q.opts, this.geo(q).cs, 'card'); st.opts = q.opts.slice(); }
+      else st.lanes = q.ropes.map((_, i) => { const e = W2X.thing(st, 10, 10, 6, ''); e.style.borderRadius = '16px'; K.reg(st, 'r' + i, e, {}); return e; });
+      this.place(st);
+      K.pop(st, st.svEl);
+      K.task(st, [[ic('<path d="M10 70Q24 20 40 60T70 40T92 60" fill="none" stroke="#B97A3C" stroke-width="8" stroke-linecap="round"/><path d="M10 88H92" stroke="#2B2118" stroke-width="5" stroke-dasharray="9 6"/>')], ['q']]);
+      K.say(st, { long: '哪根最长？', short: '哪根最短？', same: '哪根和它一样长？', count: '这根有几格长？' }[q.ask]);
+    },
+    onGesture(st, name, p) {
+      if (name !== 'tap' || st.picked) return false;
+      if (st.q.ask === 'count') return W5U.tapCard(st, name, p);
+      const m = /^r(\d)$/.exec(p.id || ''); if (!m) return false;
+      st.picked = true; st.tint[+m[1]] = '#E2A15B'; this.draw(st); K.pop(st, st.lanes[+m[1]]); Session.submit(st, +m[1]); return 'ok';
+    },
+    next(st, strat) {
+      const q = st.q; if (st.picked) return null;
+      if (q.ask === 'count') return W5U.cardNext(st, strat);
+      if (!st.lanes) return null;
+      return { g: 'tap', p: { id: 'r' + (strat === 'wrong' ? (q.answer + 1 + (st.gen % 4)) % 5 : q.answer) } };
+    },
+    lineIs: v => '这根是' + CNQ(v) + '格',
+    async feedback(st, ans) {
+      const q = st.q;
+      if (q.ask === 'count') { const c = W5U.cardOf(st, ans); if (c) K.wiggle(st, c); W5U.say(st, '不是' + CNQ(ans) + '格'); }
+      else { K.wiggle(st, st.lanes[ans]); W5U.say(st, q.ask === 'long' ? '还有更长的' : q.ask === 'short' ? '还有更短的' : this.lineIs(q.ropes[ans].len)); }
+      await st.scope.wait(T(550));
+    },
+    /* pull rope i straight (0.6 s), then number its pieces one by one */
+    async straighten(st, i, tint) {
+      const my = st, len = st.q.ropes[i].len;
+      st.tint[i] = tint;
+      await tween(st, 480, k => { st.k[i] = k; this.draw(st); }); if (!Session.alive(my)) return;
+      Sfx.whoosh(0.15);
+      const dt = len > 9 ? 80 : 100;
+      for (let j = 1; j <= len; j++) st.scope.timeout(() => { if (!Session.alive(my)) return; st.nums[i] = j; this.draw(st); Sfx.count(Math.min(20, j)); }, dt * j);
+      return T(dt * len + 150);
+    },
+    /* 1. his rope pulled straight and numbered, blue ("这根是六格"); 2. the right one the same, gold ("九格最长！") */
+    async explain(st, ans) {
+      const q = st.q, my = st;
+      if (q.ask === 'count') {
+        W5U.blue(st, W5U.cardOf(st, ans)); W5U.note(st, '不是' + CNQ(ans) + '格');
+        await st.scope.wait(800); if (!Session.alive(my)) return;
+        const ms = await this.straighten(st, 0, '#FFC93C'); if (!Session.alive(my)) return;
+        await st.scope.wait(ms);
+        W5U.gold(st, W5U.cardOf(st, q.answer));
+        await W5U.sum(st, this.lineIs(q.answer));
+        await st.scope.wait(250);
+        return;
+      }
+      W5U.blue(st, st.lanes[ans]);
+      const m1 = await this.straighten(st, ans, '#7FC3F2'); if (!Session.alive(my)) return;
+      W5U.note(st, this.lineIs(q.ropes[ans].len));
+      await st.scope.wait(Math.max(900, m1)); if (!Session.alive(my)) return;
+      const m2 = await this.straighten(st, q.answer, '#FFC93C'); if (!Session.alive(my)) return;
+      W5U.gold(st, st.lanes[q.answer]);
+      const L = q.ropes[q.answer].len;
+      W5U.sum(st, q.ask === 'long' ? CNQ(L) + '格最长！' : q.ask === 'short' ? CNQ(L) + '格最短！' : '也是' + CNQ(L) + '格！');
+      await st.scope.wait(Math.max(1000, m2));
+    },
+    rightEls(st) { return [st.q.ask === 'count' ? W5U.cardOf(st, st.q.answer) : st.lanes[st.q.answer]]; },
+    async reveal(st) {
+      const q = st.q, my = st;
+      W5U.gold(st, this.rightEls(st)); Sfx.reveal();
+      const i = q.ask === 'count' ? 0 : q.answer, ms = await this.straighten(st, i, '#FFC93C'); if (!Session.alive(my)) return;
+      this.cheerAll(st);
+      const L = q.ropes[i].len;
+      st.summary = q.ask === 'long' ? CNQ(L) + '格最长！' : q.ask === 'short' ? CNQ(L) + '格最短！' : q.ask === 'same' ? '也是' + CNQ(L) + '格！' : this.lineIs(L);
+      W5U.sum(st, st.summary);
+      await st.scope.wait(Math.max(T(900), ms));
+    },
+    workEls(st) { return st.q.ask === 'count' ? st.cards || [] : st.lanes || []; },
+    snap(st) { return { lens: st.q.ropes.map(r => r.len) }; },
+    lines() {
+      const out = [this.intro, '哪根最长？', '哪根最短？', '哪根和它一样长？', '这根有几格长？', '还有更长的', '还有更短的'].concat(this.praise);
+      for (let v = 2; v <= 15; v++) out.push(this.lineIs(v));
+      for (let v = 4; v <= 19; v++) out.push('不是' + CNQ(v) + '格');
+      for (let v = 5; v <= 9; v++) out.push(CNQ(v) + '格最长！');
+      for (let v = 2; v <= 5; v++) out.push(CNQ(v) + '格最短！');
+      for (let v = 3; v <= 6; v++) out.push('也是' + CNQ(v) + '格！');
+      return uniq(out);
+    },
+  };
+
+  /* ================================================================ X7 排！ 取经队排队 (F13 Field Trip: ordinal numbers, position). The
+     team walks along a mountain road (landscape to the right, portrait upwards - the front one carries a little flag): 2-4 of
+     唐僧 / 悟空 / 八戒 / 沙僧 / 白龙马 and block men, 5-9 in all. Five number cards (第几: a flag on the card; 几个: dots).
+       L1 5 in the team: "从前面数，八戒是第几个？" or from the back (a bag) · L2 6-7: "第几个" or "八戒前面有几个？" (a bag; the
+       number in front is one less than the place - the usual mix-up) · L3 7-8: "八戒从前数第三，从后数是第几？" · L4 a hill hides
+       the team, only he shows: "八戒前面有两个，后面有三个，一共几个？" (<= 9) · L5 hidden too: "从前数他第三，从后数他第四，一共几
+       个？" (3 + 4 - 1).
+     The friends do not watch from the corners here (they walk in the team). Wrong: his card blue ("不是第四个" / "要从后面数哦" /
+     "别忘了他自己"); the hill moves away, flags with numbers go up over the team from the end that is counted (only the ones in
+     front of him for 前面有几个); the right card gold ("八戒是第三个" / "一共六个"). */
+  const TEAM = ['tangseng', 'wukong', 'bajie', 'shaseng', 'dragon_horse'];
+  const MANC = ['#4FB3FF', '#5CC46E', '#FF9F43', '#B57BFF', '#FF6FA8', '#3DD6C6'];
+  W5R.X7 = {
+    kind0: 'queue5', verb: '排！', intro: '取经队出发！', praise: ['数得真清楚！'], props: [],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      const n = d === 1 ? 5 : d === 2 ? rng.int(6, 7) : d === 3 ? rng.int(7, 8) : 0;
+      if (d >= 4) {
+        let a, b, tot;
+        if (d === 4) { do { a = rng.int(1, 5); b = rng.int(1, 5); } while (a + b + 1 > 9); tot = a + b + 1; }
+        else { do { a = rng.int(2, 6); b = rng.int(2, 6); } while (a + b - 1 > 9 || a + b - 1 < 4); tot = a + b - 1; }
+        const pos = d === 4 ? a : a - 1, who = rng.pick(TEAM), team = this.team(rng, tot, pos, who);
+        return { d, k: [d, a, b, who], n: tot, team, pos, who, ask: 'total', a, b, answer: tot, opts: W5U.nums(G, tot, 3, 13), hide: true };
+      }
+      const ask = d === 1 ? 'ord' : d === 2 ? bagPick(G, 'x7a2', ['ord', 'before']) : 'ord';
+      const from = d === 1 ? bagPick(G, 'x7f1', ['front', 'back']) : d === 2 ? 'front' : 'back';
+      /* his place from a bag (never the very front when asking who is in front of him) */
+      const places = Array.from({ length: n }, (_, i) => i).filter(i => !(ask === 'before' && i === 0));
+      const pos = bagPick(G, 'x7p' + d + n + ask, places), who = rng.pick(TEAM), team = this.team(rng, n, pos, who);
+      const answer = ask === 'before' ? pos : from === 'front' ? pos + 1 : n - pos;
+      return { d, k: [d, n, pos, ask, from, who], n, team, pos, who, ask, from, answer, opts: W5U.nums(G, answer, ask === 'before' ? 0 : 1, 9) };
+    },
+    /* the team (front first): he at pos, 1-3 more named friends, block men in between */
+    team(rng, n, pos, who) {
+      const others = rng.shuffle(TEAM.filter(x => x !== who)).slice(0, rng.int(1, Math.min(3, n - 1)));
+      const T = Array(n).fill(null); T[pos] = who;
+      rng.shuffle(Array.from({ length: n }, (_, i) => i).filter(i => i !== pos)).slice(0, others.length).forEach((i, k) => { T[i] = others[k]; });
+      return T.map(x => x || 'man' + rng.int(0, MANC.length - 1));
+    },
+    audit(q) { return [{ n: q.opts.length, at: q.opts.indexOf(q.answer), right: q.opts.filter(v => v === q.answer).length }]; },
+    /* landscape: the front at the right, the cards below; portrait: the front at the top, the cards in a column on the right */
+    geo(q) {
+      const L = K.L(), n = q.hide ? 9 : q.n;          /* hidden behind the hill: the spacing (and the hill) as for the longest team - they give nothing away */
+      if (L) { const sp = Math.min(116, 760 / n); return { L, x0: 848, y0: 430, sp, h: Math.min(124, sp * 1.2), cy: 612, cs: 116, gap: 18 }; }
+      const sp = Math.min(92, 580 / n); return { L, x0: 190, y0: 340, sp, h: Math.min(92, sp * 1.0), cx: 548, cs: 112, gap: 14 };
+    },
+    decor(G) { this.chars.forEach(id => { const a = G.actors[id]; if (a) hideActor(a); }); },
+    spot(q, i) { const g = this.geo(q); return g.L ? [g.x0 - i * g.sp, g.y0] : [g.x0, g.y0 + i * g.sp]; },
+    place(st) {
+      const q = st.q, g = this.geo(q); if (!st.people) return;
+      st.people.forEach((e, i) => { const [x, y] = this.spot(q, i), w = Math.round(g.h * e._ar); place(e, Math.round(x - w / 2), Math.round(y - g.h), w, Math.round(g.h)); });
+      if (st.road) { place(st.road, 0, 0, Stage.W, Stage.H); st.road.firstChild.setAttribute('viewBox', '0 0 ' + Stage.W + ' ' + Stage.H); st.road.firstChild.innerHTML = this.roadSvg(q); }
+      if (st.hill) { const b = this.hillBox(q); place(st.hill, b.x, b.y, b.w, b.h); const hp = st.hill.querySelector('path'); if (hp) hp.setAttribute('d', K.L() ? 'M0 100V36Q8 8 22 26Q34 2 50 20Q64 0 78 22Q92 6 100 32V100Z' : 'M0 100V14Q8 2 22 9Q34 0 50 7Q64 0 78 8Q92 2 100 13V100Z'); }
+      if (st.cards) { if (g.L) W5U.lay(st.cards, Stage.W / 2, g.cy, g.cs, g.cs, g.gap); else W5U.lay(st.cards, g.cx, 560, g.cs, g.cs, g.gap, g.gap, 1); }
+    },
+    cardSpot(st) { const g = this.geo(st.q); return g.L ? { cx: Stage.W / 2, cy: g.cy, size: g.cs, gap: g.gap } : { cx: g.cx, cy: 560, size: g.cs, gap: g.gap }; },
+    /* the road, the flag of the front one, an arrow: this way is the front */
+    roadSvg(q) {
+      const g = this.geo(q), f = this.spot(q, 0), b = this.spot(q, (q.hide ? 9 : q.n) - 1);
+      if (g.L) return '<path d="M30 ' + (g.y0 + 6) + 'H994" stroke="#C9A36A" stroke-width="58" stroke-linecap="round" opacity=".85"/><path d="M30 ' + (g.y0 + 6) + 'H994" stroke="#E2C48F" stroke-width="40" stroke-linecap="round" stroke-dasharray="2 26" opacity=".9"/>' +
+        '<path d="M' + (f[0] + 52) + ' ' + (g.y0 - 40) + 'H' + (f[0] + 96) + 'M' + (f[0] + 82) + ' ' + (g.y0 - 54) + 'L' + (f[0] + 98) + ' ' + (g.y0 - 40) + 'L' + (f[0] + 82) + ' ' + (g.y0 - 26) + '" fill="none" stroke="#E8414B" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>';
+      return '<path d="M' + g.x0 + ' ' + (f[1] - g.h - 60) + 'V' + (b[1] + 24) + '" stroke="#C9A36A" stroke-width="64" stroke-linecap="round" opacity=".85"/>' +
+        '<path d="M' + (g.x0 + 56) + ' ' + (f[1] - 30) + 'V' + (f[1] - 76) + 'M' + (g.x0 + 42) + ' ' + (f[1] - 62) + 'L' + (g.x0 + 56) + ' ' + (f[1] - 78) + 'L' + (g.x0 + 70) + ' ' + (f[1] - 62) + '" fill="none" stroke="#E8414B" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>';
+    },
+    /* the hill: its body (below 36 % of its box) covers every one of them */
+    hillBox(q) {
+      const g = this.geo(q), f = this.spot(q, 0), b = this.spot(q, 8);
+      if (g.L) { const H = Math.round((g.h + 80) / 0.62); return { x: b[0] - 74, y: g.y0 + 34 - H, w: f[0] - b[0] + 148, h: H }; }
+      const top = f[1] - g.h - 20, bot = b[1] + 34, H = Math.round((bot - top) / 0.86); return { x: g.x0 - 104, y: bot - H, w: 208, h: H };
+    },
+    person(st, id, i) {
+      const e = W2X.thing(st, 10, 10, 4, ''); e.style.pointerEvents = 'none';
+      if (id.startsWith('man')) { e.appendChild(W5U.blockMan({ color: MANC[+id.slice(3)], front: true })); e._ar = 100 / 160; }
+      else { const im = W2X.charImg(id); Object.assign(im.style, { width: '100%', height: '100%' }); e.appendChild(im); e._ar = (META[id] ? META[id][0] / META[id][1] : 0.7); }
+      if (i === 0) { const f = el('div', '', e); Object.assign(f.style, { position: 'absolute', right: '-16px', top: '-30px', width: '34px', height: '46px', pointerEvents: 'none' }); f.innerHTML = '<svg viewBox="0 0 34 46" width="100%" height="100%"><path d="M4 2V44" stroke="#2B2118" stroke-width="4"/><path d="M6 4H32L26 12L32 20H6Z" fill="#E8414B" stroke="#2B2118" stroke-width="3" stroke-linejoin="round"/></svg>'; }
+      return e;
+    },
+    /* the cards: 第几 a flag with the number; 几个 the number with its dots */
+    card(v, size, ord) {
+      if (!ord) return UI.card(v, size, { layout: 'frame' });
+      const c = el('div', 'card'); c.style.width = c.style.height = size + 'px';
+      const f = el('div', '', c); Object.assign(f.style, { display: 'flex', alignItems: 'center', gap: '4px', pointerEvents: 'none' });
+      const fl = el('span', '', f); fl.innerHTML = '<svg viewBox="0 0 30 44" width="' + Math.round(size * 0.26) + '" height="' + Math.round(size * 0.38) + '"><path d="M4 2V42" stroke="#2B2118" stroke-width="4"/><path d="M6 4H28L22 11L28 18H6Z" fill="#E8414B" stroke="#2B2118" stroke-width="3" stroke-linejoin="round"/></svg>';
+      f.appendChild(UI.num(v, Math.round(size * 0.46)));
+      c._n = v; return c;
+    },
+    words(q) {
+      const N = NAME[q.who];
+      if (q.ask === 'total') return q.d === 4 ? { lead: [N + '前面有' + CNQ(q.a) + '个，', '后面有' + CNQ(q.b) + '个，'], ask: '一共几个？' } : { lead: ['从前数他第' + CN[q.a] + '，', '从后数他第' + CN[q.b] + '，'], ask: '一共几个？' };
+      if (q.ask === 'before') return { lead: null, ask: N + '前面有几个？' };
+      if (q.d === 3) return { lead: N + '从前数第' + CN[q.pos + 1] + '，', ask: '从后数是第几？' };
+      return { lead: q.from === 'front' ? '从前面数，' : '从后面数，', ask: N + '是第几个？' };
+    },
+    present(st) {
+      const q = st.q, g = this.geo(q);
+      st.road = W2X.thing(st, 10, 10, 2, ''); st.road.style.pointerEvents = 'none'; svg('svg', { width: '100%', height: '100%' }, st.road).style.overflow = 'visible';
+      st.people = q.team.map((id, i) => this.person(st, id, i));
+      if (q.hide) { st.hill = W2X.thing(st, 10, 10, 5, ''); st.hill.style.pointerEvents = 'none'; st.hill.innerHTML = '<svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="none"><path d="' + (K.L() ? 'M0 100V36Q8 8 22 26Q34 2 50 20Q64 0 78 22Q92 6 100 32V100Z' : 'M0 100V14Q8 2 22 9Q34 0 50 7Q64 0 78 8Q92 2 100 13V100Z') + '" fill="#7FA35B" stroke="#2B2118" stroke-width="1.6" vector-effect="non-scaling-stroke"/><path d="M14 84Q30 68 44 82Q60 64 78 80" fill="none" stroke="#5E8442" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>'; st.people[q.pos].style.zIndex = 7; }
+      const ord = q.ask === 'ord';
+      st.cards = q.opts.map((v, i) => { const c = this.card(v, g.cs, ord); Stage.el.appendChild(c); c.style.position = 'absolute'; K.reg(st, 'card' + i, c, {}); st.els.push(c); K.pop(st, c, 200 + 60 * i); return c; });
+      st.opts = q.opts.slice();
+      this.place(st);
+      st.people.forEach((e, i) => K.pop(st, e, 40 * i));
+      const head = img('assets/thumbs/' + q.who + '.png', ''); head.style.height = '54px'; head.style.borderRadius = '50%';
+      K.task(st, [[{ node: head }], ['q']]);
+      const W = this.words(q);
+      if (W.lead) { st.lead = W.lead; [].concat(W.lead).forEach(l => Voice.say(l, { tag: 'prompt' })); }
+      K.say(st, W.ask);
+    },
+    onGesture(st, name, p) { return W5U.tapCard(st, name, p); },
+    next(st, strat) { return W5U.cardNext(st, strat); },
+    /* what his card is: the place counted from the other end, himself forgotten / counted twice, or just not it */
+    wrongLine(q, v) {
+      if (q.ask === 'total') return q.d === 4 && v === q.a + q.b ? '别忘了他自己' : q.d === 5 && v === q.a + q.b ? '他数了两次哦' : '不是' + CNQ(v) + '个';
+      if (q.ask === 'before') return '前面不是' + CNQ(v) + '个';
+      const other = q.from === 'front' ? q.n - q.pos : q.pos + 1;
+      if (v === other) return q.from === 'front' ? '要从前面数哦' : '要从后面数哦';
+      return '不是第' + CN[v] + '个';
+    },
+    rightLine(q) {
+      if (q.ask === 'total') return W5U.all(q.n, '个');
+      if (q.ask === 'before') return '前面有' + CNQ(q.pos) + '个';
+      return q.from === 'front' ? NAME[q.who] + '是第' + CN[q.answer] + '个' : '从后数是第' + CN[q.answer];
+    },
+    async feedback(st, ans) { const c = W5U.cardOf(st, ans); if (c) K.wiggle(st, c); W5U.say(st, this.wrongLine(st.q, ans)); await st.scope.wait(T(550)); },
+    /* flags with numbers over the people in the order they are counted (an animation) */
+    flags(st, order) {
+      const g = this.geo(st.q);
+      const dt = order.length > 6 ? 120 : 160;
+      order.forEach((i, j) => { const b = box(st.people[i]); if (g.L) badgeAt(st, b.x + b.w / 2, b.y - 20, j + 1, 40, dt * j); else badgeAt(st, g.x0 - 58, b.y + b.h * 0.45, j + 1, 40, dt * j); st.scope.timeout(() => { Sfx.count(j + 1); K.hop(st, st.people[i], 10); }, dt * j); });
+      return T(dt * order.length + 150);
+    },
+    /* 1. his card blue + what it is; 2. (the hill moves away) the counting flags; 3. the right card gold + the answer */
+    async explain(st, ans) {
+      const q = st.q, my = st;
+      W5U.blue(st, W5U.cardOf(st, ans));
+      W5U.note(st, this.wrongLine(q, ans));
+      await st.scope.wait(650); if (!Session.alive(my)) return;
+      let order, line = null;
+      if (q.hide) {
+        await st.scope.anim(st.hill, [{ transform: 'none', opacity: 1 }, { transform: K.L() ? 'translateY(70%)' : 'translateX(-80%)', opacity: 0 }], { duration: 340, fill: 'forwards' }); if (!Session.alive(my)) return;
+        order = st.people.map((_, i) => i).reverse(); line = q.d === 4 ? '再加他自己' : '他只算一次';
+        W5U.ring(st, st.people[q.pos], GOLD, 4);
+      } else if (q.ask === 'before') order = st.people.map((_, i) => i).filter(i => i < q.pos);
+      else order = q.from === 'front' ? st.people.map((_, i) => i).filter(i => i <= q.pos) : st.people.map((_, i) => i).filter(i => i >= q.pos).reverse();
+      const ms = this.flags(st, order);
+      if (line) { W5U.note(st, line); await st.scope.wait(Math.max(950, ms)); }
+      else await st.scope.wait(ms);
+      if (!Session.alive(my)) return;
+      W5U.gold(st, W5U.cardOf(st, q.answer));
+      await W5U.sum(st, this.rightLine(q));
+      await st.scope.wait(250);
+    },
+    rightEls(st) { return [W5U.cardOf(st, st.q.answer)]; },
+    async reveal(st) {
+      const q = st.q;
+      W5U.gold(st, W5U.cardOf(st, q.answer)); Sfx.reveal();
+      K.hop(st, st.people[q.pos], 18);
+      this.cheerAll(st);
+      st.summary = this.rightLine(q); W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    cheerAll(st) { if (st.explaining) return; [st.people[st.q.pos]].forEach(e => K.hop(st, e, 20)); },
+    workEls(st) { return st.cards || []; },
+    snap(st) { return { team: st.q.team.slice(), pos: st.q.pos }; },
+    lines() {
+      const out = [this.intro, '从前面数，', '从后面数，', '从后数是第几？', '一共几个？', '要从前面数哦', '要从后面数哦', '别忘了他自己', '他数了两次哦', '再加他自己', '他只算一次'].concat(this.praise);
+      TEAM.forEach(w => {
+        const N = NAME[w]; out.push(N + '是第几个？', N + '前面有几个？');
+        for (let k = 1; k <= 7; k++) out.push(N + '是第' + CN[k] + '个');
+        for (let k = 1; k <= 8; k++) out.push(N + '从前数第' + CN[k] + '，');
+        for (let k = 1; k <= 5; k++) out.push(N + '前面有' + CNQ(k) + '个，');
+      });
+      for (let k = 1; k <= 5; k++) out.push('后面有' + CNQ(k) + '个，');
+      for (let k = 2; k <= 6; k++) out.push('从前数他第' + CN[k] + '，', '从后数他第' + CN[k] + '，');
+      for (let k = 1; k <= 9; k++) out.push('不是第' + CN[k] + '个');
+      for (let k = 1; k <= 8; k++) out.push('从后数是第' + CN[k]);
+      for (let k = 0; k <= 9; k++) out.push('前面不是' + CNQ(k) + '个');
+      for (let k = 1; k <= 6; k++) out.push('前面有' + CNQ(k) + '个');
+      for (let k = 3; k <= 13; k++) out.push('不是' + CNQ(k) + '个');
+      for (let k = 3; k <= 9; k++) out.push(W5U.all(k, '个'));
+      return uniq(out);
+    },
+  };
+
+  /* ================================================================ X8 量！ 换尺子量 (reasoning; S14 Who Is Taller?: measured with
+     different units, the numbers differ). Five "height records", one for each of the team: a head and the blocks it was
+     measured with - big blocks (each exactly two small ones high), small blocks, from L3 peaches too (three small ones). The
+     team stand behind a screen: only the records can be compared. Tap a record.
+       L1 two kinds of block, stacked up from the same floor: the height shows it, counting blocks misleads (the tallest is
+       measured in big blocks, someone shorter has more small ones) · L2 lying in rows, the left ends not lined up: compare
+       the lengths, not the right ends · L3 three units (big, small, peach); the task card shows their sizes side by side ·
+       L4 only "number + unit" (3 big, 6 small ...) and "1 big = 2 small" on the task card: think · L5 "八戒是四块大积木，换成
+       小的是几块？" - five number cards.
+     Wrong: his record ringed blue, its blocks split into small ones and numbered ("这个是六块"); the right one the same, gold
+     ("沙僧最高！"). */
+  const X8WHO = ['tangseng', 'wukong', 'bajie', 'shaseng', 'dragon_horse'];
+  const USZ = { small: 1, big: 2, peach: 3 };
+  const UCOL = { small: '#FFC93C', big: '#4FB3FF' };
+  W5R.X8 = {
+    kind0: 'units5', verb: '量！', intro: '用积木量身高！', praise: ['想得真明白！'], props: ['peach'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      if (d === 5) { const who = rng.pick(X8WHO.slice(0, 4)), b = rng.int(2, 6); return { d, k: [d, who, b], recs: [{ who, unit: 'big', n: b }], ask: 'count', answer: 2 * b, opts: W5U.nums(G, 2 * b, 1, 14) }; }
+      const ask = bagPick(G, 'x8a' + d, ['tall', 'short']), peach = d === 3;
+      for (let t = 0; t < 400; t++) {
+        const H = rng.shuffle(Array.from({ length: 9 }, (_, i) => i + 2)).slice(0, 5);
+        const units = H.map(h => { const can = ['small'].concat(h % 2 === 0 ? ['big'] : [], peach && h % 3 === 0 ? ['peach'] : []).filter(u => h / USZ[u] <= (u === 'small' ? 10 : 5)); return rng.pick(can); });
+        const ext = ask === 'tall' ? Math.max(...H) : Math.min(...H), at = H.indexOf(ext);
+        /* the trap: the answer is not the one with the most (fewest) blocks */
+        if (ask === 'tall') { const cand = ['big'].concat(peach && ext % 3 === 0 ? ['peach'] : []).filter(u => ext % USZ[u] === 0); if (!cand.length) continue; units[at] = rng.pick(cand); }
+        else { units[at] = 'small'; }
+        const n = H.map((h, i) => h / USZ[units[i]]);
+        if (ask === 'tall' && !(Math.max(...n.filter((_, i) => i !== at)) > n[at])) continue;
+        if (ask === 'short' && !(Math.min(...n.filter((_, i) => i !== at)) < n[at])) continue;
+        if (peach && !units.includes('peach')) continue;
+        if (d !== 3 && !units.includes('big')) continue;
+        const who = rng.shuffle(X8WHO);
+        const recs0 = H.map((h, i) => ({ who: who[i], unit: units[i], n: n[i], h, off: 0 }));
+        if (d === 2) {
+          /* lying in rows: the left ends moved; the right end that reaches farthest is not the answer's */
+          recs0.forEach(r => { r.off = rng.int(0, 3); }); recs0[at].off = ask === 'tall' ? 0 : 3;
+          const ends = recs0.map(r => r.off + r.h), far = ask === 'tall' ? Math.max(...ends.filter((_, i) => i !== at)) >= ends[at] : Math.min(...ends.filter((_, i) => i !== at)) <= ends[at];
+          if (!far) continue;
+        }
+        const deck = W5U.deal(G, recs0[at], recs0.filter((_, i) => i !== at), 'x8');
+        return { d, k: [d, ask, deck.map(r => r.who[0] + r.unit[0] + r.n + r.off).join('.')], recs: deck, ask, answer: deck.indexOf(recs0[at]) };
+      }
+      const recs = [{ who: 'bajie', unit: 'big', n: 4, h: 8, off: 0 }, { who: 'wukong', unit: 'small', n: 7, h: 7, off: 0 }, { who: 'shaseng', unit: 'small', n: 5, h: 5, off: 0 }, { who: 'tangseng', unit: 'big', n: 2, h: 4, off: 0 }, { who: 'dragon_horse', unit: 'small', n: 3, h: 3, off: 0 }];
+      return { d, k: [d, 'x'], recs, ask: 'tall', answer: 0 };
+    },
+    audit(q) {
+      if (q.ask === 'count') return [{ n: q.opts.length, at: q.opts.indexOf(q.answer), right: q.opts.filter(v => v === q.answer).length }];
+      const H = q.recs.map(r => r.n * USZ[r.unit]), want = q.ask === 'tall' ? Math.max(...H) : Math.min(...H);
+      return [{ n: H.length, at: q.answer, right: H.filter(h => h === want).length }];
+    },
+    /* landscape / portrait: five upright records in a row (u: one small block); L2 five rows; L5 one record + cards */
+    geo(q) {
+      const L = K.L();
+      if (q.ask === 'count') return L ? { mode: 'one', x: 362, y: 138, w: 300, h: 404, u: 26, cy: 612, cs: 116, gap: 18 } : { mode: 'one', x: 202, y: 232, w: 300, h: 500, u: 32, cy: 826, cs: 120, gap: 12 };
+      if (q.d === 2) return L ? { mode: 'rows', x: 140, y: 112, w: 744, rh: 90, gap: 8, u: 40, bx: 110 } : { mode: 'rows', x: 22, y: 236, w: 660, rh: 104, gap: 12, u: 38, bx: 100 };
+      return L ? { mode: 'cols', x: 100, y: 118, w: 152, h: 414, gap: 16, u: 32, head: 70 } : { mode: 'cols', x: 20, y: 230, w: 124, h: 560, gap: 11, u: 46, head: 64 };
+    },
+    decor(G) { W3X.decor2(G, this.chars); },
+    place(st) {
+      const q = st.q, g = this.geo(q); if (!st.recEls) return;
+      st.recEls.forEach((e, i) => {
+        if (g.mode === 'one') place(e, g.x, g.y, g.w, g.h);
+        else if (g.mode === 'rows') place(e, g.x, g.y + i * (g.rh + g.gap), g.w, g.rh);
+        else place(e, g.x + i * (g.w + g.gap), g.y, g.w, g.h);
+        this.drawRec(st, i);
+      });
+      if (st.cards) W5U.lay(st.cards, Stage.W / 2, g.cy, g.cs, g.cs, g.gap);
+    },
+    cardSpot(st) { const g = this.geo(st.q); return { cx: Stage.W / 2, cy: g.cy || 612, size: g.cs || 116, gap: g.gap || 18 }; },
+    /* one block (svg, in px of the record): small yellow, big blue (twice as high, a bit wider), peach 3 high */
+    blockSvg(unit, x, y, w, h, vertical) {
+      if (unit === 'peach') { const cx = x + w / 2, cy = y + h / 2, r = Math.min(w, h) / 2 - 2; return '<path d="M' + R1(cx) + ' ' + R1(cy - r) + 'C' + R1(cx - r * 1.3) + ' ' + R1(cy - r) + ' ' + R1(cx - r * 1.1) + ' ' + R1(cy + r) + ' ' + R1(cx) + ' ' + R1(cy + r) + 'C' + R1(cx + r * 1.1) + ' ' + R1(cy + r) + ' ' + R1(cx + r * 1.3) + ' ' + R1(cy - r) + ' ' + R1(cx) + ' ' + R1(cy - r) + 'Z" fill="#FF9CB0" stroke="' + INK + '" stroke-width="3"/><path d="M' + R1(cx + 2) + ' ' + R1(cy - r) + 'q10 -12 18 -4q-8 8 -18 4z" fill="#5CC46E" stroke="' + INK + '" stroke-width="2"/>'; }
+      return '<rect x="' + R1(x + 1.5) + '" y="' + R1(y + 1.5) + '" width="' + R1(w - 3) + '" height="' + R1(h - 3) + '" rx="4" fill="' + UCOL[unit] + '" stroke="' + INK + '" stroke-width="3"/>' + (unit === 'big' ? '<rect x="' + R1(x + 6) + '" y="' + R1(y + 6) + '" width="' + R1(vertical ? w * 0.18 : w - 12) + '" height="' + R1(vertical ? h - 12 : h * 0.2) + '" rx="2" fill="#fff" opacity=".35"/>' : '');
+    },
+    /* a record: the head and its blocks (or "n x unit" at L4); split: shown as small blocks, numbered up to `num` */
+    drawRec(st, i) {
+      const q = st.q, g = this.geo(q), r = q.recs[i], e = st.recEls[i], sv = e._sv, b = box(e), H = r.n * USZ[r.unit], split = e._split, num = e._num || 0;
+      let s = '';
+      if (g.mode === 'rows') {
+        const x0 = g.bx + r.off * g.u, y0 = b.h / 2 - 22, hh = 44;
+        s += '<path d="M' + (g.bx - 8) + ' 8V' + (b.h - 8) + '" stroke="' + INK + '" stroke-width="3" stroke-dasharray="5 5" opacity=".4"/>';
+        if (split) for (let k = 0; k < H; k++) s += this.blockSvg('small', x0 + k * g.u, y0 + 4, g.u, hh - 8, false);
+        else { let x = x0; for (let k = 0; k < r.n; k++) { const w = USZ[r.unit] * g.u; s += this.blockSvg(r.unit, x, r.unit === 'big' ? y0 : y0 + 4, w, r.unit === 'big' ? hh : hh - 8, false); x += w; } }
+        for (let k = 0; k < Math.min(num, H); k++) s += '<circle cx="' + R1(x0 + (k + 0.5) * g.u) + '" cy="' + R1(y0 + hh / 2) + '" r="12" fill="#fff" stroke="' + INK + '" stroke-width="2.5"/><text x="' + R1(x0 + (k + 0.5) * g.u) + '" y="' + R1(y0 + hh / 2 + 5.5) + '" text-anchor="middle" font-size="15" font-weight="900" fill="' + INK + '" font-family="system-ui,sans-serif">' + (k + 1) + '</text>';
+      } else {
+        const head = g.mode === 'one' ? 80 : g.head, floor = b.h - 12, cx = b.w / 2;
+        s += '<path d="M8 ' + floor + 'H' + (b.w - 8) + '" stroke="' + INK + '" stroke-width="4" stroke-linecap="round"/>';
+        if (q.d === 4 && !split) {
+          s += '<text x="' + R1(cx - 26) + '" y="' + R1(head + 86) + '" text-anchor="middle" font-size="54" font-weight="900" fill="#E8414B" stroke="' + INK + '" stroke-width="2" font-family="system-ui,sans-serif">' + r.n + '</text>';
+          s += this.blockSvg(r.unit, cx + 4, head + 86 - USZ[r.unit] * 24, 34, USZ[r.unit] * 24, true);
+        } else if (split) for (let k = 0; k < H; k++) s += this.blockSvg('small', cx - b.w * 0.24, floor - (k + 1) * g.u, b.w * 0.48, g.u, true);
+        else { let y = floor; for (let k = 0; k < r.n; k++) { const hh = USZ[r.unit] * g.u, w = r.unit === 'small' ? b.w * 0.48 : b.w * 0.62; y -= hh; s += this.blockSvg(r.unit, cx - w / 2, y, w, hh, true); } }
+        for (let k = 0; k < Math.min(num, H); k++) { const y = floor - (k + 0.5) * g.u; s += '<circle cx="' + R1(cx) + '" cy="' + R1(y) + '" r="' + Math.min(13, g.u * 0.42) + '" fill="#fff" stroke="' + INK + '" stroke-width="2.5"/><text x="' + R1(cx) + '" y="' + R1(y + 5.5) + '" text-anchor="middle" font-size="15" font-weight="900" fill="' + INK + '" font-family="system-ui,sans-serif">' + (k + 1) + '</text>'; }
+      }
+      sv.setAttribute('viewBox', '0 0 ' + b.w + ' ' + b.h); sv.innerHTML = s;
+    },
+    /* the task card: the units side by side (L3), "1 big = 2 small" (L4, L5) */
+    unitIc(q) {
+      const k = 'stroke="#2B2118" stroke-width="3"';
+      if (q.d === 3) return '<svg viewBox="0 0 120 70" width="104" height="60"><path d="M4 66H116" stroke="#2B2118" stroke-width="3"/><rect x="8" y="46" width="22" height="18" rx="3" fill="#FFC93C" ' + k + '/><rect x="40" y="28" width="26" height="36" rx="3" fill="#4FB3FF" ' + k + '/><path d="M93 10C74 10 76 64 93 64C110 64 112 10 93 10Z" fill="#FF9CB0" ' + k + '/></svg>';
+      if (q.d >= 4) return '<svg viewBox="0 0 120 70" width="104" height="60"><rect x="6" y="10" width="28" height="54" rx="3" fill="#4FB3FF" ' + k + '/><path d="M44 30H60M44 40H60" stroke="#2B2118" stroke-width="5"/><rect x="72" y="10" width="24" height="27" rx="3" fill="#FFC93C" ' + k + '/><rect x="72" y="37" width="24" height="27" rx="3" fill="#FFC93C" ' + k + '/></svg>';
+      return '<svg viewBox="0 0 100 70" width="86" height="60"><rect x="12" y="8" width="30" height="56" rx="3" fill="#4FB3FF" ' + k + '/><rect x="58" y="36" width="26" height="28" rx="3" fill="#FFC93C" ' + k + '/></svg>';
+    },
+    present(st) {
+      const q = st.q, g = this.geo(q);
+      st.recEls = q.recs.map((r, i) => {
+        const e = W2X.thing(st, 10, 10, 6, 'card'); e.style.overflow = 'visible';
+        const sv = svg('svg', { width: '100%', height: '100%' }, e); Object.assign(sv.style, { position: 'absolute', left: '0', top: '0', overflow: 'visible', pointerEvents: 'none' }); e._sv = sv;
+        const hd = img('assets/thumbs/' + r.who + '.png', '', e);
+        Object.assign(hd.style, g.mode === 'rows' ? { position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', width: (g.rh - 18) + 'px', height: (g.rh - 18) + 'px', borderRadius: '50%', pointerEvents: 'none' } : { position: 'absolute', left: '50%', top: '8px', transform: 'translateX(-50%)', width: (g.mode === 'one' ? 76 : g.head - 8) + 'px', height: (g.mode === 'one' ? 76 : g.head - 8) + 'px', borderRadius: '50%', pointerEvents: 'none' });
+        if (q.ask !== 'count') K.reg(st, 'rec' + i, e, {}); else e.style.pointerEvents = 'none';
+        return e;
+      });
+      if (q.ask === 'count') { st.cards = numRow(st, q.opts, g.cs, 'card'); st.opts = q.opts.slice(); }
+      this.place(st);
+      st.recEls.forEach((e, i) => K.pop(st, e, 70 * i));
+      const ui = el('span', ''); ui.innerHTML = this.unitIc(q);
+      K.task(st, [[{ node: ui }], ['q']]);
+      if (q.ask === 'count') { const r = q.recs[0]; W3X.say2(st, NAME[r.who] + '是' + CNQ(r.n) + '块大积木，', '换成小的是几块？'); }
+      else K.say(st, q.ask === 'tall' ? '谁最高？' : '谁最矮？');
+    },
+    onGesture(st, name, p) {
+      if (name !== 'tap' || st.picked) return false;
+      if (st.q.ask === 'count') return W5U.tapCard(st, name, p);
+      const m = /^rec(\d)$/.exec(p.id || ''); if (!m) return false;
+      st.picked = true; K.pop(st, st.recEls[+m[1]]); Session.submit(st, +m[1]); return 'ok';
+    },
+    next(st, strat) {
+      const q = st.q; if (st.picked) return null;
+      if (q.ask === 'count') return W5U.cardNext(st, strat);
+      if (!st.recEls) return null;
+      return { g: 'tap', p: { id: 'rec' + (strat === 'wrong' ? (q.answer + 1 + (st.gen % 4)) % 5 : q.answer) } };
+    },
+    hOf(q, i) { const r = q.recs[i]; return r.n * USZ[r.unit]; },
+    async feedback(st, ans) {
+      const q = st.q;
+      if (q.ask === 'count') { const c = W5U.cardOf(st, ans); if (c) K.wiggle(st, c); W5U.say(st, '不是' + CNQ(ans) + '块'); }
+      else { K.wiggle(st, st.recEls[ans]); W5U.say(st, '积木大小不一样'); }
+      await st.scope.wait(T(550));
+    },
+    /* record i: every block becomes small ones, then they are numbered one by one (an animation) */
+    split(st, i) {
+      const e = st.recEls[i], H = this.hOf(st.q, i);
+      e._split = true; e._num = 0; this.drawRec(st, i); Sfx.whoosh(0.15);
+      const dt = H > 8 ? 110 : 140;
+      for (let k = 1; k <= H; k++) st.scope.timeout(() => { if (!Session.alive(st)) return; e._num = k; this.drawRec(st, i); Sfx.count(Math.min(20, k)); }, 200 + dt * k);
+      return T(200 + dt * H + 150);
+    },
+    /* 1. his record: small blocks, numbered, blue ("这个是六块"); 2. the right one the same, gold ("沙僧最高！") */
+    async explain(st, ans) {
+      const q = st.q, my = st;
+      if (q.ask === 'count') {
+        W5U.blue(st, W5U.cardOf(st, ans)); W5U.note(st, '不是' + CNQ(ans) + '块');
+        await st.scope.wait(800); if (!Session.alive(my)) return;
+        const ms = this.split(st, 0);
+        W5U.note(st, '换成小积木');
+        await st.scope.wait(Math.max(1000, ms)); if (!Session.alive(my)) return;
+        W5U.gold(st, W5U.cardOf(st, q.answer));
+        await W5U.sum(st, '是' + CNQ(q.answer) + '块小的');
+        await st.scope.wait(250);
+        return;
+      }
+      W5U.blue(st, st.recEls[ans]);
+      const m1 = this.split(st, ans);
+      W5U.note(st, '这个是' + CNQ(this.hOf(q, ans)) + '块');
+      await st.scope.wait(Math.max(1000, m1)); if (!Session.alive(my)) return;
+      const m2 = this.split(st, q.answer);
+      W5U.gold(st, st.recEls[q.answer]);
+      W5U.sum(st, NAME[q.recs[q.answer].who] + (q.ask === 'tall' ? '最高！' : '最矮！'));
+      await st.scope.wait(Math.max(1000, m2));
+    },
+    rightEls(st) { return [st.q.ask === 'count' ? W5U.cardOf(st, st.q.answer) : st.recEls[st.q.answer]]; },
+    async reveal(st) {
+      const q = st.q, my = st;
+      W5U.gold(st, this.rightEls(st)); Sfx.reveal();
+      const i = q.ask === 'count' ? 0 : q.answer, ms = this.split(st, i);
+      this.cheerAll(st);
+      st.summary = q.ask === 'count' ? '是' + CNQ(q.answer) + '块小的' : NAME[q.recs[i].who] + (q.ask === 'tall' ? '最高！' : '最矮！');
+      W5U.sum(st, st.summary);
+      await st.scope.wait(Math.max(T(900), ms));
+      if (!Session.alive(my)) return;
+    },
+    workEls(st) { return st.q.ask === 'count' ? st.cards || [] : st.recEls || []; },
+    snap(st) { return { recs: st.q.recs.map(r => r.unit + r.n) }; },
+    lines() {
+      const out = [this.intro, '谁最高？', '谁最矮？', '换成小的是几块？', '积木大小不一样', '换成小积木'].concat(this.praise);
+      X8WHO.forEach(w => out.push(NAME[w] + '最高！', NAME[w] + '最矮！'));
+      X8WHO.slice(0, 4).forEach(w => { for (let b = 2; b <= 6; b++) out.push(NAME[w] + '是' + CNQ(b) + '块大积木，'); });
+      for (let v = 2; v <= 10; v++) out.push('这个是' + CNQ(v) + '块');
+      for (let v = 1; v <= 16; v++) out.push('不是' + CNQ(v) + '块');
+      for (let v = 4; v <= 12; v += 2) out.push('是' + CNQ(v) + '块小的');
+      return uniq(out);
+    },
+  };
 })();
 /* ================================================================ ⑦ 复仇者·积木楼 (avengers5, from level 3): V5 加号飞机、减号飞机 ·
    V6 切成一样的 · V7 积木转转 · V8 穿过墙洞 (reasoning). docs/W5-DESIGN.md §5 ⑦. One function, no top-level names: each rule
@@ -3801,10 +6283,7 @@ const W5U = {
   const INK = '#2B2118', GOLD = '#FFC93C', BLUE = '#4FB3FF';
   const lvOf = o => Math.min(5, Math.max(1, o.level || 1));
   const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
-  const NS = 'http://www.w3.org/2000/svg';
   const sv = (w, h) => { const s = svg('svg', { viewBox: '0 0 ' + w + ' ' + h, width: '100%', height: '100%' }); s.style.overflow = 'visible'; s.style.pointerEvents = 'none'; return s; };
-  /* an element's box on the stage, also for a piece inside a card */
-  const rectOf = e => W5U.rect(e);
   /* a FLIP move: e goes to (x, y, w, h) on the stage, animated from where it is now */
   const glide = (st, e, x, y, w, h, ms) => {
     const a = box(e); place(e, x, y, w, h);
@@ -3835,6 +6314,8 @@ const W5U = {
   const V5K = { inc: '+', join: '+', dec: '-', part: '-', cmp: '-' };
   const V5FB = { inc: '这是又来了哦', join: '这是合起来哦', dec: '这是吃掉了哦', part: '这是求另一份', cmp: '这是比多少' };
   const V5WHY = { inc: '又来了，用加号', join: '合起来，用加号', dec: '拿走，用减号', part: '求另一份，用减号', cmp: '比多少，用减号' };
+  /* the task card's picture: a plane, + and - */
+  const IC5P = W2X.icon('<path d="M10 52Q10 42 24 41H70L84 26H94L89 44Q96 46 96 52Q96 58 89 59H24Q10 59 10 52Z" fill="#EEF3FA" stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"/><text x="30" y="92" font-size="34" font-weight="900" text-anchor="middle" fill="#E8414B">+</text><text x="70" y="92" font-size="34" font-weight="900" text-anchor="middle" fill="#2E6FD8">−</text>');
   const V5MAX = [0, 5, 7, 9, 10, 10];
   /* the number sentence of a story: [a, op, b, c] */
   const v5eq = s => s.t === 'inc' || s.t === 'join' ? [s.a, '+', s.b, s.a + s.b] : s.t === 'dec' ? [s.a, '-', s.b, s.a - s.b] : s.t === 'part' ? [s.a, '-', s.b, s.a - s.b] : [s.a, '-', s.b, s.a - s.b];
@@ -3858,10 +6339,10 @@ const W5U = {
       if (d === 1) ts = ['inc', 'dec', rng.pick(['inc', 'dec'])];
       else if (d === 2) ts = ['inc', 'dec', 'join', rng.pick(['inc', 'dec', 'join'])];
       else if (d === 3) ts = ['part', rng.pick(['inc', 'join']), 'dec', rng.pick(['inc', 'join', 'dec'])];
-      else if (d === 4) ts = [rng.pick(['inc', 'join']), rng.pick(['dec', 'part']), rng.pick(['inc', 'dec', 'join', 'part'])];
+      else if (d === 4) { const a = rng.pick(['inc', 'join']), b = rng.pick(['dec', 'part']); ts = [a, b, rng.pick(['inc', 'join', 'dec', 'part'].filter(t => t !== a && t !== b))]; }
       else ts = ['cmp', rng.pick(['inc', 'join']), rng.pick(['dec', 'part']), rng.pick(['inc', 'join', 'dec', 'part'])];
       ts = rng.shuffle(ts);
-      /* L4: three different things, so the stories are told apart (the same kind twice: other numbers) */
+      /* L4: three different kinds - three different things (ducks, balls, cookies, fish), so the stories are told apart */
       const ss = ts.map(t => v5story(rng, t, hi));
       for (let i = 1; i < ss.length; i++) for (let j = 0; j < i; j++) if (ss[i].t === ss[j].t && ss[i].a === ss[j].a && ss[i].b === ss[j].b) { ss[i] = v5story(rng, ss[i].t, hi); j = -1; }
       const answer = ss.map(s => V5K[s.t]).join('');
@@ -3874,9 +6355,9 @@ const W5U = {
       const card = L ? (n === 3 ? { w: 220, h: 165, gap: 30, per: 3, cy: 188 } : { w: 200, h: 150, gap: 20, per: 4, cy: 180 })
         : (n === 3 ? { w: 216, h: 162, gap: 14, per: 3, cy: 300 } : { w: 226, h: 170, gap: 18, per: 2, cy: 382 });
       const bay = L ? { w: 320, h: 352, y: 296, xs: [182, 522] } : { w: 322, h: 314, y: 574, xs: [20, 362] };
-      return { card, bay, mini: { w: 150, h: 112, gap: 10 }, head: L ? 100 : 72, go: L ? [892, 572] : [297, 898] };
+      return { card, bay, mini: { w: 150, h: 112, gap: 10 }, head: L ? 100 : 72, go: L ? [886, 372] : [297, 898] };
     },
-    decor(G) { W3X.decor2(G, this.chars, true); },
+    decor(G) { W3X.decor2(G, this.chars); },
     /* where card i is: its home spot, or its place in a bay */
     spot(st, i) {
       const g = this.geo(st.q), c = g.card, n = st.q.ss.length;
@@ -4003,17 +6484,19 @@ const W5U = {
       st.bayEls.forEach((b, k) => K.pop(st, b, 60 * k));
       K.task(st, [[W2X.icon('<rect x="8" y="22" width="56" height="44" rx="8" fill="#FFF" stroke="' + INK + '" stroke-width="5"/><circle cx="26" cy="44" r="7" fill="#FFC93C" stroke="' + INK + '" stroke-width="3"/><circle cx="44" cy="44" r="7" fill="#FFC93C" stroke="' + INK + '" stroke-width="3"/><path d="M68 44H92M82 34L92 44L82 54" fill="none" stroke="' + INK + '" stroke-width="6" stroke-linecap="round"/>')], [IC5P], ['q']]);
       if (!q.heard) { st.cards.forEach((c, i) => K.pop(st, c, 70 * i)); K.say(st, '故事送上飞机！'); return; }
-      /* L4: the stories one by one, each told in two sentences while its card pops up (the cards can be moved at once) */
+      /* L4: the stories one by one, each told in two sentences while its card pops up - the question is open at once (a card
+         already told can be moved while the next one is told: no long wait) */
       st.cards.forEach(c => { c.style.visibility = 'hidden'; });
-      for (let i = 0; i < n; i++) {
-        if (!Session.alive(my)) return;
-        st.cards[i].style.visibility = ''; K.pop(st, st.cards[i]); Sfx.pop();
-        const [a, b] = v5tell(q.ss[i]);
-        Voice.say(a, { tag: 'prompt' }); await st.scope.guard(Voice.say(b, { tag: 'prompt' }));
-        await st.scope.wait(T(160));
-      }
-      if (!Session.alive(my)) return;
       st.prompt = '故事送上飞机！';
+      (async () => {
+        for (let i = 0; i < n; i++) {
+          if (!Session.alive(my)) return;
+          st.cards[i].style.visibility = ''; K.pop(st, st.cards[i]); Sfx.pop();
+          const [a, b] = v5tell(q.ss[i]);
+          Voice.say(a, { tag: 'prompt' }); await st.scope.guard(Voice.say(b, { tag: 'prompt' }));
+          await st.scope.wait(T(160));
+        }
+      })().catch(() => {});
     },
     /* the selected card glows; at L4 its story is told again */
     select(st, i) {
@@ -4073,7 +6556,7 @@ const W5U = {
       if (t === 'inc') p.moved.forEach((g, k) => st.scope.anim(g, [{ transform: 'translate(70px,-10px)', opacity: 0 }, { transform: 'translate(0,0)', opacity: 1 }], { duration: 520, delay: 90 * k, easing: EASE.glide, fill: 'backwards' }));
       else if (t === 'dec') p.moved.forEach((g, k) => { const cl = g.cloneNode(); cl.setAttribute('fill', '#E2A15B'); cl.setAttribute('stroke', INK); cl.setAttribute('stroke-dasharray', ''); c._svg.appendChild(cl); st.scope.anim(cl, [{ transform: 'translate(0,0)', opacity: 1 }, { transform: 'translate(60px,0)', opacity: 0 }], { duration: 560, delay: 90 * k, easing: EASE.glide, fill: 'forwards' }); });
       else (p.extra.concat(p.moved)).forEach((g, k) => st.scope.anim(g, [{ opacity: 1 }, { opacity: 0.25 }, { opacity: 1 }], { duration: 520, delay: 60 * k }));
-      await st.scope.wait(T(650));
+      await st.scope.wait(T(480));
     },
     /* the number sentence on the card, at its bottom */
     eqOn(st, i) {
@@ -4091,18 +6574,19 @@ const W5U = {
       this.select(st, -1);
       W5U.blue(st, st.cards[i]);
       await this.replay(st, i); if (!Session.alive(my)) return;
-      await st.scope.wait(300); if (!Session.alive(my)) return;
+      await st.scope.wait(120); if (!Session.alive(my)) return;
       bad.forEach(j => { st.where[j] = null; [0, 1].forEach(k => { const b = st.bays[k], x = b.indexOf(j); if (x >= 0) b.splice(x, 1); }); });
       bad.forEach(j => { st.where[j] = st.q.answer[j]; st.bays[st.q.answer[j] === '+' ? 0 : 1].push(j); });
       $$('.ringo', Stage.el).forEach(r => { r.style.visibility = 'hidden'; });
+      /* why, said while the card flies (the gold ring when it has landed) */
+      const why = W5U.sum(st, V5WHY[s0.t]);
       await Promise.all(st.cards.map((e, j) => { const s = this.spot(st, j); return glide(st, e, s.x, s.y, s.w, s.h, 420); }));
       if (!Session.alive(my)) return;
       W5U.gold(st, bad.map(j => st.cards[j]));
-      await W5U.sum(st, V5WHY[s0.t]); if (!Session.alive(my)) return;
-      await st.scope.wait(250); if (!Session.alive(my)) return;
+      await why; if (!Session.alive(my)) return;
+      await st.scope.wait(150); if (!Session.alive(my)) return;
       this.eqOn(st, i);
       await W5U.sum(st, v5read(v5eq(s0)));
-      await st.scope.wait(300);
     },
     rightEls(st, ans) { return this.bad(st, ans).map(i => st.cards[i]); },
     /* right: every card its number sentence, one read; the planes take off */
@@ -4124,7 +6608,7 @@ const W5U = {
       for (let a = 1; a <= 10; a++) for (let b = 1; b <= 10; b++) { if (a + b <= 10) out.push(v5read([a, '+', b, a + b])); if (a - b >= 1) out.push(v5read([a, '-', b, a - b])); }
       /* the heard stories (L4, numbers within 10) */
       for (let a = 1; a <= 10; a++) for (let b = 1; b <= 10; b++) {
-        if (a + b <= 10) v5tell({ t: 'inc', a, b }).concat(v5tell({ t: 'join', a, b })).forEach(x => out.push(x));
+        if (a + b <= 10 && a + b >= 3) v5tell({ t: 'inc', a, b }).concat(v5tell({ t: 'join', a, b })).forEach(x => out.push(x));
         if (a - b >= 1 && a >= 3) v5tell({ t: 'dec', a, b }).concat(v5tell({ t: 'part', a, b })).forEach(x => out.push(x));
       }
       return uniq(out);
@@ -4139,8 +6623,8 @@ const W5U = {
        L4 the cuts that must turn: 2 x 3 into two L, an L of 8, a step of 8, a T of 8 lying down
        L5 four the same (2 x 4, 3 x 4, 4 x 4, 2 x 6 ...): several cuts, a cut may start or end on an earlier one
      Right: the pieces are the same - one turned or flipped onto another covers it exactly (W5U.poly.same). Every right cut is
-     right. A random cut (then 好了) is right at most 1 time in 5 (2 x 3: 3 of 15; 2 x 2 is left out: 2 of 6); L5 by
-     simulation (tests/../cuts5.py, see audit) at most 0.03. Wrong: one piece is lifted, turned / flipped onto the other, what
+     right. A random cut (then 好了) is right at most 1 time in 5 (2 x 3: 3 of 15; 2 x 2 is left out: 2 of 6); L5 (cut at random until
+     there are four pieces) by simulation at most 0.03 (CUT5CH). Wrong: one piece is lifted, turned / flipped onto the other, what
      is left over (or sticks out) gets a blue dashed outline; the gold laser cuts the right way; one half turns onto the
      other and covers it "转过来，一样". */
   const CUTS = {
@@ -4150,8 +6634,8 @@ const W5U = {
     4: ['##,##,##', '####,##..,##..', '.###,####,#...', '##..,####,##..'],
     5: ['##,##,##,##', '###,###,###,###', '####,####,####,####', '##,##,##,##,##,##'],
   };
-  /* L5: a random play (cuts at random until there are four pieces or more) is right this often at most (simulated, 1500
-     plays each: 2 x 4 0.031, 3 x 4 0.002, 4 x 4 0.000, 2 x 6 0.002) */
+  /* L5: a random play (cuts at random until there are four pieces or more) is right this often at most (simulated offline
+     with the same cut rules, 1500 plays each: 2 x 4 0.031, 3 x 4 0.002, 4 x 4 0.000, 2 x 6 0.002) */
   const CUT5CH = 0.04;
   const METAL = [['#C8D3E0', '#9FB0C4'], ['#F2C14E', '#D49A1E'], ['#E86A5B', '#B8473A']];
   const TINT = ['#FFC93C', '#7FC8FF', '#FF8F80', '#8FE09A', '#C9A8FF', '#FFB36B'];
@@ -4397,7 +6881,7 @@ const W5U = {
       const g = svg('g', {}, s), off = (gr && gr._off) || [0, 0], offB = ((st.pieceEls || []).find(x => x._cells === B) || { _off: [0, 0] })._off;
       A.forEach(([x, y]) => svg('rect', { x: M + x * C + 4, y: M + y * C + 4, width: C - 8, height: C - 8, rx: 10, fill: 'rgba(255,255,255,.55)', stroke: INK, 'stroke-width': 4 }, g));
       const [a, b, c, d, e, f] = L.matrix;
-      await st.scope.anim(g, [{ transform: 'translate(' + off[0] + 'px,' + off[1] + 'px)' }, { transform: 'translate(' + (off[0] + offB[0]) / 2 + 'px,' + ((off[1] + offB[1]) / 2 - 30) + 'px)', offset: 0.35 }, { transform: 'matrix(' + [a, b, c, d, e + offB[0], f + offB[1]].join(',') + ')' }], { duration: fast() ? 10 : 800, easing: EASE.glide, fill: 'forwards' });
+      await st.scope.anim(g, [{ transform: 'translate(' + off[0] + 'px,' + off[1] + 'px)' }, { transform: 'translate(' + (off[0] + offB[0]) / 2 + 'px,' + ((off[1] + offB[1]) / 2 - 30) + 'px)', offset: 0.35 }, { transform: 'matrix(' + [a, b, c, d, e + offB[0], f + offB[1]].join(',') + ')' }], { duration: fast() ? 10 : 520, easing: EASE.glide, fill: 'forwards' });
       return { g, L, offB };
     },
     /* 1. a piece lifted onto another (turned / flipped): what is left over or sticks out, blue dashed; 2. the gold laser
@@ -4420,7 +6904,7 @@ const W5U = {
         const marks = odd.map(([x, y]) => svg('rect', { x: M + x * C + 8 + gh.offB[0], y: M + y * C + 8 + gh.offB[1], width: C - 16, height: C - 16, rx: 12, fill: 'rgba(79,179,255,.18)', stroke: BLUE, 'stroke-width': 6, 'stroke-dasharray': '12 8' }, st.svgEl));
         const mk = marks.length ? marks : [gh.g]; (st.xb = st.xb || []).push(...mk); W5U.ring(st, mk, BLUE, 4);
       }
-      await st.scope.wait(900); if (!Session.alive(my)) return;
+      await st.scope.wait(450); if (!Session.alive(my)) return;
       /* the right cut: the plate whole again, the gold laser along the plan, the pieces part */
       $$('.ringo, .badge', Stage.el).forEach(r => { r.style.visibility = 'hidden'; });
       st.cut = new Set(); st.strokes = []; st.apart = false; st.pieces = cutPieces(st.g, st.cut); this.draw(st);
@@ -4429,15 +6913,14 @@ const W5U = {
       gold.setAttribute('stroke-dasharray', len + ' ' + len); st.scope.anim(gold, [{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: fast() ? 10 : 650, fill: 'forwards' });
       Sfx.zap(); W5U.dot(st, this.pt(st, q.sol[0][0]).x, this.pt(st, q.sol[0][0]).y, 22, GOLD);
       W5U.note(st, '照这样切');
-      await st.scope.wait(T(700)); if (!Session.alive(my)) return;
+      await st.scope.wait(T(600)); if (!Session.alive(my)) return;
       q.sol.forEach(s => cutEdges(s).forEach(e => st.cut.add(e))); st.strokes = q.sol.slice(); st.pieces = cutPieces(st.g, st.cut); st.apart = true; this.draw(st);
-      await st.scope.wait(400); if (!Session.alive(my)) return;
+      await st.scope.wait(150); if (!Session.alive(my)) return;
       $$('.ringo', Stage.el).forEach(r => { r.style.visibility = 'hidden'; });
       const R = st.pieces;
       await this.ghost(st, R[0], R[1], st.pieceEls[0]); if (!Session.alive(my)) return;
       W5U.gold(st, st.plate, 4);
       await W5U.sum(st, '转过来，一样');
-      await st.scope.wait(300);
     },
     rightEls(st) { return [st.plate]; },
     /* right: one piece turned onto another covers it */
@@ -4472,11 +6955,11 @@ const W5U = {
   const V7FIG3 = ['2310', '0132', '1203', '3021', '1023', '3201', '0000', '1111', '2222', '3333', '2301', '0123', '3210', '1032', '0303', '1212', '2121', '3030'];
   const V7FIG4 = ['2344', '4423', '2355', '5523', '4501', '1045', '4512', '3045', '0154', '5401', '2453', '3524', '4140', '5253', '0414', '2535'];
   /* the face drawn in a 100 x 100 square */
-  const v7face = (s, st0, x, y, k) => {
-    k = k || 1;
-    svg('rect', { x, y, width: 100 * k, height: 100 * k, fill: st0 === 4 ? V7Y : V7B }, s);
+  const v7face = (s, st0, x, y, k, e) => {
+    k = k || 1; e = e || 0;                  /* e: a hair bigger, so the pattern card shows no seam where the blocks meet */
+    svg('rect', { x: x - e, y: y - e, width: 100 * k + 2 * e, height: 100 * k + 2 * e, fill: st0 === 4 ? V7Y : V7B }, s);
     const P = [[[0, 0], [1, 0], [0, 1]], [[0, 0], [1, 0], [1, 1]], [[1, 0], [1, 1], [0, 1]], [[0, 0], [1, 1], [0, 1]]][st0];
-    if (P) svg('path', { d: 'M' + P.map(([a, b]) => (x + a * 100 * k) + ' ' + (y + b * 100 * k)).join('L') + 'Z', fill: V7Y }, s);
+    if (P) svg('path', { d: 'M' + P.map(([a, b]) => (x + a * 100 * k + (a ? e : -e)) + ' ' + (y + b * 100 * k + (b ? e : -e))).join('L') + 'Z', fill: V7Y }, s);
   };
   W5R.V7 = {
     kind0: 'blocks5', verb: '转！', intro: '黑豹的地砖！', praise: ['图案对上啦！'],
@@ -4519,7 +7002,7 @@ const W5U = {
     /* the pattern card (with the blocks' lines at L1-L2, or when the explanation draws them) */
     drawCard(st, lines) {
       const q = st.q, N = q.N, s = st.cardSvg; while (s.firstChild) s.removeChild(s.firstChild);
-      const k = 1 / N; q.tgt.forEach((t, i) => v7face(s, t, (i % N) * 100 * k, Math.floor(i / N) * 100 * k, k));
+      const k = 1 / N; q.tgt.forEach((t, i) => v7face(s, t, (i % N) * 100 * k, Math.floor(i / N) * 100 * k, k, 0.35));
       if (lines) for (let j = 1; j < N; j++) { svg('path', { d: 'M' + (100 * j / N) + ' 0V100M0 ' + (100 * j / N) + 'H100', stroke: '#fff', 'stroke-width': 1.6 }, s); svg('path', { d: 'M' + (100 * j / N) + ' 0V100M0 ' + (100 * j / N) + 'H100', stroke: INK, 'stroke-width': 0.9, 'stroke-dasharray': '2.4 1.6' }, s); }
       svg('rect', { x: 0, y: 0, width: 100, height: 100, fill: 'none', stroke: INK, 'stroke-width': 2.4 }, s);
     },
@@ -4776,7 +7259,7 @@ const W5U = {
         W5U.blue(st, mine);
         const a = this.lay(st.bigSvg, v8front(q.towers[ans]), q.hole, 'rgba(232,65,75,.55)');
         W5U.note(st, '这里卡住了');
-        await st.scope.wait(1000); if (!Session.alive(my)) return;
+        await st.scope.wait(900); if (!Session.alive(my)) return;
         a.g.remove(); $$('.ringo', Stage.el).forEach(r => { r.style.visibility = 'hidden'; });
         const sh = this.lay(st.bigSvg, v8front(q.towers[q.answer]), q.hole, 'rgba(255,201,60,.9)');
         st.scope.anim(sh.g, [{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
@@ -4785,7 +7268,6 @@ const W5U = {
         await st.scope.wait(250); if (!Session.alive(my)) return;
         await this.through(st, right, st.bigHole); if (!Session.alive(my)) return;
         await W5U.sum(st, '穿过去了');
-        await st.scope.wait(200);
         return;
       }
       const mine = st.holeEls[ans], right = st.holeEls[q.answer];
@@ -4793,7 +7275,7 @@ const W5U = {
       st.scope.anim(st.towerEl, [{ transform: 'translateY(0)' }, { transform: q.side ? 'translateX(-40px)' : 'translateY(-34px)' }, { transform: 'translateY(0)' }], { duration: 600, easing: EASE.glide });
       const a = this.lay(mine._s, q.sil, q.holes[ans], 'rgba(232,65,75,.6)');
       W5U.note(st, '这里卡住了');
-      await st.scope.wait(1000); if (!Session.alive(my)) return;
+      await st.scope.wait(900); if (!Session.alive(my)) return;
       $$('.ringo', Stage.el).forEach(r => { r.style.visibility = 'hidden'; });
       /* the lamp behind the building, its light, the shadow on the wall */
       const tb = box(st.towerEl), lamp = W2X.thing(st, 64, 64, 7, ''); lamp.innerHTML = '<svg viewBox="0 0 64 64" width="100%" height="100%"><circle cx="32" cy="32" r="16" fill="#FFE36B" stroke="' + INK + '" stroke-width="4"/><path d="M32 4V12M32 52V60M4 32H12M52 32H60M12 12L18 18M46 46L52 52M52 12L46 18M12 52L18 46" stroke="#FFC93C" stroke-width="5" stroke-linecap="round"/></svg>';
@@ -4811,13 +7293,12 @@ const W5U = {
       beam.remove();
       await this.through(st, st.towerEl, right); if (!Session.alive(my)) return;
       await W5U.sum(st, '穿过去了');
-      await st.scope.wait(200);
     },
     /* the building flies into the hole (and through) */
     async through(st, e, hole) {
       const a = box(e), b = box(hole);
       Sfx.whoosh(0.3);
-      await st.scope.anim(e, [{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: 'translate(' + (b.x + b.w / 2 - a.x - a.w / 2) + 'px,' + (b.y + b.h / 2 - a.y - a.h / 2) + 'px) scale(.35)', opacity: 0.15 }], { duration: fast() ? 10 : 650, easing: EASE.glide, fill: 'forwards' });
+      await st.scope.anim(e, [{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: 'translate(' + (b.x + b.w / 2 - a.x - a.w / 2) + 'px,' + (b.y + b.h / 2 - a.y - a.h / 2) + 'px) scale(.35)', opacity: 0.15 }], { duration: fast() ? 10 : 520, easing: EASE.glide, fill: 'forwards' });
     },
     rightEls(st) { return [st.cards[st.q.answer]]; },
     async reveal(st) {
@@ -4832,7 +7313,6 @@ const W5U = {
     snap(st) { return { opts: st.opts || null }; },
     lines() { return uniq([this.intro, '从哪个洞能穿过？', '从旁边推！', '哪座能穿过？', '卡住啦', '这里卡住了', '影子就是洞', '穿过去了', '穿过去了！'].concat(this.praise)); },
   };
-  const IC5P = W2X.icon('<path d="M10 52Q10 42 24 41H70L84 26H94L89 44Q96 46 96 52Q96 58 89 59H24Q10 59 10 52Z" fill="#EEF3FA" stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"/><text x="30" y="92" font-size="34" font-weight="900" text-anchor="middle" fill="#E8414B">+</text><text x="70" y="92" font-size="34" font-weight="900" text-anchor="middle" fill="#2E6FD8">−</text>');
 })();
 /* ---------------------------------------------------------------- 积木城 on the map and in the parent panel (out of the first
    screen: index.html calls these hooks when they are here - FLAG_HTML: window.W5S, Parent.panel: W5P)

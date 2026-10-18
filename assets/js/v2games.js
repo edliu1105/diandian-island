@@ -56,6 +56,7 @@ const RQ = {
   audit(q) {
     if (q.t === 'give') return { none: 'the child gives' };
     if (q.t === 'cmp') { const want = q.pairs.map(p => (q.ask === 'big' ? Math.max(...p) : Math.min(...p))); return { two: true, n: 2, pos: q.pairs.map((p, i) => p.indexOf(want[i])), err: want.join(',') === q.answer && q.pairs.every(p => p[0] !== p[1]) ? null : 'pairs' }; }
+    if (q.t === 'op10') return { two: true, n: 2, pos: q.answer.split(',').map(o => (o === '+' ? 0 : 1)), err: q.ss.map(x => RQ.op10.OP[x.t]).join(',') === q.answer ? null : 'ops' };
     if (q.t === 'eq') { const tru = q.eqs.filter(e => (e[1] === '+' ? e[0] + e[2] : e[0] - e[2]) === e[4]); return { n: q.eqs.length, pos: q.answer, err: tru.length === 1 && q.eqs.indexOf(tru[0]) === q.answer && new Set(q.eqs.map(String)).size === q.eqs.length ? null : 'true ones ' + tru.length }; }
     return W3X.auditNum(q);
   },
@@ -236,6 +237,171 @@ const RQ = {
     },
     /* after a wrong answer: the result comes into the sentence */
     async show(st) { (st.factEl ? Array.from(st.factEl.querySelectorAll('[data-slot]')) : []).forEach(e => RQ.fill(st, e, st.q.answer, 56)); await st.scope.wait(T(500)); },
+  },
+  /* ---------------------------------------------------------------- 积木城's three cards (docs/W5-DESIGN.md §8.5, package D):
+     pos (where: 上面 / 里面 / 前面 / 后面 / 左边 / 右边), shape (how many triangles / circles / squares / oblongs in a
+     little picture - separate shapes only), op10 (two story cards: + or -, 一题两问) */
+  /* pos: a box on the plain board and five toys round it - "谁在盒子后面？". A closed box (a toy can be on it) or an open
+     crate (a toy can be in it); front / behind are drawn as they look: behind - its lower half hidden by the box, higher up;
+     in front - lower down, over the box. Every toy has its own tap area over its whole body (one behind the box too). The
+     asked word from a bag; the right toy's place among the five options from a bag. After a wrong answer: his toy blue,
+     where it really is ("它在盒子前面"); behind: the box goes see-through; the right toy gold ("小熊在盒子后面"). */
+  pos: {
+    toys: { teddy: '小熊', bunny: '小兔', duck: '小鸭', chick: '小鸡', kitten: '小猫', dino: '恐龙', turtle: '乌龟', sheep: '小羊' },
+    words: { top: '上面', in: '里面', front: '前面', back: '后面', left: '左边', right: '右边' },
+    gen(G, c, o) {
+      const w = bagPick(G, 'rqposw', ['top', 'in', 'front', 'back', 'left', 'right']), open = w === 'in' || (w !== 'top' && G.rng.chance(0.5));
+      const spots = ['left', 'right', 'front', 'back', open ? 'in' : 'top'], toys = G.rng.shuffle(Object.keys(this.toys)).slice(0, 5);
+      const at = {}; G.rng.shuffle(spots).forEach((s, i) => { at[toys[i]] = s; });
+      const ok = toys.find(t => at[t] === w), opts = W3X.deal(G, ok, toys.filter(t => t !== ok), 'rqpos');
+      return { k: ['pos', w, open ? 1 : 0, opts.map(t => t + at[t]).join('')], w, open, at, opts, answer: ok, say: '谁在盒子' + this.words[w] + '？' };
+    },
+    /* the box and the toys' places (stage px): the box's front face x0..x1, y0..y1; a toy is 130 square */
+    geo() { const L = K.L(), cx = L ? 512 : 352, y0 = L ? 300 : 420, T = 110; return { cx, y0, T, spot: { left: [cx - 270, y0 + 50], right: [cx + 160, y0 + 50], front: [cx - 55, y0 + 140], back: [cx - 125, y0 - 110], top: [cx + 25, y0 - 140], in: [cx - 10, y0 - 82] } }; },
+    present(st) {
+      const q = st.q, g = RQ.pos.geo(), ink = V2G.ink;
+      /* the box: closed (a lid on top) or open (its back wall, the dark inside, then its front) - the front face drawn last */
+      const mk = (z, draw) => { const e = W2X.thing(st, 300, 260, z, ''); e.style.pointerEvents = 'none'; const s = svg('svg', { viewBox: '0 0 300 260', width: '100%', height: '100%' }, e); s.style.overflow = 'visible'; draw(s); return e; };
+      st.boxBack = mk(5, s => { if (q.open) { svg('path', { d: 'M30 90L70 40H270L230 90Z', fill: '#B0743A', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('path', { d: 'M40 88L74 48H262L228 88Z', fill: '#5B3A1E' }, s); } else { svg('path', { d: 'M30 90L70 40H270L230 90Z', fill: '#FF8FA8', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('path', { d: 'M126 90L166 40M146 90L186 40', stroke: '#FFC93C', 'stroke-width': 10 }, s); } });
+      st.boxFront = mk(7, s => { svg('path', { d: 'M230 90L270 40V200L230 250Z', fill: q.open ? '#9A622E' : '#E06A86', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('rect', { x: 30, y: 90, width: 200, height: 160, rx: 6, fill: q.open ? '#C98B4A' : '#FF7A98', stroke: ink, 'stroke-width': 6 }, s); if (q.open) svg('path', { d: 'M30 140H230M30 195H230', stroke: '#9A622E', 'stroke-width': 5 }, s); else svg('path', { d: 'M120 90V250M140 90V250', stroke: '#FFC93C', 'stroke-width': 10 }, s); });
+      /* the toys: the one behind under the box, the one inside between its back and its front */
+      const zOf = s => (s === 'back' ? 4 : s === 'in' ? 6 : s === 'front' ? 8 : 6);
+      st.toyEls = q.opts.map(t => { const e = W2X.thing(st, g.T, g.T, zOf(q.at[t]), ''); e.style.pointerEvents = 'none'; const im = img('assets/props/' + t + '.png', '', e); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain' }); return e; });
+      st.cards = q.opts.map((t, i) => { const e = W2X.thing(st, g.T, g.T, 9, ''); e.style.borderRadius = '22px'; K.reg(st, 'card' + i, e, {}); return e; });
+      st.opts = q.opts.slice();
+      RQ.pos.place(st);
+      st.toyEls.forEach((e, i) => K.pop(st, e, 50 * i));
+    },
+    place(st) {
+      const q = st.q, g = RQ.pos.geo(), bx = g.cx - 150, by = g.y0 - 90;
+      [st.boxBack, st.boxFront].forEach(e => e && place(e, bx, by, 300, 260));
+      q.opts.forEach((t, i) => { const p = g.spot[q.at[t]]; [st.toyEls[i], st.cards[i]].forEach(e => e && place(e, p[0], p[1], g.T, g.T)); });
+    },
+    where(st, t) { return '它在盒子' + RQ.pos.words[st.q.at[t]]; },
+    feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(RQ.pos.where(st, ans)); },
+    /* his toy (blue) and where it is; behind: the box goes see-through for a moment; the right toy (gold) and where it is */
+    async explain(st, ans) {
+      const q = st.q, my = st, i = st.opts.indexOf(ans), r = st.opts.indexOf(q.answer);
+      if (st.cards[i]) W3X.mine(st, st.cards[i], 6);
+      W3X.tell(RQ.pos.where(st, ans));
+      await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+      if (q.w === 'back' || q.at[ans] === 'back') { [st.boxBack, st.boxFront].forEach(e => st.scope.anim(e, [{ opacity: 1 }, { opacity: 0.3, offset: 0.25 }, { opacity: 0.3, offset: 0.75 }, { opacity: 1 }], { duration: T(1100) })); await st.scope.wait(T(1100)); if (!Session.alive(my)) return; await Step.beat(st); if (!Session.alive(my)) return; }
+      W3X.gold(st, st.cards[r], 6, 0); K.hop(st, st.toyEls[r], 18); Sfx.reveal();
+      W3X.tell(RQ.pos.toys[q.answer] + '在盒子' + RQ.pos.words[q.w]);
+      await W3X.beat(st, 1600);
+    },
+    reveal(st) { const r = st.opts.indexOf(st.q.answer); if (st.toyEls && st.toyEls[r]) K.hop(st, st.toyEls[r], 22); },
+    lines() { const P = RQ.pos, out = []; Object.keys(P.words).forEach(w => { out.push('谁在盒子' + P.words[w] + '？', '它在盒子' + P.words[w]); Object.keys(P.toys).forEach(t => out.push(P.toys[t] + '在盒子' + P.words[w])); }); return out; },
+  },
+  /* shape: a little picture of separate shapes (triangles - some turned or long, circles, squares - some a little turned,
+     oblongs), "几个三角形？" with five number cards. After a wrong answer: the shapes asked for counted one by one, the right
+     card gold ("三个三角形！") */
+  shape: {
+    kinds: { tri: '三角形', circle: '圆形', square: '正方形', rect: '长方形' },
+    gen(G, c, o) {
+      const ask = bagPick(G, 'rqshape', ['tri', 'circle', 'square', 'rect']), n = G.rng.int(1, 6), others = G.rng.int(Math.max(2, 5 - n), 9 - n);
+      const items = Array.from({ length: n }, () => ask).concat(Array.from({ length: others }, () => G.rng.pick(['tri', 'circle', 'square', 'rect'].filter(k => k !== ask))));
+      const cells = G.rng.shuffle(Array.from({ length: 18 }, (_, i) => i)).slice(0, items.length);
+      const sh = G.rng.shuffle(items).map((k, i) => ({ k, cell: cells[i], s: G.rng.int(70, 100), rot: k === 'circle' ? 0 : G.rng.pick([0, 0, 15, -15, 30, 180, 90]), col: G.rng.int(0, 5), long: k === 'tri' && G.rng.chance(0.3), jx: G.rng.int(-10, 10), jy: G.rng.int(-10, 10) }));
+      return { k: ['shape', ask, sh.map(x => x.k[0] + x.cell).join('')], ask, n, sh, answer: n, opts: numOptions(G, n, 0, 10), say: '几个' + this.kinds[ask] + '？' };
+    },
+    /* the picture: 6 x 3 cells (landscape) / 3 x 6 (portrait) */
+    frame() { return K.L() ? { x: 152, y: 100, w: 720, h: 380, cols: 6 } : { x: 62, y: 204, w: 580, h: 570, cols: 3 }; },
+    draw(s, x, k) {
+      const ink = V2G.ink, col = ['#FF6B5B', '#4FB3FF', '#5CC46E', '#FFC93C', '#B57BFF', '#FF9F43'][x.col], h = x.s * (k || 1) / 2;
+      const g = svg('g', { transform: 'rotate(' + x.rot + ')' }, s);
+      if (x.k === 'circle') svg('circle', { cx: 0, cy: 0, r: h * 0.92, fill: col, stroke: ink, 'stroke-width': 5 }, g);
+      else if (x.k === 'square') svg('rect', { x: -h * 0.8, y: -h * 0.8, width: h * 1.6, height: h * 1.6, fill: col, stroke: ink, 'stroke-width': 5, 'stroke-linejoin': 'round' }, g);
+      else if (x.k === 'rect') svg('rect', { x: -h, y: -h * 0.48, width: 2 * h, height: h * 0.96, fill: col, stroke: ink, 'stroke-width': 5, 'stroke-linejoin': 'round' }, g);
+      else svg('path', { d: x.long ? 'M' + (-h) + ' ' + (h * 0.7) + 'L' + h + ' ' + (h * 0.7) + 'L' + (-h * 0.6) + ' ' + (-h * 0.7) + 'Z' : 'M0 ' + (-h) + 'L' + (h * 0.95) + ' ' + (h * 0.75) + 'L' + (-h * 0.95) + ' ' + (h * 0.75) + 'Z', fill: col, stroke: ink, 'stroke-width': 5, 'stroke-linejoin': 'round' }, g);
+      return g;
+    },
+    present(st) {
+      const q = st.q, f = RQ.shape.frame();
+      const pic = st.pic = W2X.thing(st, 10, 10, 5, ''); Object.assign(pic.style, { background: 'rgba(255,255,255,.92)', borderRadius: '24px', boxShadow: '0 0 0 4px #2B2118' });
+      const s = st.picSvg = svg('svg', { viewBox: '0 0 ' + f.w + ' ' + f.h, width: '100%', height: '100%' }, pic);
+      const cw = f.w / f.cols, rows = 18 / f.cols, ch = f.h / rows;
+      st.shapeEls = q.sh.map(x => { const c = x.cell % f.cols, r = Math.floor(x.cell / f.cols), gg = svg('g', { transform: 'translate(' + (c * cw + cw / 2 + x.jx) + ' ' + (r * ch + ch / 2 + x.jy) + ')' }, s); RQ.shape.draw(gg, x, Math.min(cw, ch) / 126); gg._k = x.k; return gg; });
+      RQ.shape.place(st); K.pop(st, pic);
+      RQ.numCards(st, q.opts, 1);
+    },
+    place(st) { const f = RQ.shape.frame(); if (st.pic) place(st.pic, f.x, f.y, f.w, f.h); RQ.placeNum(st); },
+    /* after a wrong answer: the shapes asked for counted one by one */
+    async explain(st, ans) {
+      const q = st.q;
+      await W3X.explainCards(st, ans, { line: CNQ(q.n) + '个' + RQ.shape.kinds[q.ask] + '！', show: async () => { const els = st.shapeEls.filter(e => e._k === q.ask); for (let i = 0; i < els.length; i++) { if (!Session.alive(st)) return; const r = W3X.srect(els[i]); W3X.badgeAt(st, r.x + r.w / 2, r.y + r.h / 2, i + 1, 40); await W3X.count(st, 300, i + 1); } } });
+    },
+    lines() { const out = []; Object.values(RQ.shape.kinds).forEach(k => { out.push('几个' + k + '？'); for (let n = 1; n <= 6; n++) out.push(CNQ(n) + '个' + k + '！'); }); return out; },
+  },
+  /* op10: two story cards side by side (portrait: one above the other), each with its own + and - (一题两问): which do
+     you use? 又来了 / 合起来 + ; 拿走 / 求另一部分 / 比多少 - (drawn as §3.3: what came sparkles, what went is a grey dashed
+     outline with an arrow out, together a brace, the part asked for a "?"). The four (+, -) pairs from a bag. After a
+     wrong answer: his button blue, the story played again ("这是吃掉了哦"), the right button gold ("拿走，用减号"). */
+  op10: {
+    OP: { inc: '+', join: '+', dec: '-', part: '-', cmp: '-' },
+    FB: { inc: '这是又来了哦', join: '这是合起来哦', dec: '这是吃掉了哦', part: '这是求另一份', cmp: '这是比多少' },
+    WHY: { inc: '又来了，用加号', join: '合起来，用加号', dec: '拿走，用减号', part: '求另一份，用减号', cmp: '比多少，用减号' },
+    gen(G, c, o) {
+      const want = bagPick(G, 'rqop', ['+,+', '+,-', '-,+', '-,-']).split(','), P = { '+': ['inc', 'join'], '-': ['dec', 'part', 'cmp'] };
+      const ss = want.map(op => { const t = G.rng.pick(P[op]); if (op === '+') { const s = G.rng.int(3, 10), a = G.rng.int(1, s - 1); return { t, a, b: s - a }; } const a = G.rng.int(3, t === 'cmp' ? 8 : 10), b = G.rng.int(1, a - 1); return { t, a, b }; });
+      if (ss[0].t === ss[1].t && ss[0].a === ss[1].a) ss[1].a = ss[1].a > 3 ? ss[1].a - 1 : ss[1].a + 1;
+      ss.forEach(s => { if (s.b >= s.a && s.t !== 'inc' && s.t !== 'join') s.b = s.a - 1; });
+      return { k: ['op10', ss.map(s => s.t + s.a + s.b).join('|')], ss, answer: want.join(','), opts: ['+', '-', '+', '-'], say: '用加还是用减？' };
+    },
+    /* a story's picture (viewBox 200 x 150): dots in colours, the arrows / brace / "?" of §3.3 */
+    draw(s, x) {
+      const ink = V2G.ink, out = { moved: [] };
+      const dots = (n, x0, y0, w, h, col, keep) => { let per = 1; const sz = k => Math.min(30, w / k, h / Math.ceil(n / k)); for (let k = 2; k <= n; k++) if (sz(k) > sz(per) + 0.5) per = k; const z = sz(per), rows = Math.ceil(n / per), P = []; for (let i = 0; i < n; i++) { const r = Math.floor(i / per), inRow = Math.min(per, n - r * per), c = i % per; P.push([x0 + w / 2 + (c - (inRow - 1) / 2) * z, y0 + h / 2 + (r - (rows - 1) / 2) * z, z * 0.42]); } return P.map(([cx, cy, r], i) => (keep ? keep(i, cx, cy, r) : svg('circle', { cx, cy, r, fill: col, stroke: ink, 'stroke-width': 2.4 }, s))); };
+      const arrow = (x1, y1, x2, y2, col, dash) => { svg('path', { d: 'M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2, stroke: col, 'stroke-width': 5, 'stroke-linecap': 'round', 'stroke-dasharray': dash ? '2 9' : '', fill: 'none' }, s); const a = Math.atan2(y2 - y1, x2 - x1), p = t => (x2 + Math.cos(a + t) * 13).toFixed(1) + ' ' + (y2 + Math.sin(a + t) * 13).toFixed(1); svg('path', { d: 'M' + x2 + ' ' + y2 + 'L' + p(2.6) + 'L' + p(-2.6) + 'Z', fill: col }, s); };
+      const brace = (x0, x1, y, up) => { const k = up ? -1 : 1, m = (x0 + x1) / 2, h = 10 * k; svg('path', { d: 'M' + x0 + ' ' + y + 'Q' + x0 + ' ' + (y + h) + ' ' + (x0 + 12) + ' ' + (y + h) + 'H' + (m - 10) + 'Q' + m + ' ' + (y + h) + ' ' + m + ' ' + (y + 2 * h) + 'Q' + m + ' ' + (y + h) + ' ' + (m + 10) + ' ' + (y + h) + 'H' + (x1 - 12) + 'Q' + x1 + ' ' + (y + h) + ' ' + x1 + ' ' + y, stroke: '#E0A400', 'stroke-width': 4.5, fill: 'none', 'stroke-linecap': 'round' }, s); };
+      const qm = (cx, cy) => { svg('circle', { cx, cy, r: 13, fill: '#FFF3C4', stroke: ink, 'stroke-width': 2.6 }, s); const t = svg('text', { x: cx, y: cy + 7, 'text-anchor': 'middle', 'font-size': 20, 'font-weight': 900, fill: ink, 'font-family': 'system-ui,sans-serif' }, s); t.textContent = '?'; };
+      const num = (cx, cy, n) => { const t = svg('text', { x: cx, y: cy, 'text-anchor': 'middle', 'font-size': 22, 'font-weight': 900, fill: ink, 'font-family': 'system-ui,sans-serif' }, s); t.textContent = n; };
+      if (x.t === 'inc') { dots(x.a, 4, 4, 120, 140, '#4FB3FF'); svg('path', { d: 'M128 8V142', stroke: 'rgba(43,33,24,.25)', 'stroke-width': 2, 'stroke-dasharray': '4 5' }, s); out.moved = dots(x.b, 132, 4, 64, 116, '#4FB3FF', (i, cx, cy, r) => { const g = svg('g', {}, s); svg('circle', { cx, cy, r, fill: '#4FB3FF', stroke: ink, 'stroke-width': 2.4 }, g); svg('path', { d: 'M' + (cx + r * 0.7) + ' ' + (cy - r * 1.3) + 'l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z', fill: '#FFC93C', stroke: ink, 'stroke-width': 1 }, g); return g; }); arrow(198, 138, 134, 138, '#3FAE55'); }
+      else if (x.t === 'dec') { const P = dots(x.a, 4, 4, 160, 142, '#E2A15B', (i, cx, cy, r) => (i < x.a - x.b ? svg('circle', { cx, cy, r, fill: '#E2A15B', stroke: ink, 'stroke-width': 2.4 }, s) : svg('circle', { cx, cy, r, fill: 'rgba(154,163,173,.15)', stroke: '#9AA3AD', 'stroke-width': 2.8, 'stroke-dasharray': '4 4' }, s))); out.moved = P.slice(x.a - x.b); const l = P[P.length - 1]; arrow(+l.getAttribute('cx') + 14, +l.getAttribute('cy'), 198, +l.getAttribute('cy'), '#9AA3AD', true); }
+      else if (x.t === 'join') { dots(x.a, 2, 2, 96, 104, '#E8414B'); dots(x.b, 102, 2, 96, 104, '#4F7BFF'); brace(10, 190, 112); qm(100, 136); out.moved = Array.from(s.querySelectorAll('circle')); }
+      else if (x.t === 'part') { dots(x.b, 2, 68, 96, 80, '#E8414B'); out.moved = dots(x.a - x.b, 102, 68, 96, 80, '#FFC93C'); brace(12, 188, 40, true); num(100, 16, x.a); qm(150, 54); }
+      else { const z = Math.min(36, 190 / x.a), x0 = 100 - (x.a - 1) * z / 2; for (let i = 0; i < x.a; i++) { const e = svg('circle', { cx: x0 + i * z, cy: 70, r: z * 0.42, fill: '#E8414B', stroke: ink, 'stroke-width': 2.4 }, s); if (i >= x.b) out.moved.push(e); } for (let i = 0; i < x.b; i++) svg('circle', { cx: x0 + i * z, cy: 70 + z + 8, r: z * 0.42, fill: '#5CC46E', stroke: ink, 'stroke-width': 2.4 }, s); const xa = x0 + x.b * z - z / 2, xb = x0 + (x.a - 1) * z + z / 2; svg('rect', { x: xa, y: 70 - z / 2 - 3, width: xb - xa, height: z + 6, rx: 8, fill: 'none', stroke: '#E0A400', 'stroke-width': 3.5, 'stroke-dasharray': '6 5' }, s); qm((xa + xb) / 2, 70 - z / 2 - 18); }
+      return out;
+    },
+    geo() { const L = K.L(); return L ? { cards: [[150, 104], [554, 104]], w: 320, h: 240, btn: 112, by: 372 } : { cards: [[44, 196], [44, 586]], w: 400, h: 300, btn: 112, bx: 470 }; },
+    present(st) {
+      const q = st.q;
+      st.storyEls = q.ss.map(x => { const e = W2X.thing(st, 10, 10, 5, ''); Object.assign(e.style, { background: '#fff', borderRadius: '20px', boxShadow: '0 0 0 4px #2B2118', overflow: 'hidden' }); const s = svg('svg', { viewBox: '0 0 200 150', width: '100%', height: '100%' }, e); e._parts = RQ.op10.draw(s, x); e._svg = s; return e; });
+      st.cards = q.opts.map((op, i) => { const c = W3X.card(st, 'card' + i, 6, 'card'); c.appendChild(V2G.op(op, 64)); c.firstChild.style.color = op === '+' ? '#E8414B' : '#2E6FD8'; return c; });
+      st.opts = q.opts.slice(); st.pick = [null, null];
+      RQ.op10.place(st);
+      st.storyEls.forEach((e, i) => K.pop(st, e, 80 * i)); st.cards.forEach((c, i) => K.pop(st, c, 160 + 40 * i));
+    },
+    /* each story with its two buttons: under it (landscape), beside it (portrait) */
+    place(st) {
+      const g = RQ.op10.geo(), L = K.L();
+      (st.storyEls || []).forEach((e, k) => place(e, g.cards[k][0], g.cards[k][1], g.w, g.h));
+      (st.cards || []).forEach((c, i) => { const k = i >> 1, j = i & 1, x0 = g.cards[k][0], y0 = g.cards[k][1]; if (L) place(c, x0 + g.w / 2 - g.btn - 14 + j * (g.btn + 28), g.by, g.btn, g.btn); else place(c, g.bx, y0 + g.h / 2 - g.btn - 12 + j * (g.btn + 24), g.btn + 40, g.btn); });
+    },
+    onGesture(st, name, p) {
+      const i = K.cardIndex(p.id); if (name !== 'tap' || i < 0 || st.picked) return false;
+      const k = i >> 1; st.pick[k] = i; st.cards.slice(2 * k, 2 * k + 2).forEach((c, j) => c.classList.toggle('hi', 2 * k + j === i)); Sfx.place();
+      if (st.pick.every(x => x != null)) { st.picked = true; Session.submit(st, st.pick.map(j => st.opts[j]).join(',')); }
+      return 'ok';
+    },
+    next(st, strat) { if (st.picked) return null; const want = st.q.answer.split(','), k = st.pick[0] == null ? 0 : 1, op = strat === 'wrong' && k === 0 ? (want[0] === '+' ? '-' : '+') : want[k]; return { g: 'tap', p: { id: 'card' + (2 * k + (op === '+' ? 0 : 1)) } }; },
+    bad(st, ans) { const a = String(ans).split(','), w = st.q.answer.split(','); return [0, 1].filter(k => a[k] !== w[k]); },
+    feedback(st, ans) { const k = RQ.op10.bad(st, ans)[0] || 0, a = String(ans).split(','); K.wiggle(st, st.cards[2 * k + (a[k] === '+' ? 0 : 1)]); W3X.say(RQ.op10.FB[st.q.ss[k].t]); },
+    /* his button blue, the story again; the right button gold, why */
+    async explain(st, ans) {
+      const q = st.q, my = st, a = String(ans).split(','), bad = RQ.op10.bad(st, ans), k = bad[0];
+      st.cards.forEach(c => c.classList.remove('hi'));
+      bad.forEach(j => W3X.mine(st, st.cards[2 * j + (a[j] === '+' ? 0 : 1)], 6));
+      const P = st.storyEls[k]._parts.moved;
+      P.forEach((e, i) => st.scope.anim(e, q.ss[k].t === 'dec' ? [{ transform: 'translate(0,0)', opacity: 1 }, { transform: 'translate(40px,0)', opacity: 0.2 }, { transform: 'translate(0,0)', opacity: 1 }] : q.ss[k].t === 'inc' ? [{ transform: 'translate(60px,0)', opacity: 0 }, { transform: 'translate(0,0)', opacity: 1 }] : [{ opacity: 1 }, { opacity: 0.25 }, { opacity: 1 }], { duration: T(700), delay: T(70 * i) }));
+      W3X.tell(RQ.op10.FB[q.ss[k].t]);
+      await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
+      bad.forEach(j => W3X.gold(st, st.cards[2 * j + (q.answer.split(',')[j] === '+' ? 0 : 1)], 6));
+      Sfx.reveal(); W3X.tell(RQ.op10.WHY[q.ss[k].t]);
+      await W3X.beat(st, 1600);
+    },
+    reveal(st) { const w = st.q.answer.split(','); [0, 1].forEach(k => { const c = st.cards[2 * k + (w[k] === '+' ? 0 : 1)]; if (c) K.hop(st, c, 20); }); },
+    lines() { return ['用加还是用减？'].concat(Object.values(RQ.op10.FB), Object.values(RQ.op10.WHY)); },
   },
   numCards(st, vals, sup) { const s = V2G.size5(vals.length, [V2G.fr5(true), V2G.fr5(false)]); W2X.cards(st, vals.map(n => V2G.numCard(n, sup, V2G.numH(s))), vals, { size: s, gap: 16, cx: 512, cy: 600 }); RQ.placeNum(st); },
   placeNum(st) { if (st.cards && st.cards.length) W3X.lay(st.cards, V2G.fr5(), box(st.cards[0]).w, null, 16); },
