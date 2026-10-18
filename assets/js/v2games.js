@@ -241,29 +241,52 @@ const RQ = {
   /* ---------------------------------------------------------------- 积木城's three cards (docs/W5-DESIGN.md §8.5, package D):
      pos (where: 上面 / 里面 / 前面 / 后面 / 左边 / 右边), shape (how many triangles / circles / squares / oblongs in a
      little picture - separate shapes only), op10 (two story cards: + or -, 一题两问) */
-  /* pos: a box on the plain board and five toys round it - "谁在盒子后面？". A closed box (a toy can be on it) or an open
-     crate (a toy can be in it); front / behind are drawn as they look: behind - its lower half hidden by the box, higher up;
-     in front - lower down, over the box. Every toy has its own tap area over its whole body (one behind the box too). The
-     asked word from a bag; the right toy's place among the five options from a bag. After a wrong answer: his toy blue,
-     where it really is ("它在盒子前面"); behind: the box goes see-through; the right toy gold ("小熊在盒子后面"). */
+  /* 积木城's review cards ask only what the child has been taught on its islands (review W5R1 1): op10's 比多少 once V5 is at
+     L5 or its island is on a lap; shape's oblongs and turned squares once J6 is at L3; pos's left / right once B5 has stars.
+     Before that, the basic pool */
+  taught(k) {
+    try {
+      if (k === 'cmp') return W2.level('avengers5', 'V5') >= 5 || (typeof Laps !== 'undefined' && Laps.on('avengers5'));
+      if (k === 'rect') return W2.level('pjmasks5', 'J6') >= 3;
+      if (k === 'lr') return W2.stars('bluey5', 'B5') > 0;
+    } catch (e) { /* a world without 积木城: the basic pool */ }
+    return false;
+  },
+  /* pos: a thing on the plain board and five toys round it - "谁在桌子后面？". The basic pool (P5's words): a block table -
+     on it, under it, in front, behind, beside it (上面 / 下面 / 前面 / 后面 / 旁边). Once left / right are taught (B5): also a
+     closed box (a toy on it) or an open crate (a toy in it) with toys on its left and right. Front / behind are drawn as they
+     look: behind - its lower half hidden by the table / box, higher up; in front - lower down, over it. Every toy has its own
+     tap area over its whole body (one behind it too). The asked word from a bag; the right toy's place among the five options
+     from a bag. After a wrong answer: his toy blue, where it really is ("它在桌子前面"); behind: the table / box goes
+     see-through; the right toy gold ("小熊在桌子后面"). */
   pos: {
     toys: { teddy: '小熊', bunny: '小兔', duck: '小鸭', chick: '小鸡', kitten: '小猫', dino: '恐龙', turtle: '乌龟', sheep: '小羊' },
-    words: { top: '上面', in: '里面', front: '前面', back: '后面', left: '左边', right: '右边' },
+    words: { top: '上面', in: '里面', front: '前面', back: '后面', left: '左边', right: '右边', under: '下面', side: '旁边' },
+    /* the thing, its name, its five places */
+    things: { table: ['桌子', ['top', 'under', 'front', 'back', 'side']], box: ['盒子', ['top', 'front', 'back', 'left', 'right']], crate: ['盒子', ['in', 'front', 'back', 'left', 'right']] },
     gen(G, c, o) {
-      const w = bagPick(G, 'rqposw', ['top', 'in', 'front', 'back', 'left', 'right']), open = w === 'in' || (w !== 'top' && G.rng.chance(0.5));
-      const spots = ['left', 'right', 'front', 'back', open ? 'in' : 'top'], toys = G.rng.shuffle(Object.keys(this.toys)).slice(0, 5);
-      const at = {}; G.rng.shuffle(spots).forEach((s, i) => { at[toys[i]] = s; });
+      const obj = RQ.taught('lr') ? bagPick(G, 'rqposo', ['table', 'box', 'crate']) : 'table', T = this.things[obj], w = bagPick(G, 'rqposw.' + obj, T[1]);
+      const toys = G.rng.shuffle(Object.keys(this.toys)).slice(0, 5);
+      const at = {}; G.rng.shuffle(T[1]).forEach((s, i) => { at[toys[i]] = s; });
       const ok = toys.find(t => at[t] === w), opts = W3X.deal(G, ok, toys.filter(t => t !== ok), 'rqpos');
-      return { k: ['pos', w, open ? 1 : 0, opts.map(t => t + at[t]).join('')], w, open, at, opts, answer: ok, say: '谁在盒子' + this.words[w] + '？' };
+      return { k: ['pos', obj, w, opts.map(t => t + at[t]).join('')], obj, w, open: obj === 'crate', at, opts, answer: ok, say: '谁在' + T[0] + this.words[w] + '？' };
     },
-    /* the box and the toys' places (stage px): the box's front face x0..x1, y0..y1; a toy is 130 square */
-    geo() { const L = K.L(), cx = L ? 512 : 352, y0 = L ? 300 : 420, T = 110; return { cx, y0, T, spot: { left: [cx - 270, y0 + 50], right: [cx + 160, y0 + 50], front: [cx - 55, y0 + 140], back: [cx - 125, y0 - 110], top: [cx + 25, y0 - 140], in: [cx - 10, y0 - 82] } }; },
+    /* the thing and the toys' places (stage px); a toy is 110 square, no two tap areas overlap */
+    geo() { const L = K.L(), cx = L ? 512 : 352, y0 = L ? 300 : 420, T = 110; return { cx, y0, T, spot: { left: [cx - 270, y0 + 50], right: [cx + 160, y0 + 50], front: [cx - 55, y0 + 140], back: [cx - 125, y0 - 110], top: [cx + 25, y0 - 140], in: [cx - 10, y0 - 82] },
+      table: { top: [cx, y0 - 142], back: [cx - 122, y0 - 112], under: [cx - 75, y0 + 50], front: [cx + 60, y0 + 128], side: [cx - 290, y0 + 50] } }; },
     present(st) {
       const q = st.q, g = RQ.pos.geo(), ink = V2G.ink;
-      /* the box: closed (a lid on top) or open (its back wall, the dark inside, then its front) - the front face drawn last */
+      /* the box: closed (a lid on top) or open (its back wall, the dark inside, then its front) - the front face drawn last;
+         the table: its top and back legs behind (a toy behind it hides under the top), its front legs in front */
       const mk = (z, draw) => { const e = W2X.thing(st, 300, 260, z, ''); e.style.pointerEvents = 'none'; const s = svg('svg', { viewBox: '0 0 300 260', width: '100%', height: '100%' }, e); s.style.overflow = 'visible'; draw(s); return e; };
+      if (q.obj === 'table') {
+        const leg = (s, x, y, h, f) => svg('rect', { x, y, width: 30, height: h, rx: 4, fill: f, stroke: ink, 'stroke-width': 5 }, s);
+        st.boxBack = mk(5, s => { leg(s, 72, 52, 150, '#C77A3A'); leg(s, 238, 52, 150, '#C77A3A'); svg('path', { d: 'M20 70L60 40H280L240 70Z', fill: '#F2B66B', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('path', { d: 'M240 70L280 40V70L240 100Z', fill: '#B5702F', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('rect', { x: 20, y: 70, width: 220, height: 30, rx: 4, fill: '#E39A4B', stroke: ink, 'stroke-width': 6 }, s); });
+        st.boxFront = mk(7, s => { leg(s, 30, 100, 150, '#D98A43'); leg(s, 200, 100, 150, '#D98A43'); });
+      } else {
       st.boxBack = mk(5, s => { if (q.open) { svg('path', { d: 'M30 90L70 40H270L230 90Z', fill: '#B0743A', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('path', { d: 'M40 88L74 48H262L228 88Z', fill: '#5B3A1E' }, s); } else { svg('path', { d: 'M30 90L70 40H270L230 90Z', fill: '#FF8FA8', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('path', { d: 'M126 90L166 40M146 90L186 40', stroke: '#FFC93C', 'stroke-width': 10 }, s); } });
       st.boxFront = mk(7, s => { svg('path', { d: 'M230 90L270 40V200L230 250Z', fill: q.open ? '#9A622E' : '#E06A86', stroke: ink, 'stroke-width': 6, 'stroke-linejoin': 'round' }, s); svg('rect', { x: 30, y: 90, width: 200, height: 160, rx: 6, fill: q.open ? '#C98B4A' : '#FF7A98', stroke: ink, 'stroke-width': 6 }, s); if (q.open) svg('path', { d: 'M30 140H230M30 195H230', stroke: '#9A622E', 'stroke-width': 5 }, s); else svg('path', { d: 'M120 90V250M140 90V250', stroke: '#FFC93C', 'stroke-width': 10 }, s); });
+      }
       /* the toys: the one behind under the box, the one inside between its back and its front */
       const zOf = s => (s === 'back' ? 4 : s === 'in' ? 6 : s === 'front' ? 8 : 6);
       st.toyEls = q.opts.map(t => { const e = W2X.thing(st, g.T, g.T, zOf(q.at[t]), ''); e.style.pointerEvents = 'none'; const im = img('assets/props/' + t + '.png', '', e); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain' }); return e; });
@@ -275,9 +298,10 @@ const RQ = {
     place(st) {
       const q = st.q, g = RQ.pos.geo(), bx = g.cx - 150, by = g.y0 - 90;
       [st.boxBack, st.boxFront].forEach(e => e && place(e, bx, by, 300, 260));
-      q.opts.forEach((t, i) => { const p = g.spot[q.at[t]]; [st.toyEls[i], st.cards[i]].forEach(e => e && place(e, p[0], p[1], g.T, g.T)); });
+      q.opts.forEach((t, i) => { const p = (q.obj === 'table' ? g.table : g.spot)[q.at[t]]; [st.toyEls[i], st.cards[i]].forEach(e => e && place(e, p[0], p[1], g.T, g.T)); });
     },
-    where(st, t) { return '它在盒子' + RQ.pos.words[st.q.at[t]]; },
+    noun(q) { return RQ.pos.things[q.obj || 'box'][0]; },
+    where(st, t) { return '它在' + RQ.pos.noun(st.q) + RQ.pos.words[st.q.at[t]]; },
     feedback(st, ans) { const i = st.opts.indexOf(ans); if (st.cards[i]) K.wiggle(st, st.cards[i]); W3X.say(RQ.pos.where(st, ans)); },
     /* his toy (blue) and where it is; behind: the box goes see-through for a moment; the right toy (gold) and where it is */
     async explain(st, ans) {
@@ -287,11 +311,11 @@ const RQ = {
       await st.scope.wait(T(1300)); if (!Session.alive(my)) return;
       if (q.w === 'back' || q.at[ans] === 'back') { [st.boxBack, st.boxFront].forEach(e => st.scope.anim(e, [{ opacity: 1 }, { opacity: 0.3, offset: 0.25 }, { opacity: 0.3, offset: 0.75 }, { opacity: 1 }], { duration: T(1100) })); await st.scope.wait(T(1100)); if (!Session.alive(my)) return; await Step.beat(st); if (!Session.alive(my)) return; }
       W3X.gold(st, st.cards[r], 6, 0); K.hop(st, st.toyEls[r], 18); Sfx.reveal();
-      W3X.tell(RQ.pos.toys[q.answer] + '在盒子' + RQ.pos.words[q.w]);
+      W3X.tell(RQ.pos.toys[q.answer] + '在' + RQ.pos.noun(q) + RQ.pos.words[q.w]);
       await W3X.beat(st, 1600);
     },
     reveal(st) { const r = st.opts.indexOf(st.q.answer); if (st.toyEls && st.toyEls[r]) K.hop(st, st.toyEls[r], 22); },
-    lines() { const P = RQ.pos, out = []; Object.keys(P.words).forEach(w => { out.push('谁在盒子' + P.words[w] + '？', '它在盒子' + P.words[w]); Object.keys(P.toys).forEach(t => out.push(P.toys[t] + '在盒子' + P.words[w])); }); return out; },
+    lines() { const P = RQ.pos, out = []; Object.values(P.things).forEach(([n, ws]) => ws.forEach(w => { out.push('谁在' + n + P.words[w] + '？', '它在' + n + P.words[w]); Object.keys(P.toys).forEach(t => out.push(P.toys[t] + '在' + n + P.words[w])); })); return out.filter((x, i) => out.indexOf(x) === i); },
   },
   /* shape: a little picture of separate shapes (triangles - some turned or long, circles, squares - some a little turned,
      oblongs), "几个三角形？" with five number cards. After a wrong answer: the shapes asked for counted one by one, the right
@@ -299,10 +323,12 @@ const RQ = {
   shape: {
     kinds: { tri: '三角形', circle: '圆形', square: '正方形', rect: '长方形' },
     gen(G, c, o) {
-      const ask = bagPick(G, 'rqshape', ['tri', 'circle', 'square', 'rect']), n = G.rng.int(1, 6), others = G.rng.int(Math.max(2, 5 - n), 9 - n);
-      const items = Array.from({ length: n }, () => ask).concat(Array.from({ length: others }, () => G.rng.pick(['tri', 'circle', 'square', 'rect'].filter(k => k !== ask))));
+      /* oblongs and turned squares once J6 has taught them (L3), before that triangles, circles and squares standing straight */
+      const adv = RQ.taught('rect'), pool = adv ? ['tri', 'circle', 'square', 'rect'] : ['tri', 'circle', 'square'];
+      const ask = bagPick(G, 'rqshape' + pool.length, pool), n = G.rng.int(1, 6), others = G.rng.int(Math.max(2, 5 - n), 9 - n);
+      const items = Array.from({ length: n }, () => ask).concat(Array.from({ length: others }, () => G.rng.pick(pool.filter(k => k !== ask))));
       const cells = G.rng.shuffle(Array.from({ length: 18 }, (_, i) => i)).slice(0, items.length);
-      const sh = G.rng.shuffle(items).map((k, i) => ({ k, cell: cells[i], s: G.rng.int(70, 100), rot: k === 'circle' ? 0 : G.rng.pick([0, 0, 15, -15, 30, 180, 90]), col: G.rng.int(0, 5), long: k === 'tri' && G.rng.chance(0.3), jx: G.rng.int(-10, 10), jy: G.rng.int(-10, 10) }));
+      const sh = G.rng.shuffle(items).map((k, i) => ({ k, cell: cells[i], s: G.rng.int(70, 100), rot: k === 'circle' ? 0 : k === 'square' ? (adv ? G.rng.pick([0, 0, 15, -15, 45]) : 0) : k === 'rect' ? G.rng.pick([0, 0, 90, 15, -15]) : G.rng.pick([0, 0, 180, 15, -15]), col: G.rng.int(0, 5), long: k === 'tri' && G.rng.chance(0.3), jx: G.rng.int(-10, 10), jy: G.rng.int(-10, 10) }));
       return { k: ['shape', ask, sh.map(x => x.k[0] + x.cell).join('')], ask, n, sh, answer: n, opts: numOptions(G, n, 0, 10), say: '几个' + this.kinds[ask] + '？' };
     },
     /* the picture (6 x 3 cells) and its five number cards, all above the friends who watch in the bottom corners (on the
@@ -345,7 +371,8 @@ const RQ = {
     FB: { inc: '这是又来了哦', join: '这是合起来哦', dec: '这是吃掉了哦', part: '这是求另一份', cmp: '这是比多少' },
     WHY: { inc: '又来了，用加号', join: '合起来，用加号', dec: '拿走，用减号', part: '求另一份，用减号', cmp: '比多少，用减号' },
     gen(G, c, o) {
-      const want = bagPick(G, 'rqop', ['+,+', '+,-', '-,+', '-,-']).split(','), P = { '+': ['inc', 'join'], '-': ['dec', 'part', 'cmp'] };
+      /* 比多少 once V5 has taught it (L5, or its island on a lap) */
+      const want = bagPick(G, 'rqop', ['+,+', '+,-', '-,+', '-,-']).split(','), P = { '+': ['inc', 'join'], '-': RQ.taught('cmp') ? ['dec', 'part', 'cmp'] : ['dec', 'part'] };
       const ss = want.map(op => { const t = G.rng.pick(P[op]); if (op === '+') { const s = G.rng.int(3, 10), a = G.rng.int(1, s - 1); return { t, a, b: s - a }; } const a = G.rng.int(3, t === 'cmp' ? 8 : 10), b = G.rng.int(1, a - 1); return { t, a, b }; });
       if (ss[0].t === ss[1].t && ss[0].a === ss[1].a) ss[1].a = ss[1].a > 3 ? ss[1].a - 1 : ss[1].a + 1;
       ss.forEach(s => { if (s.b >= s.a && s.t !== 'inc' && s.t !== 'join') s.b = s.a - 1; });
@@ -1334,5 +1361,135 @@ if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G) { Map
 /* a lap completed before the app was closed: its reward is shown now, not a session later (NG1 5) */
 if (typeof Screens !== 'undefined' && Screens.cur === 'map' && !Session.G && (MapView.ids().some(o => Laps.on(o) && Laps.st(o).due) || ((t) => t && !Laps.st(t).iv && Laps.st(t).n === 2)(Laps.target(MapView)))) MapView.after(T(300));
 if (typeof W5 !== 'undefined' && W5.cardsIn) W5.cardsIn();          /* 积木城's review cards whose question types came with this file (pos / shape / op10) */
+
+/* ---------------------------------------------------------------- the parent panel's body (moved out of the first screen by
+   raw/js/w5_core_patch.py, docs/W5-DESIGN.md §9.5): the old sums gate and the panel; index.html keeps a stand-in panel */
+Object.assign(Parent, {
+  questions: [],
+  makeQ() {
+    let a, b, s;
+    do { a = 12 + Math.floor(Math.random() * 60); b = 11 + Math.floor(Math.random() * 30); s = a + '+' + b; } while (s === Store.s.gate.last);
+    Store.s.gate.last = s; Store.save();
+    return { a, b, ans: a + b };
+  },
+  ask() {
+    const P = $('#parent'), sh = $('.sheet', P);
+    const q = this.q = this.makeQ();
+    sh.innerHTML = '';
+    el('h2', '', sh, { text: '家长验证（' + (this.step + 1) + '/2）' });
+    el('div', 'mut', sh, { text: '请输入答案。连续答对两题进入家长面板；答错会关闭并等待 30 秒。' });
+    el('div', 'q', sh, { text: q.a + ' + ' + q.b + ' = ' });
+    const out = el('div', 'q', sh, { style: { minHeight: '44px', letterSpacing: '4px' } });
+    let val = '';
+    const pad = el('div', 'opts', sh); pad.style.gridTemplateColumns = 'repeat(4,1fr)';
+    '1234567890'.split('').concat(['删', '好']).forEach(k => {
+      const b = el('button', '', pad, { text: k === '删' ? '⌫' : k === '好' ? '确定' : k });
+      b.style.fontSize = k === '好' ? '22px' : '30px';
+      b.addEventListener('click', () => {
+        if (k === '删') val = val.slice(0, -1);
+        else if (k === '好') { this.check(Number(val)); return; }
+        else if (val.length < 3) val += k;
+        out.textContent = val;
+      });
+    });
+    const x = el('button', 'pbtn x', sh, { text: '关闭' }); x.addEventListener('click', () => this.close());
+    P.classList.add('on');
+  },
+  check(v) {
+    if (v === this.q.ans) { this.step++; if (this.step >= 2) this.panel(); else this.ask(); return; }
+    Store.s.gate.cool = Date.now() + 30000; Store.save();
+    this.close();
+    this.toast('答错了，请 30 秒后再试');
+  },
+  body() {
+    const sh = $('.sheet', $('#parent'));
+    sh.innerHTML = '';
+    el('h2', '', sh, { text: '家长面板' });
+    const x = el('button', 'pbtn x', sh, { text: '关闭' }); x.addEventListener('click', () => { this.close(); MapView.update(); });
+    if (typeof ParentV2 !== 'undefined') ParentV2.sections(sh); else el('div', 'mut', sh, { text: '（复习和家长工具还在加载，请稍后再打开）' });
+    /* voice diagnostics */
+    el('h3', '', sh, { text: '语音诊断' });
+    const d = Voice.diag();
+    const box = el('div', '', sh);
+    box.innerHTML = '系统声音：' + d.voices + ' 个；中文声音：' + d.zh.length + ' 个<br>当前讲解声音：' + d.selected +
+      '<br>引擎活动：' + (d.engineActive ? '检测到' : '未检测到') + '；首句确认：' + (d.firstConfirmed ? '是' : '否') + '；家长确认听见：' + (Voice.parentHeard ? '是' : '否') +
+      '<br>最近讲解：成功 ' + d.oks + ' 句，连续未确认 ' + d.fails + ' 句' + (d.silent ? '（已提示孩子点喇叭重试）' : '') +
+      '<br>音频：' + d.ctx + '；无声媒体：' + (Sfx.media ? (Sfx.media.paused ? '暂停' : '播放中') : '未启动') + '；计数语音已加载 ' + d.count.loaded + ' 个，失败 ' + d.count.failed + ' 个，回退 ' + d.count.fallbacks + ' 次' +
+      '<br><span style="font-size:12px;color:rgba(43,33,24,.6)">音频解锁记录：' + d.audioLog.map(x => x.ev + (x.why ? '(' + x.why + ')' : '') + '/' + x.state).join('，') + '</span>';
+    const sel = el('select', '', sh);
+    el('option', '', sel, { text: '系统默认', value: '' });
+    Voice.zh.forEach(v => { const o = el('option', '', sel, { text: v.name + ' (' + v.lang + ')', value: v.voiceURI }); if (Voice.voice && v.voiceURI === Voice.voice.voiceURI) o.selected = true; });
+    sel.addEventListener('change', () => { Store.s.settings.voiceURI = sel.value; Store.save(); Voice.loadVoices(); });
+    const tb = el('button', 'pbtn', sh, { text: '测试发声' }); tb.addEventListener('click', () => { Sfx.touch(); Voice.sayNow('你好，我是点点岛！', { tag: 'test' }); Count.say(3); });
+    const hb = el('button', 'pbtn', sh, { text: '我听见了' }); hb.addEventListener('click', () => { Voice.parentHeard = true; hb.textContent = '已确认'; });
+    el('div', 'mut', sh, { html: '听不到声音时依次检查：① iPad 音量键调大；② 侧边静音开关/控制中心静音；③ 设置 › 辅助功能 › 朗读内容 › 声音 › 中文，下载“婷婷（增强）”；④ 回到地图重新点一次绿色开始按钮。' });
+    /* progress */
+    el('h3', '', sh, { text: '每个世界的进度与难度' });
+    const tbl = el('table', '', sh);
+    tbl.innerHTML = '<tr><th>世界</th><th>开放</th><th>等级</th><th>难度下限</th><th>通过条件</th><th>星</th></tr>';
+    LIVE().forEach(id => {
+      const ws = Store.w(id), rep = Mastery.gateReport(id);
+      const tr = el('tr', '', tbl);
+      el('td', '', tr, { text: WORLDS[id].name });
+      el('td', '', tr, { text: ws.unlocked ? (ws.cleared ? '已掌握' : passed(id) ? '已过关' : '开放') : '未开放' });
+      el('td', '', tr, { text: 'L' + ws.level });
+      const td = el('td', '', tr); const fs = el('select', '', td);
+      for (let l = 1; l <= MAXLV[id]; l++) { const o = el('option', '', fs, { text: 'L' + l, value: l }); if (l === ws.floor) o.selected = true; }
+      fs.addEventListener('change', () => { ws.floor = Number(fs.value); if (ws.level < ws.floor) ws.level = ws.floor; Store.save(); });
+      el('td', '', tr, { html: '<b>过关（每个小游戏 5 颗星，插旗）：</b>' + WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' 开' : ' 锁') + W2.stars(id, g) + '★').join(' ') + (passed(id) ? ' → 已插旗' : '') + '<br><b>掌握（只作参考）：</b>' + rep.per.map(p => p.g + (p.ok ? ' ✓' + (p.seen ? '（看点阵完成：无声设备或看图模式，未检验“听数取物”）' : '') : ' · 近7题对' + p.right7 + (p.kindsOk ? '' : '，缺题型') + (p.varOk === false ? '，分法要多样' : ''))).join('<br>') + '<br>好的一局 ' + rep.windows + '/2，近12题正确率 ' + Math.round(rep.acc * 100) + '%' });
+      el('td', '', tr, { text: ws.stars });
+    });
+    if (W2.open()) {
+      el('h3', '', sh, { text: '第二片海（每个小游戏拿满 5 颗星才开下一个；答错的题不给星，换一道新题）' });
+      const t2 = el('table', '', sh); t2.innerHTML = '<tr><th>岛</th><th>开放</th><th>小游戏（✓ 已过 · 星）</th><th>难度</th></tr>';
+      ORDER2.forEach(id => { const ws = Store.w(id), tr = el('tr', '', t2); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: ws.unlocked ? (W2.islandDone(id) ? '已过关' : '开放') : '未开放' });
+        el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
+    }
+    if (typeof W5P !== 'undefined') W5P(sh);
+    if (W3.open()) {
+      el('h3', '', sh, { text: '云上（第三世界：每个小游戏拿满 5 颗星才开下一个）' });
+      const t3 = el('table', '', sh); t3.innerHTML = '<tr><th>岛</th><th>开放</th><th>小游戏（✓ 已过 · 星）</th><th>难度</th></tr>';
+      ORDER3.forEach(id => { const ws = Store.w(id), tr = el('tr', '', t3); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: ws.unlocked ? (W2.islandDone(id) ? '已过关' : '开放') : '未开放' });
+        el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
+    }
+    if (W4.open()) {
+      el('h3', '', sh, { text: '星空（第四世界：10 以内加减，每个小游戏拿满 5 颗星才开下一个）' });
+      const t4 = el('table', '', sh); t4.innerHTML = '<tr><th>岛</th><th>开放</th><th>小游戏（✓ 已过 · 星）</th><th>难度</th></tr>';
+      ORDER4.forEach(id => { const ws = Store.w(id), tr = el('tr', '', t4); el('td', '', tr, { text: WORLDS[id].name }); el('td', '', tr, { text: ws.unlocked ? (W2.islandDone(id) ? '已过关' : '开放') : '未开放' });
+        el('td', '', tr, { text: WORLDS[id].games.map(g => g + (W2.gameDone(id, g) ? ' ✓' : W2.gameOpen(id, g) ? ' ·' : ' 🔒') + W2.stars(id, g) + '★').join('  ') }); el('td', '', tr, { text: WORLDS[id].games.map(g => 'L' + W2.level(id, g)).join(' ') }); });
+    }
+    if (!digits()) el('div', 'mut', sh, { text: '数字显示已关闭：复仇者世界的“解码”只记录点卡映射，不代表已检验数字。' });
+    /* offline readiness: the service worker writes its list only after EVERY asset is in the cache */
+    el('h3', '', sh, { text: '离线' });
+    const off = el('div', '', sh, { text: '检查中…' });
+    (async () => {
+      try {
+        let n = 0;
+        for (const k of await caches.keys()) {
+          if (!k.startsWith('ddi-assets-')) continue;
+          const m = await (await caches.open(k)).match('./__ddi_meta.json');
+          if (m) n = Math.max(n, Object.keys(await m.json()).length);
+        }
+        const ctl = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+        off.textContent = n && ctl ? '已就绪：' + n + ' 个图片与声音已存到本机，断网也能玩。' : '还没准备好：请联网打开，在地图上停留约 1 分钟后再看。';
+      } catch (e) { off.textContent = '这个浏览器不能离线使用。'; }
+    })();
+    /* settings */
+    if (typeof ParentV2 !== 'undefined' && ParentV2.teach) ParentV2.teach(sh, this);          /* 教一教 (raw/js/v2.js: the first screen's budget) */
+    el('h3', '', sh, { text: '设置' });
+    if (typeof ParentV2 !== 'undefined' && ParentV2.explainSetting) ParentV2.explainSetting(sh);   /* 答错后的讲解: 关 / 自动 / 一步一步 */
+    const dg = el('button', 'pbtn', sh, { text: '数字显示：' + (digits() ? '开' : '关') });
+    dg.addEventListener('click', () => { Store.s.settings.digits = !Store.s.settings.digits; Store.save(); dg.textContent = '数字显示：' + (digits() ? '开' : '关'); });
+    const vm = el('button', 'pbtn', sh, { text: '看图模式：' + (visualMode() ? '开' : '关') });
+    vm.addEventListener('click', () => { Store.s.settings.visual = !Store.s.settings.visual; Store.save(); vm.textContent = '看图模式：' + (visualMode() ? '开' : '关'); });
+    el('div', 'mut', sh, { text: '看图模式：孩子听不见声音时打开。只靠听的题（佩奇“插蜡烛”）会直接显示点阵，记为“看图完成”，不算“听数取物”。' });
+    const ul = el('button', 'pbtn', sh, { text: '全部解锁' });
+    ul.addEventListener('click', () => { ALLW().forEach(o => { if (W5.live(o)) Store.w(o).unlocked = true; }); Store.s.w5 = true; Store.s.w4 = true; Store.s.w2 = true; Store.s.w2all = true; Store.s.w3 = true; Store.save(); ul.textContent = '已全部解锁'; });
+    let n = 0;
+    const rs = el('button', 'pbtn warn', sh, { text: '清空进度' });
+    rs.addEventListener('click', () => { n++; if (n === 1) rs.textContent = '确定清空？再按一次'; else if (n === 2) rs.textContent = '最后确认：清空全部进度'; else { Store.reset(); rs.textContent = '已清空'; MapView.update(); } });
+  },
+  panel() { this.tok = (this.tok || 0) + 1; this.body(); },
+});
 
 W3.loaded = true;          /* the sky's games and v2's are both in */

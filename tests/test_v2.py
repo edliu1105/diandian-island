@@ -189,11 +189,12 @@ with sync_playwright() as p, serve() as base:
         log.check(not bad, 'D-09 %s every review type (and a fact at 3 supports) on the stage %s' % (ori, bad[:6]))
         pg.context.close()
     # D-10 the sky
-    r = page.evaluate("""() => { Store.reset(); ORDER.concat(ORDER2).forEach(id => { const ws = Store.w(id); ws.unlocked = true; ws.gstars = ws.gstars || {}; WORLDS[id].games.forEach(g => { ws.gstars[g] = 5; }); ws.pass = true; });
+    # since 积木城 (world 5, between the second sea and the sky) a new save reaches the sky after it: worlds 1, 2 and 5 done
+    r = page.evaluate("""() => { Store.reset(); ORDER.concat(ORDER2, ORDER5).forEach(id => { const ws = Store.w(id); ws.unlocked = true; ws.gstars = ws.gstars || {}; WORLDS[id].games.forEach(g => { ws.gstars[g] = 5; }); ws.pass = true; });
       Store.s.w2 = true; Progress.check(false); const a = { trans: Store.w('trans3').unlocked, peppa3: Store.w('peppa3').unlocked };
       ORDER3.filter(id => id !== 'trans3').forEach(id => { Store.w(id).gstars = Store.w(id).gstars || {}; WORLDS[id].games.forEach(g => { Store.w(id).gstars[g] = 5; }); }); Progress.check(false); a.castleWithoutIt = Store.s.fin3 || '';
       Store.w('trans3').gstars = Store.w('trans3').gstars || {}; WORLDS.trans3.games.forEach(g => { Store.w('trans3').gstars[g] = 5; }); Progress.check(false); a.castle = Store.s.fin3; return a; }""")
-    log.check(r == {'trans': True, 'peppa3': False, 'castleWithoutIt': '', 'castle': 'due'}, 'D-10 the sky opens with the arithmetic island; the castle needs it too %s' % r)
+    log.check(r == {'trans': True, 'peppa3': False, 'castleWithoutIt': '', 'castle': 'due'}, 'D-10 the sky (after the second sea and 积木城) opens with the arithmetic island; the castle needs it too %s' % r)
     miss = page.evaluate("Array.from(window.__vmiss || [])")
     log.check(not miss, 'D-10 every sentence said has a recording %s' % miss[:12])
     log.check(not page.errors, 'no page errors %s' % page.errors[:3])

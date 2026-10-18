@@ -831,9 +831,11 @@ mastery, windows, stars, unlocked, cleared, rot/lastKey/visits ...
 - 家长面板：第二片海和云上之间多一张积木城表（"还在建"的岛也列出），和"上课对照"按钮（点开才画表：学而思这一课 → 积木城的哪个游戏）。
 
 **实现**：
-- 首屏：`raw/js/w5.js`（去掉注释后约 2.7 KB）+ `w5_core_patch.py` 的钩子；首屏合计 447.0 / 450 KB（`tests/test_boot.py`）。
+- 首屏：`raw/js/w5.js`（去掉注释后约 2.8 KB）+ `w5_core_patch.py` 的钩子，gzip 约 1.6 KB。七个岛上线后首屏到了 447.1 KB，于是按 `W5-DESIGN` §9.5 的第一条退路把**家长面板的主体**（语音诊断、各世界进度表、离线、设置、旧的算术门）由 `w5_core_patch.py` 移到懒加载的 `assets/js/v2games.js`（`Object.assign(Parent, {...})`，加在文件末尾）；首屏只留齿轮、提示条、开 / 关和一个替身面板：懒加载到之前打开，显示标题、“关闭”和“稍等，正在打开……”，到了自动填满，中途关掉就不再打开（`tests/w5_flow.py` 测）。现在首屏 443.5 / 450 KB（`tests/test_boot.py`）。
 - 懒加载：`assets/js/w5games.js`（`raw/js/build_w5.py`：`w5/u.js` 共用小件 `W5U`、每岛一个文件 `w5/<peppa|bluey|pjmasks|paw|huluwa|xiyou|avengers>.js`、`w5/map.js` 旗子和家长表、`w5/games.js` 28 个登记），在 `w4games.js` 之后、`v2games.js` 之前；`Session.start` 和 `openPanel` 对 `map >= 3` 都先等它。
 - 构建：`tools/build_all.sh`（`build_w3 → v2_patch → w4_core_patch → w5_core_patch → build_w4 → build_w5`，每次从新拷贝开始）。
 - 美术：44 张新图（地图、7 岛、门、城堡、派对背景、28 个游戏背景、5 个道具），`tools/w5_batches.py` → Codex 生成 → `tools/w5_process.py`；新图不在时 `build_w5.py` 自动用兜底图。
 - 语音：`tools/voice_w5.py`（字面量 + `raw/js/w5/<岛>.voice.txt`）→ `tools/voice_bank.py`（只由集成者运行）。
-- 测试：`tests/test_w5.py`（只测上线的岛；`W5_ONLY` 测任何岛）、`tests/w5_flow.py`（进度和孩子的存档）、`tests/lines_w5.py`（语音）、`tests/shots_w5.py`（截图）。各岛文件和上线规则见 `raw/js/w5/README.md`。
+- 测试：`tests/test_w5.py`（只测上线的岛；`W5_ONLY` 测任何岛）、`tests/w5_flow.py`（进度和孩子的存档）、`tests/test_rq5.py`（三种复习题型）、`tests/lines_w5.py`（语音）、`tests/shots_w5.py`（截图）。各岛文件和上线规则见 `raw/js/w5/README.md`。
+- 上线：b73e0ad（基础 + ①）、a9a2920（②③）、29374cb（④–⑦，七个岛全部上线）；评审 W5R1 9/10 APPROVE（`docs/REVIEW-W5R1.md`），交付记录见 DELIVERY 1z。
+- 复习题型按进度开（W5R1 第 1 条）：`pos` 的左右要 B5 玩过，`shape` 的长方形和转过的正方形要 J6 到第 3 级，`op10` 的“比多少”要 V5 到第 5 级或第二圈。

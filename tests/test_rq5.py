@@ -3,6 +3,8 @@
 each island (its scene, its two watchers, its host) x 1180 x 820 / 820 x 1180 / 1024 x 768 - every tap target of the review
 question on screen, on top, >= 88 CSS px, clear of the watchers (their body), the top bar and the task card (the same check
 as tests/test_w5.py's targets); then answered right with the real mouse (it submits), no page error.
+Also: 300 questions of each type with nothing taught and with everything taught (review W5R1 1: left / right after B5,
+oblongs and turned squares after J6 L3, 比多少 after V5 L5 or a lap).
 usage: python tests/test_rq5.py [jobs=3]        RQ5_ONLY=pos,shape for some types; RQ5_GAMES=J8,V5 for some games"""
 import os, sys
 from multiprocessing import Pool
@@ -12,6 +14,21 @@ from test_w5 import GEO, load_games
 
 JOBS = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 3
 TYPES = os.environ.get('RQ5_ONLY', 'pos,shape,op10').split(',')
+
+
+# what the child has been taught (review W5R1 1): B5 played (left / right), J6 at L3 (oblongs, turned squares), V5 at L5 (比多少)
+PROGRESS = "(on) => { [['bluey5', 'B5', 5], ['pjmasks5', 'J6', 10], ['avengers5', 'V5', 10]].forEach(([w, g, n]) => { const ws = Store.w(w); ws.gstars = ws.gstars || {}; ws.gstars[g] = on ? n : 0; }); Store.save(); }"
+# 300 questions of each type, nothing taught / everything taught: one right, five options (or two asks), and what is not
+# taught never comes
+POOLS = r"""(on) => { const set = n => [['bluey5', 'B5', 5], ['pjmasks5', 'J6', 10], ['avengers5', 'V5', 10]].forEach(([w, g, k]) => { const ws = Store.w(w); ws.gstars = ws.gstars || {}; ws.gstars[g] = n ? k : 0; });
+  set(on); const out = { bad: [], seen: {} }, G = { rng: RNG(on ? 77 : 33), bags: {} };
+  for (const c of ['pos', 'shape', 'op10']) for (let i = 0; i < 300; i++) { const q = Object.assign(RQ[c].gen(G, c, { level: 2, sup: 0 }), { t: c, c }), a = RQ.audit(q);
+    if (a.err) out.bad.push(c + ' ' + a.err); if (!a.two && a.n < 5) out.bad.push(c + ' options ' + a.n);
+    const add = k => { out.seen[k] = (out.seen[k] || 0) + 1; };
+    if (c === 'pos') { add('pos.' + q.obj); Object.values(q.at).forEach(x => { if (x === 'left' || x === 'right') add('pos.lr'); }); }
+    if (c === 'shape') { add('shape.ask.' + q.ask); q.sh.forEach(x => { if (x.k === 'rect') add('shape.rect'); if (x.k === 'square' && x.rot % 90) add('shape.turned'); }); }
+    if (c === 'op10') q.ss.forEach(x => add('op10.' + x.t)); }
+  set(false); return out; }"""
 
 
 def job(args):
@@ -27,6 +44,7 @@ def job(args):
                     before = len(page.errors)
                     tag = '%dx%d %s %s s%d' % (vw, vh, g, c, seed)
                     try:
+                        page.evaluate(PROGRESS, seed == 11)          # seed 11: everything taught (the full pools), seed 3: nothing yet
                         page.evaluate("([w, g, c, s]) => window.__go(w, g, 2, { seed: 7919 * s + 101, test: true, keyItems: [c], noDemo: true })", [w, g, c, seed])
                         wait_phase(page, timeout=30000); page.wait_for_timeout(350)
                         info = page.evaluate("() => ({ rv: !!Session.st.rv, t: Session.st.q.t })")
@@ -56,6 +74,14 @@ def main():
         br.close()
     only = os.environ.get('RQ5_GAMES')
     if only: games = [x for x in games if x[1] in only.split(',')]
+    with sync_playwright() as p, serve() as base:
+        br = p.chromium.launch(); page = new_page(br, base, 1180, 820, fast=True); enter(page); load_games(page)
+        for on in (False, True):
+            r = page.evaluate(POOLS, on)
+            seen = r['seen']; gated = ['pos.lr', 'pos.box', 'pos.crate', 'shape.rect', 'shape.turned', 'shape.ask.rect', 'op10.cmp']
+            if on: log.check(not r['bad'] and all(seen.get(k) for k in gated), 'pools, everything taught: one right, 5 options / two asks %s; left / right, the box, oblongs, turned squares, 比多少 all come %s' % (r['bad'][:3], seen))
+            else: log.check(not r['bad'] and not any(seen.get(k) for k in gated), 'pools, nothing taught yet: one right, 5 options / two asks %s; no left / right, no oblong, no turned square, no 比多少 %s' % (r['bad'][:3], seen))
+        br.close()
     jobs = [(vw, vh, games[i::JOBS]) for vw, vh in ((1180, 820), (820, 1180), (1024, 768)) for i in range(JOBS) if games[i::JOBS]]
     bad = 0
     with Pool(JOBS) as pool:

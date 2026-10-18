@@ -6,7 +6,7 @@
    stars (n of 5); the tray starts with them next time; the 5th star opens the next game ("新游戏开啦！")
 3. a save from before the rule: sea 1 stays as earned (passed, gate open, games checked); sea 2's played-through games
    with < 5 stars are not done, their flag comes down, nothing played is locked again
-usage: python tests/test_stars.py [jobs=3]"""
+usage: python tests/test_stars.py [chromium] [jobs=3]      (Chromium only; an engine name first is accepted and skipped)"""
 import os, sys, json
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -105,7 +105,9 @@ def rules(log):
 
 
 def main():
-    jobs = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+    args = [a for a in sys.argv[1:] if a not in ('chromium', 'webkit')]          # 'chromium' first is fine (review W5R1)
+    if 'webkit' in sys.argv[1:]: print('test_stars runs on Chromium only')
+    jobs = int(args[0]) if args else 3
     log = Log('stars')
     from playwright.sync_api import sync_playwright
     from harness import serve, new_page, enter

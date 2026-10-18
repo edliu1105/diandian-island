@@ -7,7 +7,7 @@
     box (the pass rule decides after two sessions)
  M3 Z1 uses "=" at every level: L1 count, L2 the card that makes both sides the same, L3 / L4 the same or not (= / ≠),
     L5 a + b = ? + c; a real click answers each, >= 88 px, landscape and portrait
- M4 after 36 gems a second book (the heroes come again); a full book says "宝石册满啦！"
+ M4 (hero cards since PT1: the gems became cards) 35 cards out: the key opens the 36th and the 37th, kept, the album lights them
  L1 the monthly test: the plan's mix (give N x2, compare x2) and in two sittings
  L2 the save before v2 is kept (and can be restored)
  L3 a skill is "known" only when right in two forms
@@ -48,11 +48,13 @@ with sync_playwright() as p, serve() as base:
     log.check(r == ['learning', 'known'], 'L3 a skill in box 4 is "known" only when right in two forms %s' % r)
     # M4
     page.evaluate(OPEN)
-    r = page.evaluate("""() => { Store.s.gems.n = 35; Store.save(); window.__sg = []; const o = Voice.say; Voice.say = function (t, x) { window.__sg.push(t); return o.call(this, t, x); };
-      Gems.turn('key'); const at36 = Store.s.gems.n; Gems.turn('key'); const at37 = Store.s.gems.n; Voice.say = o;
-      const v = Store.validate(JSON.parse(JSON.stringify(Store.s))).gems.n; Gems.album(); const a = document.querySelector('#gems'); const txt = a ? a.textContent : ''; const lit = a ? a.querySelectorAll('path[fill="#FF6B5B"], path[fill="#FFC93C"], path[fill="#5CC46E"], path[fill="#4FB3FF"], path[fill="#B57BFF"], path[fill="#FF9F43"]').length : -1; if (a) a.remove();
-      return { at36, at37, v, book2: txt.includes('第 2 册'), lit }; }""")
-    log.check(r == {'at36': 36, 'at37': 37, 'v': 37, 'book2': True, 'lit': 1}, 'M4 after 36 gems a second book: the 37th gem is the first of book 2 (kept through a reload) %s' % r)
+    # the gems became hero cards (PT1, client 2026-10-11; 51 cards since 积木城): a save with 35 cards out (already moved to cards)
+    r = page.evaluate("""() => { Store.s.gems = { n: 35, src: ['@cards'] }; Store.save();
+      Gems.turn('key'); const at36 = Store.s.gems.n; Gems.turn('key'); const at37 = Store.s.gems.n;
+      const v = Store.validate(JSON.parse(JSON.stringify(Store.s))).gems.n; Gems.album(); const a = document.querySelector('#gems');
+      const lit = a ? a.querySelectorAll('.acard.on').length : -1, all = a ? a.querySelectorAll('.acard').length : -1; if (a) a.remove();
+      return { at36, at37, v, lit, all: all === CARDS.length && CARDS.length >= 37 }; }""")
+    log.check(r == {'at36': 36, 'at37': 37, 'v': 37, 'lit': 37, 'all': True}, 'M4 35 hero cards out: the key opens the 36th and the 37th (kept through a reload), the album shows them in colour %s' % r)
     # L4 / L5: a real tap on the chest -> the album; its chest button -> the key round, no tray
     page.evaluate("() => { const d = DAY(); const m = Mem.touch('cmp10'); m.b = 2; m.due = d; Store.s.key.day = -1; Store.s.lastDay = d; Store.save(); MapView.update(); }")
     page.wait_for_timeout(400)

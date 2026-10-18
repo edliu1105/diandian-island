@@ -210,12 +210,42 @@ def registrations(log, br, base):
     page.context.close()
 
 
+def parent_early(log, br, base):
+    """the parent panel's body is in the lazy file (first screen budget, docs/W5-DESIGN.md §9.5): opened before it is in (here:
+    on the entry screen, before the entry tap asks for them), the panel shows its title, 关闭 and 稍等, then fills itself in;
+    closed while waiting, it stays closed; opened later it is complete at once"""
+    from harness import new_page
+    tag = 'parent panel before the lazy files'
+    page = new_page(br, base, 1180, 820, fast=True)
+    st = page.evaluate("() => { Parent.open(); const sh = document.querySelector('#parent .sheet'); return { on: document.querySelector('#parent').classList.contains('on'), h2: (sh.querySelector('h2') || {}).textContent, close: !!sh.querySelector('button.x'), text: sh.textContent }; }")
+    log.check(st['on'] and st['h2'] == '家长面板' and st['close'] and '稍等' in st['text'], '%s: opened at once - title, 关闭 and "稍等，正在打开……" %s' % (tag, st['text'][:40]))
+    page.wait_for_function("() => /语音诊断/.test(document.querySelector('#parent .sheet').textContent)", timeout=20000)
+    st = page.evaluate("() => { const t = document.querySelector('#parent .sheet').textContent; return { wait: /稍等/.test(t), parts: ['语音诊断', '每个世界的进度与难度', '离线', '设置', '全部解锁', '清空进度', '教一教', '答错后的讲解'].filter(k => !t.includes(k)), on: document.querySelector('#parent').classList.contains('on') }; }")
+    log.check(st['on'] and not st['wait'] and not st['parts'], '%s: it fills itself in when they arrive (voice, progress tables, offline, settings, 教一教, the explain setting) - missing %s' % (tag, st['parts']))
+    page.evaluate("() => Parent.close()")
+    page.context.close()
+    # closed while waiting: stays closed
+    page = new_page(br, base, 1180, 820, fast=True)
+    page.evaluate("() => { Parent.open(); Parent.close(); }")
+    page.wait_for_function("() => W3.loaded === true", timeout=20000); page.wait_for_timeout(300)
+    st = page.evaluate("() => ({ on: document.querySelector('#parent').classList.contains('on'), text: document.querySelector('#parent .sheet').textContent })")
+    log.check(not st['on'] and not st['text'], '%s: closed while it waited - it stays closed %s' % (tag, st))
+    # after the entry tap: the whole panel at once, the 积木城 table in it, the gear's long press opens it
+    go_map(page)
+    page.evaluate("() => { Store.s.w5 = true; Parent.open(); }")
+    st = page.evaluate("() => { const t = document.querySelector('#parent .sheet').textContent; return { wait: /稍等/.test(t), w5: /积木城（第五世界/.test(t), lessons: /上课对照/.test(t) }; }")
+    log.check(not st['wait'] and st['w5'] and st['lessons'], '%s: opened on the map the panel is complete at once (积木城 table, 上课对照) %s' % (tag, st))
+    page.evaluate("() => Parent.close()")
+    log.check(not page.errors, '%s: zero page errors %s' % (tag, page.errors[:3]))
+    page.context.close()
+
+
 def run(log, eng='chromium'):
     from playwright.sync_api import sync_playwright
     from harness import serve
     with sync_playwright() as p, serve() as base:
         br = getattr(p, eng).launch()
-        for fn, args in ((registrations, ()), (child_save, (['peppa5', 'bluey5'],)), (child_save, (ALL5,)), (new_player, ()), (whole_world, ())):
+        for fn, args in ((registrations, ()), (parent_early, ()), (child_save, (['peppa5', 'bluey5'],)), (child_save, (ALL5,)), (new_player, ()), (whole_world, ())):
             try:
                 fn(log, br, base, *args)
             except Exception as e:

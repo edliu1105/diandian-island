@@ -16,14 +16,15 @@
     and the review types: the explanation lasts <= 6 s, and a tap 0.4 s into it ends it within 2 s
 The list of new sentences (raw/js/w4/w3explain.voice.txt) is a source file: where it is not delivered every sentence said
 in an explanation must be in the voice bank.
-usage: python tests/test_opt3.py [jobs=3] [G,E,R,L,S,T]"""
+usage: python tests/test_opt3.py [chromium] [jobs=3] [G,E,R,L,S,T]      (Chromium only; an engine name first is accepted and skipped)"""
 import os, sys, json, re, time
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import Log, ROOT
 
-JOBS = int(sys.argv[1]) if len(sys.argv) > 1 else 3
-PARTS = sys.argv[2].split(',') if len(sys.argv) > 2 else ['G', 'E', 'R', 'L', 'S', 'T']
+ARGS = [a for a in sys.argv[1:] if a not in ('chromium', 'webkit')]          # 'chromium' first is fine (review W5R1)
+JOBS = int(ARGS[0]) if ARGS else 3
+PARTS = ARGS[1].split(',') if len(ARGS) > 1 else ['G', 'E', 'R', 'L', 'S', 'T']
 SHOTS = os.path.join(ROOT, 'tests', 'logs', 'opt3')
 os.makedirs(SHOTS, exist_ok=True)
 _NEWF = os.path.join(ROOT, 'raw', 'js', 'w4', 'w3explain.voice.txt')          # not in a delivered copy (raw/ is not published): then the bank alone

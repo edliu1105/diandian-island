@@ -224,6 +224,9 @@ const W5U = {
   const INK = '#2B2118';
   const lvOf = o => Math.min(5, Math.max(1, o.level || 1));
   const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine) */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
 
   /* ---------------------------------------------------------------- P8 记！ 动物园记位置 (F3 Zoo Locations: where, not who)
      A little block zoo: a grid of pens, all with the same wooden door. "看好，记住！" - the animals stand in their pens for a few
@@ -368,8 +371,8 @@ const W5U = {
       await st.scope.wait(T(360)); if (!Session.alive(my)) return;
       const cs = bad.map(k => this.chosen(st, ans, k));
       const rings = W5U.blue(st, cs.map(c => c.door || c.card));
-      W5U.note(st, this.wrongLine(cs[0]));
-      await st.scope.wait(1100); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;          /* the feedback line ("这里住着小鸭") ends - not said twice */
+      await st.scope.wait(T(400)); if (!Session.alive(my)) return;
       W5U.hide(rings);
       bad.forEach(k => { const e = this.rightOf(st, k); W5U.gold(st, e); K.hop(st, e, 14); });
       await W5U.sum(st, this.rightLine(st, bad[0]));
@@ -679,7 +682,7 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st;
       const rings = W5U.blue(st, st.tapEls[ans]);
-      await st.scope.wait(600); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       W5U.hide(rings);
       await this.demo(st); if (!Session.alive(my)) return;
       const R = st.tapEls[q.answer]; W5U.gold(st, R); K.hop(st, this.optEls(st, q.answer)[0], 14);
@@ -1025,7 +1028,7 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st;
       const rings = W5U.blue(st, this.moved(st, ans));
-      await st.scope.wait(300); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       W5U.hide(rings);
       await this.replay(st); if (!Session.alive(my)) return;
       this.goldFrame(st, st.p6.result);
@@ -1326,7 +1329,7 @@ const W5U = {
       if (j === 'sides') {
         for (let i = 0; i < edges.length; i++) { line(edges[i], W5U.BLUE, 12); Count.say(i + 1); await pause(st, 250); if (!Session.alive(my)) return; }
       } else edges.filter(e => !rk.has(key(e[0], e[1]))).forEach(e => { const l = line(e, W5U.BLUE, 12, '4 16'); st.scope.anim(l, [{ opacity: 1 }, { opacity: 0.2 }, { opacity: 1 }], { duration: 500, iterations: 3 }); });
-      await st.scope.wait(600); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       W5U.hide(rings);
       /* 2. the right one in gold: from the card onto the board / counted / with a little train on both bands */
       const gs = this.goldShape(st, R);
@@ -1374,6 +1377,9 @@ const W5U = {
   const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
   const S4 = 'stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"';
   /* a pause inside one step of the explanation (Scope.wait would end the step-by-step beat there); a tap skips it */
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine) */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
   const pause = (st, ms) => (st.ff || fast() ? Promise.resolve() : new Promise(r => st.scope.timeout(r, ms)));
   /* a positioned piece of the question (an svg drawing in it, stretched to its box) */
   const piece = (st, z, inner, vw, vh) => { const e = W2X.thing(st, 10, 10, z, ''); if (inner != null) e.innerHTML = '<svg viewBox="0 0 ' + vw + ' ' + vh + '" width="100%" height="100%" style="position:absolute;left:0;top:0;overflow:visible;pointer-events:none">' + inner + '</svg>'; return e; };
@@ -1560,7 +1566,7 @@ const W5U = {
       /* the hand (side) he took for H: the one with the asked thing in it, else the one on his own H side of the screen */
       const F = H === 'L' ? 'R' : 'L', took = q.d === 5 ? (m.g === a.g ? m.side : m.front ? F : H) : m[F] === a.X && m[H] !== a.X ? F : m[H] === a.X ? a.O : (m.front ? F : H);
       const blueRing = this.lift(st, ans, this.scr(m, took), BLUE);
-      await st.scope.wait(500); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       if (blueRing) W5U.hide(blueRing);
       /* 2. one that faces you turns round */
       const who = m.front ? ans : R.front ? q.answer : -1;
@@ -1742,14 +1748,14 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st, B = st.items[0], A = st.items[1];
       const rings = W5U.blue(st, W5U.cardOf(st, ans));
-      await st.scope.wait(500); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       W5U.hide(rings);
       /* 2. the before photo face up again (L4) / the number card turned into its picture (L5), then one to one */
       if (st.back) { await this.flip(st, false); if (!Session.alive(my)) return; }
       if (st.numCard) { st.numCard.remove(); st.numCard = null; B.forEach((it, i) => { it.e.style.visibility = ''; K.pop(st, it.e, 30 * i); }); await pause(st, 300); if (!Session.alive(my)) return; }
       const m = Math.min(B.length, A.length), s = K.lines(st);
       for (let i = 0; i < m; i++) { const a = W5U.rect(B[i].e), b = W5U.rect(A[i].e); K.link(st, s, { x: a.x + a.w / 2, y: a.y + a.h / 2 }, { x: b.x + b.w / 2, y: b.y + b.h / 2 }, '#B57BFF'); }
-      await pause(st, 200); if (!Session.alive(my)) return;
+      await pause(st, 100); if (!Session.alive(my)) return;
       if (q.kind === 'same') W5U.note(st, '没有来也没有走');
       else if (q.kind === 'came') {
         W5U.note(st, '多了' + CNQ(q.n) + '只，是来了');
@@ -1760,11 +1766,11 @@ const W5U = {
         for (let i = B.length - 1; i >= m; i--) { W5U.leave(st, B[i].e, dd.x, dd.y, 340); Count.say(i); await pause(st, 260); if (!Session.alive(my)) return; }
         const fr = W5U.stay(st, B.slice(0, m).map(it => it.e)); if (fr) fr.style.borderStyle = 'solid';
       }
-      await st.scope.wait(250); if (!Session.alive(my)) return;
+      await st.scope.wait(100); if (!Session.alive(my)) return;
       const R = W5U.cardOf(st, q.answer); W5U.gold(st, R); K.hop(st, R, 12);
       await W5U.sum(st, q.kind === 'went' ? W5U.left(q.a) + '！' : this.say(q.answer));
       if (!Session.alive(my)) return;
-      await st.scope.wait(200);
+      await st.scope.wait(100);
     },
     rightEls(st) { return [W5U.cardOf(st, st.q.answer)]; },
     async reveal(st) {
@@ -1918,7 +1924,7 @@ const W5U = {
       W5U.blue(st, st.kiteEls[ans]);
       const b1 = await this.bead(st, mine, false, BLUE); if (!Session.alive(my)) return;
       W5U.blue(st, st.aniEls[mine]);
-      await st.scope.wait(250); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       if (b1) b1.remove();
       if (st.cloudEl) st.scope.anim(st.cloudEl, [{ opacity: 1 }, { opacity: 0.25 }], { duration: 400, fill: 'forwards' });
       W5U.note(st, '跟着线走');
@@ -2071,15 +2077,15 @@ const W5U = {
       const pair = i => [st.cells[0][i], st.cells[1][i]];
       w.forEach(i => pair(i).forEach(e => st.scope.anim(e, [{ transform: 'scale(1)' }, { transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 700, iterations: 2 })));
       const rings = w.length ? W5U.blue(st, [].concat(...w.map(pair))) : W5U.blue(st, st.boxes[0]);
-      await st.scope.wait(700); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       W5U.hide(rings);
       /* 2. a light goes over the rows of both boxes; at a row with a difference it stops: gold on both sweets */
       const g = this.geo(q), bars = [0, 1].map(k => { const b = W2X.thing(st, 10, 10, 8, ''); Object.assign(b.style, { borderRadius: '14px', background: 'rgba(255,236,140,.45)', boxShadow: '0 0 18px 6px rgba(255,236,140,.6)', pointerEvents: 'none' }); return b; });
       const rowsWith = new Set(q.diffs.map(x => Math.floor(x.i / q.cols))), last = Math.max(...rowsWith);
       for (let r = 0; r <= last; r++) {
         bars.forEach((b, k) => { const c = this.cellRect(q, k, r * q.cols); place(b, c.x - 6, c.y - 6, g.bw - 2 * g.pad + 12, g.c + 12); });
-        if (rowsWith.has(r)) { q.diffs.filter(x => Math.floor(x.i / q.cols) === r).forEach(x => { W5U.gold(st, pair(x.i)); K.hop(st, st.cells[1][x.i], 10); }); Sfx.reveal(); await pause(st, 350); }
-        else await pause(st, 160);
+        if (rowsWith.has(r)) { q.diffs.filter(x => Math.floor(x.i / q.cols) === r).forEach(x => { W5U.gold(st, pair(x.i)); K.hop(st, st.cells[1][x.i], 10); }); Sfx.reveal(); await pause(st, 280); }
+        else await pause(st, 120);
         if (!Session.alive(my)) return;
       }
       bars.forEach(b => b.remove());
@@ -2498,8 +2504,10 @@ const W5U = {
     lines() { return uniq([this.intro, '把它拼满！', '看，拼满了', '两个三角拼成方'].concat(Object.values(this.LINE), this.praise)); },
   };
   /* ================================================================ J6 数！ 数图形，填表格 (count5)
-     A picture built of shapes (robot, rocket, train, castle, owl: every part one shape in its own square of a 4 x 4 grid, the
-     parts touching like blocks); a table: one row per kind of shape - its outline, [−] the count [+]. Tapping a part ticks
+     A picture built of shapes. L1-L2: a few shapes in the squares of a 4 x 4 grid (sizes differ at L2). L3-L5: a real picture
+     - robot, rocket, train, house, owl, castle - every part a shape filling its own block of the grid (one cell, or 2 x 1,
+     1 x 2, 2 x 2, 3 x 1, 4 x 1) at one scale, the parts touching so the outline reads (each part still its own tap block of
+     >= 88); the picture decides how many of each kind (a part can be one of 1-3 shapes). A table: one row per kind of shape - its outline, [−] the count [+]. Tapping a part ticks
      it (only to help him keep track - it never fills the table). "好了" judges the table.
        L1 triangles and circles, 1-4 each, upright, all the same size
        L2 + squares, sizes differ, some triangles upside down; 1-5 each
@@ -2520,6 +2528,38 @@ const W5U = {
     castle: ['01 11 21 31 02 12 22 32 00 30 10 20 03 13 23 33', { '00': 'tri', '30': 'tri', '10': 'tri', '20': 'tri', '22': 'semi' }],
     owl: ['10 20 11 21 12 22 00 30 01 31 02 32 13 23 03 33', { '00': 'tri', '30': 'tri', '11': 'circle', '21': 'circle', '13': 'semi', '23': 'semi' }],
   };
+  /* L3-L5 pictures: parts [column, row, width, height, the shapes it can be (t c s r h), flags: o optional, d a triangle
+     upside down, v a one-cell rectangle standing, n / L / R a half circle's dome down / left / right, 4 a square may be
+     turned 45 degrees] */
+  const PIC6B = {
+    robot: [[1, 0, 2, 1, 'rh'], [0, 0, 1, 1, 'tc', 'o'], [3, 0, 1, 1, 'tc', 'o'], [1, 1, 2, 2, 'sc', '4'], [0, 1, 1, 1, 'rc'], [3, 1, 1, 1, 'rc'],
+      [0, 2, 1, 1, 'cht'], [3, 2, 1, 1, 'cht'], [1, 3, 1, 1, 'rs', 'v'], [2, 3, 1, 1, 'rs', 'v'], [0, 3, 1, 1, 'ht', 'o'], [3, 3, 1, 1, 'ht', 'o']],
+    rocket: [[1, 0, 2, 1, 't'], [1, 1, 1, 1, 'cs', '4'], [2, 1, 1, 1, 'cs', '4'], [1, 2, 1, 1, 'rs', 'v'], [2, 2, 1, 1, 'rs', 'v'], [0, 2, 1, 1, 't'], [3, 2, 1, 1, 't'],
+      [0, 1, 1, 1, 'rch', 'vo'], [3, 1, 1, 1, 'rch', 'vo'], [1, 3, 1, 1, 'thc', 'dn'], [2, 3, 1, 1, 'thc', 'dn'], [0, 3, 1, 1, 'c', 'o'], [3, 3, 1, 1, 'c', 'o']],
+    train: [[0, 0, 1, 1, 'rs', 'v'], [1, 0, 1, 1, 'ch', 'o'], [2, 0, 1, 1, 'c', 'o'], [3, 0, 1, 1, 'th'], [0, 1, 3, 1, 'r'], [3, 1, 1, 1, 'sr'],
+      [0, 2, 1, 1, 'c'], [1, 2, 1, 1, 'ch', 'n'], [2, 2, 1, 1, 'ch', 'n'], [3, 2, 1, 1, 'c'], [0, 3, 4, 1, 'r', 'o']],
+    house: [[0, 0, 1, 1, 'c', 'o'], [1, 0, 2, 1, 't'], [3, 0, 1, 1, 'rs', 'vo'], [1, 1, 1, 1, 'sc', '4'], [2, 1, 1, 1, 'sc', '4'], [1, 2, 1, 1, 'r', 'v'], [2, 2, 1, 1, 'sch', '4'],
+      [0, 1, 1, 1, 'tc'], [0, 2, 1, 1, 'r', 'v'], [3, 1, 1, 1, 'tc', 'o'], [3, 2, 1, 1, 'r', 'vo'], [1, 3, 2, 1, 'rh', 'o'], [0, 3, 1, 1, 'hc', 'o'], [3, 3, 1, 1, 'hc', 'o']],
+    owl: [[0, 0, 1, 1, 't'], [3, 0, 1, 1, 't'], [1, 0, 2, 1, 'hr'], [1, 1, 1, 1, 'cs', '4'], [2, 1, 1, 1, 'cs', '4'], [0, 1, 1, 2, 'rh', 'L'], [3, 1, 1, 2, 'rh', 'R'],
+      [1, 2, 2, 1, 'hrc', 'n'], [1, 3, 1, 1, 'tc'], [2, 3, 1, 1, 'tc'], [0, 3, 1, 1, 'r', 'o'], [3, 3, 1, 1, 'r', 'o']],
+    castle: [[0, 0, 1, 1, 't'], [3, 0, 1, 1, 't'], [1, 0, 1, 1, 't', 'o'], [2, 0, 1, 1, 't', 'o'], [0, 1, 1, 2, 'r'], [3, 1, 1, 2, 'r'], [1, 1, 1, 1, 'sc', '4'], [2, 1, 1, 1, 'sc', '4'],
+      [1, 2, 2, 1, 'hr'], [0, 3, 1, 1, 's', 'o'], [1, 3, 1, 1, 'sh', 'o'], [2, 3, 1, 1, 'sh', 'o'], [3, 3, 1, 1, 's', 'o']],
+  };
+  /* each part's colour, by its role in the picture (a robot's limbs blue, a rocket's nose and fins red ...) */
+  const PIC6C = { robot: 'BYYKBBYYBBRR', rocket: 'RBBWWRRKKOYWW', train: 'KWYRGRKKKKO', house: 'YROBBOBGOGOKGG', owl: 'OOOYYPPWOOGG', castle: 'RRYYKKBBOKWWK' };
+  const COL6 = { R: '#FF6B5B', B: '#4FB3FF', G: '#5CC46E', Y: '#FFC93C', P: '#B57BFF', O: '#FF9F43', W: '#EEF2F7', K: '#B7C0CC' };
+  const LET6 = { t: 'tri', c: 'circle', s: 'sq', r: 'rect', h: 'semi' };
+  /* a part filling its block (W x H units), the same scale for every part; its turn is about the block's middle */
+  function part6(g, kind, W, H, rot, fill) {
+    const i = 4, a = { fill, stroke: INK, 'stroke-width': 4, 'stroke-linejoin': 'round' }, G0 = svg('g', { transform: 'translate(' + W / 2 + ' ' + H / 2 + ')' }, g);
+    const T6 = 'rotate(' + rot + ')', w = rot % 180 ? H : W, h = rot % 180 ? W : H;
+    if (kind === 'circle') return svg('circle', Object.assign({ cx: 0, cy: 0, r: Math.min(W, H) / 2 - i }, a), G0);
+    if (kind === 'semi') { const r = Math.min(w / 2, h) - i; return svg('path', Object.assign({ d: 'M' + (-r) + ' ' + (r / 2) + 'A' + r + ' ' + r + ' 0 0 1 ' + r + ' ' + (r / 2) + 'Z', transform: T6 }, a), G0); }
+    if (kind === 'tri') return svg('polygon', Object.assign({ points: [[0, -h / 2 + i], [w / 2 - i, h / 2 - i], [-w / 2 + i, h / 2 - i]].map(p => p.join(',')).join(' '), transform: T6 }, a), G0);
+    if (kind === 'sq') { const q = (Math.min(W, H) - 2 * i) / 2 * (rot % 90 ? 0.72 : 1); return svg('rect', Object.assign({ x: -q, y: -q, width: 2 * q, height: 2 * q, transform: T6 }, a), G0); }
+    if (W === H) { const q = W / 2 - i; return svg('rect', Object.assign({ x: -q, y: -q * 0.54, width: 2 * q, height: q * 1.08, transform: T6 }, a), G0); }
+    return svg('rect', Object.assign({ x: -W / 2 + i, y: -H / 2 + i, width: W - 2 * i, height: H - 2 * i }, a), G0);
+  }
   const J6KINDS = [null, ['tri', 'circle'], ['tri', 'circle', 'sq'], ['tri', 'circle', 'sq', 'rect'], ['tri', 'circle', 'sq', 'rect'], KIND6];
   const PAIRS6 = [['tri', 'circle'], ['sq', 'circle'], ['rect', 'circle'], ['semi', 'circle'], ['circle', 'semi']];
   /* one part drawn in a box of s: kind, scale, turn (tri 180 upside down, sq 45 a diamond, rect 90 standing, semi 0-270) */
@@ -2546,7 +2586,9 @@ const W5U = {
   W5R.J6 = {
     kind0: 'count5', verb: '数！', intro: '机器人数图形！', praise: ['数得清清楚楚！'],
     gen(G, o) {
-      const d = lvOf(o), rng = o.rng, kinds = J6KINDS[d], pic = bagPick(G, 'j6p', Object.keys(PIC6));
+      const d = lvOf(o), rng = o.rng, kinds = J6KINDS[d];
+      if (d >= 3) return this.genPic(G, d, rng, kinds);
+      const pic = bagPick(G, 'j6p', Object.keys(PIC6));
       let cnt, most = -1, pair = null;
       for (let t = 0; t < 300; t++) {
         if (d === 1) cnt = kinds.map(() => rng.int(1, 4));
@@ -2575,6 +2617,34 @@ const W5U = {
       else q.answer = cnt.join(',') + '|';
       return q;
     },
+    /* L3-L5: a picture; each part one of the shapes it can be, so that every kind is there (1-5; L5 1-6), at L4 12-16 parts
+       with one kind the most (that kind from a bag), at L5 10-14 parts and the pair asked about not the same number */
+    genPic(G, d, rng, kinds) {
+      const most = d === 4 ? W5U.at(G, 4, 'j6m') : -1, pair = d === 5 ? bagPick(G, 'j6pair', PAIRS6) : null, lo = d === 4 ? 12 : d === 5 ? 10 : 6, hi = d === 4 ? 16 : d === 5 ? 14 : 13;
+      const names = Object.keys(PIC6B).filter(n => PIC6B[n].length >= lo), first = bagPick(G, 'j6q' + d, names);
+      for (let t = 0; t < 800; t++) {
+        const pic = t < 300 ? first : rng.pick(names), parts = [];
+        let bad = false;
+        for (const [j, [x, y, w, h, ks, fl]] of PIC6B[pic].entries()) {
+          const f = fl || '', can = ks.split('').map(c => LET6[c]).filter(k => kinds.includes(k));
+          if (!can.length) { if (f.includes('o')) continue; bad = true; break; }
+          if (f.includes('o') && rng.chance(d === 4 ? 0.2 : 0.45)) continue;
+          const kind = rng.pick(can);
+          const rot = kind === 'tri' ? (f.includes('d') ? 180 : 0) : kind === 'sq' ? (f.includes('4') && rng.chance(0.5) ? 45 : 0) : kind === 'rect' ? (w === 1 && h === 1 && f.includes('v') ? 90 : 0) : kind === 'semi' ? (f.includes('n') ? 180 : f.includes('L') ? 270 : f.includes('R') ? 90 : 0) : 0;
+          parts.push({ x, y, w, h, kind, rot, col: COL6[PIC6C[pic][j]] });
+        }
+        if (bad) continue;
+        const cnt = kinds.map(k => parts.filter(p => p.kind === k).length), tot = parts.length, top = d === 5 ? 6 : d === 4 ? 7 : 5;
+        if (tot < lo || tot > hi || cnt.some(c => c < 1 || c > top)) continue;
+        if (d === 4 && !cnt.every((c, i) => i === most || c < cnt[most])) continue;
+        const q = { k: [d, pic, parts.map(p => p.kind[0] + p.rot).join('')], d, pic, kinds, cnt, parts, num: d >= 4, blocks: true };
+        if (d === 4) return Object.assign(q, { most, answer: cnt.join(',') + '|' + most });
+        if (d === 5) { const a = kinds.indexOf(pair[0]), b = kinds.indexOf(pair[1]), diff = cnt[a] - cnt[b]; if (diff < 1) continue; return Object.assign(q, { pair: [a, b], diff, cards: W5U.nums(G, diff, 1, 7), answer: cnt.join(',') + '|' + diff }); }
+        q.answer = cnt.join(',') + '|';
+        return q;
+      }
+      return null;
+    },
     audit(q) { return [{ build: true, chance: Math.pow(1 / 7, q.kinds.length) * (q.d === 4 ? 1 / 4 : q.d === 5 ? 1 / 5 : 1) }]; },
     decor(G) { W3X.decor2(G, this.chars, true); },
     geo(st) {
@@ -2592,8 +2662,9 @@ const W5U = {
       const q = st.q, g = this.geo(st);
       if (!st.picEl) return;
       place(st.picEl, g.px - 12, g.py - 12, 4 * g.s + 24, 4 * g.s + 24);
-      const xs = q.parts.map(p => p.x), ys = q.parts.map(p => p.y), ox = (4 - (Math.max(...xs) - Math.min(...xs) + 1)) / 2 - Math.min(...xs), oy = (4 - (Math.max(...ys) - Math.min(...ys) + 1)) / 2 - Math.min(...ys);
-      st.partEls.forEach((e, i) => { const p = q.parts[i]; place(e, Math.round(g.px + (p.x + ox) * g.s), Math.round(g.py + (p.y + oy) * g.s), g.s, g.s); });
+      const W1 = p => p.w || 1, H1 = p => p.h || 1, x0 = Math.min(...q.parts.map(p => p.x)), x1 = Math.max(...q.parts.map(p => p.x + W1(p))), y0 = Math.min(...q.parts.map(p => p.y)), y1 = Math.max(...q.parts.map(p => p.y + H1(p)));
+      const ox = (4 - (x1 - x0)) / 2 - x0, oy = (4 - (y1 - y0)) / 2 - y0;
+      st.partEls.forEach((e, i) => { const p = q.parts[i]; place(e, Math.round(g.px + (p.x + ox) * g.s), Math.round(g.py + (p.y + oy) * g.s), W1(p) * g.s, H1(p) * g.s); });
       q.kinds.forEach((_, k) => {
         const R = st.rows[k], P = this.rowParts(st, k), b = this.rowBox(st, k);
         place(R.row, b.x, b.y, b.w, b.h); place(R.icon, P.icon.x, P.icon.y, P.icon.w, P.icon.h); place(R.m, P.m.x, P.m.y, 88, 88); place(R.p, P.p.x, P.p.y, 88, 88); place(R.disp, P.disp.x, P.disp.y, P.disp.w, P.disp.h);
@@ -2608,8 +2679,9 @@ const W5U = {
       st.vals = q.kinds.map(() => 0); st.ticks = q.parts.map(() => false); st.part2 = false;
       st.picEl = thing(st, 3, 'item'); Object.assign(st.picEl.style, { borderRadius: '24px', background: 'rgba(255,248,236,.92)', boxShadow: '0 0 0 4px ' + INK });
       st.partEls = q.parts.map((p, i) => {
-        const e = thing(st, 6, 'item'), s = svg('svg', { viewBox: '0 0 92 92', width: '100%', height: '100%' }, e); s.style.overflow = 'visible'; s.style.pointerEvents = 'none';
-        e._shape = shape6(s, p.kind, 92, p.k, p.rot, p.col);
+        const W = (p.w || 1) * 92, H = (p.h || 1) * 92, e = thing(st, 6, 'item'), s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }, e); s.style.overflow = 'visible'; s.style.pointerEvents = 'none';
+        if (q.blocks) { e._shape = part6(s, p.kind, W, H, p.rot, p.col); e._turn = a => e._shape.setAttribute('transform', 'rotate(' + a + ')'); }
+        else { e._shape = shape6(s, p.kind, 92, p.k, p.rot, p.col); e._turn = a => e._shape.setAttribute('transform', 'rotate(' + a + ' 46 46)'); }
         K.reg(st, 'g' + i, e, {});
         return e;
       });
@@ -2703,8 +2775,8 @@ const W5U = {
           await W5U.count(st, 150, n);
         }
         if (turned != null && !ff(st)) {
-          const e = st.partEls[turned], p = q.parts[turned], c = 46;
-          const turn = (from, to) => { const t0 = performance.now(), dur = T(380); return new Promise(res => { const f = () => { const kk = dur ? Math.min(1, (performance.now() - t0) / dur) : 1; e._shape.setAttribute('transform', 'rotate(' + (from + (to - from) * kk) + ' ' + c + ' ' + c + ')'); if (kk < 1 && Session.alive(my) && !st.ff) requestAnimationFrame(f); else { e._shape.setAttribute('transform', 'rotate(' + to + ' ' + c + ' ' + c + ')'); res(); } }; f(); }); };
+          const e = st.partEls[turned], p = q.parts[turned];
+          const turn = (from, to) => { const t0 = performance.now(), dur = T(380); return new Promise(res => { const f = () => { const kk = dur ? Math.min(1, (performance.now() - t0) / dur) : 1; e._turn(from + (to - from) * kk); if (kk < 1 && Session.alive(my) && !st.ff) requestAnimationFrame(f); else { e._turn(to); res(); } }; f(); }); };
           await turn(p.rot, 0); await say(st, '转一转，还是方的'); await turn(0, p.rot);
         }
         if (!Session.alive(my)) return;
@@ -3450,7 +3522,12 @@ const W5U = {
       const head = x => thumb(x, 58), sym = h => { const s = el('span', '', d); s.innerHTML = h; s.style.display = 'flex'; return s; };
       const row = (who, at, ends) => { const s = svg('svg', { viewBox: '0 0 ' + (S * 34 + 6) + ' 40', width: S * 30 + 6, height: 36 }); s.style.pointerEvents = 'none'; for (let i = 0; i < S; i++) svg('rect', { x: 4 + i * 34, y: 6, width: 28, height: 28, rx: 6, fill: ends && (i === 0 || i === S - 1) ? '#5B4A3A' : i === at ? '#FFC93C' : '#fff', stroke: INK, 'stroke-width': 3 }, s); return s; };
       if (c.t === 'out') { d.appendChild(head(c.x)); sym('<svg viewBox="0 0 100 100" width="52" height="52">' + HOUSE + '</svg>'); }
-      else if (c.t === 'left') { d.appendChild(head(c.x)); sym('<svg viewBox="0 0 40 40" width="40" height="40"><path d="M30 8L14 20L30 32" fill="none" stroke="#2B2118" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>'); d.appendChild(head(c.y)); }
+      else if (c.t === 'left') {
+        /* X is left of Y: from Y a long arrow points left, to X (not "<" - that is the less-than sign of 星空) */
+        d.appendChild(head(c.x)); d.style.gap = '2px';
+        sym('<svg viewBox="0 0 76 44" width="74" height="44"><path d="M70 22H16" stroke="#2B2118" stroke-width="13" stroke-linecap="round"/><path d="M70 22H16" stroke="#4FB3FF" stroke-width="7" stroke-linecap="round"/><path d="M28 6L8 22L28 38Z" fill="#4FB3FF" stroke="#2B2118" stroke-width="4" stroke-linejoin="round"/></svg>');
+        d.appendChild(head(c.y));
+      }
       else if (c.t === 'next') { const b = el('span', '', d); Object.assign(b.style, { display: 'flex', gap: '0px', padding: '3px 6px', borderRadius: '30px', boxShadow: '0 0 0 4px ' + GOLD }); b.appendChild(head(c.x)); b.appendChild(head(c.y)); }
       else if (c.t === 'notnext') { d.appendChild(head(c.x)); sym('<svg viewBox="0 0 24 56" width="20" height="54"><rect x="4" y="2" width="16" height="52" rx="4" fill="#B97A3C" stroke="#2B2118" stroke-width="4"/></svg>'); d.appendChild(head(c.y)); }
       else { d.appendChild(head(c.x)); d.appendChild(row(c.x, c.t === 'mid' ? (S - 1) / 2 : c.t === 'first' ? 0 : -1, c.t === 'notends')); }
@@ -4269,6 +4346,9 @@ const W5U = {
   const badgeAt = (st, x, y, n, size) => { size = size || 42; const b = UI.badge(n, size); Stage.el.appendChild(b); b.style.position = 'absolute'; b.style.pointerEvents = 'none'; place(b, Math.round(x - size / 2), Math.round(y - size / 2)); st.els.push(b); st.scope.anim(b, [{ transform: 'scale(0)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: 240, easing: EASE.pop }); return b; };
   /* an svg (viewBox 0 0 100 100) as an icon for the task card */
   const ic = s => W3X.ic(s, 52);
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine). As paw.js. */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
 
   /* ================================================================ H5 折！ 剪纸对折 (F10 Special Twins, S5 Kingdom of Origami)
      A red paper cut on the window, five dashed lines across it, a coloured knob (88) at one end of each. "沿哪条线折，两边一样？"
@@ -4691,7 +4771,7 @@ const W5U = {
     drawVines(st) {
       const s = st.vineSvg; while (s.firstChild) s.removeChild(s.firstChild);
       st.bundles.forEach((b, j) => {
-        const d = ringPath(b.map(i => st.items[i].c), st.q.lay === 'tied' ? 44 : 58), lit = st.lit === j;
+        const d = ringPath(b.map(i => st.items[i].c), st.q.lay === 'tied' ? 44 : st.q.lay === 'palm' ? 52 : 58), lit = st.lit === j;
         const g = svg('g', {}, s);
         svg('path', { d, fill: lit ? 'rgba(255,201,60,.22)' : 'rgba(92,196,110,.14)', stroke: lit ? GOLD : '#2F7D32', 'stroke-width': lit ? 12 : 9, 'stroke-linejoin': 'round' }, g);
         svg('path', { d, fill: 'none', stroke: lit ? '#FFF3B0' : '#7BD389', 'stroke-width': 3.5, 'stroke-dasharray': '10 9', 'stroke-linejoin': 'round' }, g);
@@ -4760,8 +4840,11 @@ const W5U = {
       const q = st.q, F = new Set(this.free(st)); ids = uniq(ids).filter(i => F.has(i));
       st.pick.forEach(i => this.mark(st, i, false)); st.pick = [];
       if (!ids.length) return 'free';
-      if (ids.length !== q.per) {
+      /* in hands of five (L3) a bundle is one hand: five from different hands only wiggle (the vines would cross) */
+      const mixed = q.lay === 'palm' && ids.length === q.per && ids.some(i => Math.floor(i / 5) !== Math.floor(ids[0] / 5));
+      if (ids.length !== q.per || mixed) {
         ids.forEach(i => K.wiggle(st, st.items[i].el));
+        if (mixed) return 'ok';
         if (!st.saidK) { st.saidK = true; Voice.say(q.per === 5 ? '要五个一捆' : '要两个一捆', { tag: 'fix' }); }
         return 'ok';
       }
@@ -4846,7 +4929,7 @@ const W5U = {
       const F = this.free(st); if (F.length < q.per) return null;
       /* the first free one and its nearest free neighbours */
       const c0 = st.items[F[0]].c, dist = i => Math.hypot(st.items[i].c[0] - c0[0], st.items[i].c[1] - c0[1]);
-      const near = F.slice().sort((a, b) => dist(a) - dist(b)).slice(0, q.per);
+      const near = q.lay === 'palm' ? F.filter(i => Math.floor(i / 5) === Math.floor(F[0] / 5)) : F.slice().sort((a, b) => dist(a) - dist(b)).slice(0, q.per);
       const cx = near.reduce((s, i) => s + st.items[i].c[0], 0) / q.per, cy = near.reduce((s, i) => s + st.items[i].c[1], 0) / q.per;
       return { g: 'sweep', p: { id: 'pad', ids: near.map(i => 'g' + i) }, x: cx, y: cy };
     },
@@ -4870,21 +4953,24 @@ const W5U = {
     },
     /* the count the explanation shows: bundle by bundle ("二、四、六"; "一、二、三" for how many bundles), then the loose ones */
     async countUp(st, ask) {
-      const q = st.q, my = st, B = st.bundles, lo = this.free(st), up = q.lay === 'tied' ? 50 : 64;
+      const q = st.q, my = st, lo = this.free(st), up = q.lay === 'tied' ? 50 : 64;
+      /* the bundles in reading order (rows top to bottom, each left to right), whatever order he tied them in */
+      const cen = b => [b.reduce((s, i) => s + st.items[i].c[0], 0) / b.length, b.reduce((s, i) => s + st.items[i].c[1], 0) / b.length];
+      const order = st.bundles.map((b, j) => j).sort((a, b) => { const A = cen(st.bundles[a]), Bc = cen(st.bundles[b]); return Math.round(A[1] / 120) - Math.round(Bc[1] / 120) || A[0] - Bc[0]; });
       if (ask !== 'left') {
-        for (let j = 0; j < B.length; j++) {
+        for (let jj = 0; jj < order.length; jj++) {
           if (!Session.alive(my)) return;
-          st.lit = j; this.drawVines(st);
-          const cs = B[j].map(i => st.items[i].c), top = Math.min(...cs.map(c => c[1])) - up, mx = cs.reduce((s, c) => s + c[0], 0) / cs.length;
-          const v = ask === 'groups' ? j + 1 : (j + 1) * q.per;
-          badgeAt(st, mx, Math.max(30, top), v, 44); B[j].forEach(i => K.hop(st, st.items[i].el, 10));
+          const j = order[jj]; st.lit = j; this.drawVines(st);
+          const cs = st.bundles[j].map(i => st.items[i].c), top = Math.min(...cs.map(c => c[1])) - up, mx = cs.reduce((s, c) => s + c[0], 0) / cs.length;
+          const v = ask === 'groups' ? jj + 1 : (jj + 1) * q.per;
+          badgeAt(st, mx, Math.max(30, top), v, 44); st.bundles[j].forEach(i => K.hop(st, st.items[i].el, 10));
           await Count.beat(st.scope, 240, v);
         }
         st.lit = -1; this.drawVines(st);
       }
       if (ask === 'groups') return;
       /* the loose ones: a tick each, the last one said (the total) */
-      let v = ask === 'left' ? 0 : B.length * q.per;
+      let v = ask === 'left' ? 0 : st.bundles.length * q.per;
       for (let j = 0; j < lo.length; j++) {
         if (!Session.alive(my)) return;
         v++; const i = lo[j], c = st.items[i].c; badgeAt(st, c[0], c[1] - up + 6, v, 40); K.hop(st, st.items[i].el, 10);
@@ -4895,8 +4981,7 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st, bad = this.bad(st, ans), k = bad[0] || 0, ask = this.askOf(q, k);
       W5U.blue(st, bad.map(j => this.chosenCard(st, ans, j)));
-      W5U.note(st, this.lineNot(ask, q.asks === 2 ? +String(ans).split(',')[k] : ans));
-      await st.scope.wait(650); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       await this.countUp(st, ask); if (!Session.alive(my)) return;
       W5U.gold(st, bad.map(j => this.rightCard(st, j)));
       await W5U.sum(st, this.lineRight(ask, ask === 'groups' ? q.groups : ask === 'left' ? q.left : q.n));
@@ -5155,8 +5240,8 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st, BL = '#9AD3FF', GL = '#FFE08A';
       if (q.ask === 'count') {
-        W5U.blue(st, W5U.cardOf(st, ans)); W5U.note(st, '不是' + CNQ(ans) + '格');
-        await st.scope.wait(650); if (!Session.alive(my)) return;
+        W5U.blue(st, W5U.cardOf(st, ans));
+        await fbDone(st); if (!Session.alive(my)) return;
         const ms = this.countAnim(st, st.plotEls[0], GL, 125);
         W5U.ring(st, st.plotEls[0]._sv, GOLD, 10);
         W5U.note(st, '两个半格，一格');
@@ -5179,9 +5264,9 @@ const W5U = {
         return;
       }
       W5U.blue(st, st.plotEls[ans]);
-      const m1 = this.countAnim(st, st.plotEls[ans], BL, 130);
-      W5U.note(st, this.lineIs(this.sizeOf(q, ans)));
-      await st.scope.wait(Math.max(1100, m1)); if (!Session.alive(my)) return;
+      const m1 = this.countAnim(st, st.plotEls[ans], BL, 130), t0 = now();
+      await fbDone(st); if (!Session.alive(my)) return;
+      await st.scope.wait(Math.max(250, m1 - (now() - t0))); if (!Session.alive(my)) return;
       const m2 = this.countAnim(st, st.plotEls[q.answer], GL, 130);
       W5U.gold(st, st.plotEls[q.answer]);
       W5U.sum(st, CNQ(this.sizeOf(q, q.answer)) + (q.ask === 'most' ? '格最大！' : '格最小！'));
@@ -5377,12 +5462,13 @@ const W5U = {
       if (S.extra.length) {
         S.extra.forEach(i => this.mark(st, i, false));
         W5U.blue(st, S.extra.map(i => st.things[i]));
-        W5U.note(st, this.whyNot(q, q.items[S.extra[0]]));
+        await fbDone(st); if (!Session.alive(my)) return;
+        await st.scope.wait(350); if (!Session.alive(my)) return;
       } else {
         W5U.blue(st, S.miss.map(i => st.things[i]));
         W5U.note(st, '这里还有' + CNQ(S.miss.length) + '个');
+        await st.scope.wait(1050); if (!Session.alive(my)) return;
       }
-      await st.scope.wait(1050); if (!Session.alive(my)) return;
       /* every target gold at once, counted by badges popping in one after another (an animation: one step of 一步一步) */
       W5U.gold(st, S.T.map(i => st.things[i]));
       S.T.forEach((i, j) => { const b = box(st.things[i]), bg = badgeAt(st, b.x + b.w - 6, b.y + 6, j + 1, 38); st.scope.anim(bg, [{ transform: 'scale(0)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: 240, delay: 220 * j, easing: EASE.pop, fill: 'both' }); st.scope.timeout(() => Sfx.count(j + 1), 220 * j); });
@@ -5427,6 +5513,9 @@ const W5U = {
   let UID = 0;
   const uid = p => 'x5' + p + (++UID);
   const ic = s => W3X.ic(s, 52);
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine). As paw.js. */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
   /* a number badge at a stage point */
   const badgeAt = (st, x, y, n, size, delay) => { size = size || 40; const b = UI.badge(n, size); Stage.el.appendChild(b); b.style.position = 'absolute'; b.style.pointerEvents = 'none'; place(b, Math.round(x - size / 2), Math.round(y - size / 2)); st.els.push(b); st.scope.anim(b, [{ transform: 'scale(0)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: 240, delay: delay || 0, easing: EASE.pop, fill: 'both' }); return b; };
   /* a row of number cards (ids idp0 ...) */
@@ -5852,8 +5941,8 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st;
       if (q.ask === 'count') {
-        W5U.blue(st, W5U.cardOf(st, ans)); W5U.note(st, '不是' + CNQ(ans) + '格');
-        await st.scope.wait(800); if (!Session.alive(my)) return;
+        W5U.blue(st, W5U.cardOf(st, ans));
+        await fbDone(st); if (!Session.alive(my)) return;
         const ms = await this.straighten(st, 0, '#FFC93C'); if (!Session.alive(my)) return;
         await st.scope.wait(ms);
         W5U.gold(st, W5U.cardOf(st, q.answer));
@@ -5863,8 +5952,10 @@ const W5U = {
       }
       W5U.blue(st, st.lanes[ans]);
       const m1 = await this.straighten(st, ans, '#7FC3F2'); if (!Session.alive(my)) return;
-      W5U.note(st, this.lineIs(q.ropes[ans].len));
-      await st.scope.wait(Math.max(900, m1)); if (!Session.alive(my)) return;
+      /* 这根是六格: for 一样长 that was the feedback line already (said once) */
+      if (q.ask === 'same') { const t0 = now(); await fbDone(st); if (!Session.alive(my)) return; await st.scope.wait(Math.max(200, m1 - (now() - t0))); }
+      else { W5U.note(st, this.lineIs(q.ropes[ans].len)); await st.scope.wait(Math.max(900, m1)); }
+      if (!Session.alive(my)) return;
       const m2 = await this.straighten(st, q.answer, '#FFC93C'); if (!Session.alive(my)) return;
       W5U.gold(st, st.lanes[q.answer]);
       const L = q.ropes[q.answer].len;
@@ -6031,8 +6122,7 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st;
       W5U.blue(st, W5U.cardOf(st, ans));
-      W5U.note(st, this.wrongLine(q, ans));
-      await st.scope.wait(650); if (!Session.alive(my)) return;
+      await fbDone(st); if (!Session.alive(my)) return;
       let order, line = null;
       if (q.hide) {
         await st.scope.anim(st.hill, [{ transform: 'none', opacity: 1 }, { transform: K.L() ? 'translateY(70%)' : 'translateX(-80%)', opacity: 0 }], { duration: 340, fill: 'forwards' }); if (!Session.alive(my)) return;
@@ -6233,8 +6323,8 @@ const W5U = {
     async explain(st, ans) {
       const q = st.q, my = st;
       if (q.ask === 'count') {
-        W5U.blue(st, W5U.cardOf(st, ans)); W5U.note(st, '不是' + CNQ(ans) + '块');
-        await st.scope.wait(800); if (!Session.alive(my)) return;
+        W5U.blue(st, W5U.cardOf(st, ans));
+        await fbDone(st); if (!Session.alive(my)) return;
         const ms = this.split(st, 0);
         W5U.note(st, '换成小积木');
         await st.scope.wait(Math.max(1000, ms)); if (!Session.alive(my)) return;
@@ -7086,6 +7176,7 @@ const W5U = {
      wall with five holes - which hole does it go through? What matters is its outline in the direction it is pushed: a block
      hidden behind another changes nothing.
        L1 2-3 blocks in a row or a column, very different holes · L2 4-5 blocks, some hidden behind
+       (L1-L2 the building stands two blocks wide at most, so the holes are drawn big: 56-unit cells; from L3 36)
        L3 5-6 blocks with depth; the other holes: its outline from above, from the side, the front turned round, one block less
        L4 pushed from the side (the wall on its left): its outline from the side is wanted
        L5 the other way round: one hole, five buildings - which goes through?
@@ -7097,12 +7188,13 @@ const W5U = {
   const V8C = ['#E8414B', '#FFC93C', '#4F7BFF', '#5CC46E', '#FF9F43', '#B57BFF'];
   const shade = (c, k) => { const n = parseInt(c.slice(1), 16), f = v => Math.max(0, Math.min(255, Math.round(v * k))); return 'rgb(' + f(n >> 16) + ',' + f((n >> 8) & 255) + ',' + f(n & 255) + ')'; };
   /* a building: blocks [x, y, z] (x left-right, y front-back, z up), every block on the floor or on a block */
-  function v8tower(rng, n) {
+  function v8tower(rng, n, xw) {
+    xw = xw || 3;
     const h = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], cols = [];
-    const x0 = rng.int(0, 2), y0 = rng.int(0, 2); h[x0][y0] = 1; cols.push([x0, y0]);
+    const x0 = rng.int(0, xw - 1), y0 = rng.int(0, 2); h[x0][y0] = 1; cols.push([x0, y0]);
     for (let k = 1; k < n; k++) {
       const opts = [];
-      cols.forEach(([x, y]) => { if (h[x][y] < 3) opts.push([x, y]); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const a = x + dx, b = y + dy; if (a >= 0 && a < 3 && b >= 0 && b < 3 && !h[a][b]) opts.push([a, b]); }); });
+      cols.forEach(([x, y]) => { if (h[x][y] < 3) opts.push([x, y]); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const a = x + dx, b = y + dy; if (a >= 0 && a < xw && b >= 0 && b < 3 && !h[a][b]) opts.push([a, b]); }); });
       const [x, y] = rng.pick(opts); if (!h[x][y]) cols.push([x, y]); h[x][y]++;
     }
     return v8blocks(h);
@@ -7121,15 +7213,15 @@ const W5U = {
   /* the slide that leaves the fewest cells outside, drawn inside its 120 box (lo .. hi: the columns that fit in it) */
   const v8best = (sil, hole, lo, hi) => { const H = new Set(hole.map(c => c.join(':'))); let best = null; for (let d = -3; d <= 3; d++) { if (Math.min(...sil.map(c => c[0])) + d < lo || Math.max(...sil.map(c => c[0])) + d > hi) continue; const out = sil.filter(([u, v]) => !H.has((u + d) + ':' + v)).length; if (!best || out < best.out) best = { d, out }; } return best || { d: 0, out: 0 }; };
   /* a random outline standing on the floor: column heights (width 1-3) */
-  const v8sky = rng => { const w = rng.int(1, 3), cs = []; for (let u = 0; u < w; u++) { const hh = rng.int(1, 3); for (let v = 0; v < hh; v++) cs.push([u, v]); } return v8norm(cs); };
+  const v8sky = (rng, wmax) => { const w = rng.int(1, wmax || 3), cs = []; for (let u = 0; u < w; u++) { const hh = rng.int(1, 3); for (let v = 0; v < hh; v++) cs.push([u, v]); } return v8norm(cs); };
   W5R.V8 = {
     kind0: 'wall5', verb: '穿！', intro: '绿巨人推积木！', praise: ['一下就穿过！'],
     gen(G, o) {
       const d = lvOf(o), rng = o.rng;
       for (let tries = 0; tries < 200; tries++) {
         let B;
-        if (d === 1) { const n = rng.int(2, 3); if (rng.chance(0.5)) { const y = rng.int(0, 2), x0 = rng.int(0, 3 - n); B = Array.from({ length: n }, (_, i) => [x0 + i, y, 0]); } else { const x = rng.int(0, 2), y = rng.int(0, 2); B = Array.from({ length: n }, (_, i) => [x, y, i]); } }
-        else B = v8tower(rng, d === 2 ? rng.int(4, 5) : d === 3 ? rng.int(5, 6) : d === 4 ? rng.int(4, 6) : rng.int(4, 6));
+        if (d === 1) { const n = rng.int(2, 3); if (rng.chance(0.5)) { const y = rng.int(0, 2), x0 = rng.int(0, 1); B = Array.from({ length: 2 }, (_, i) => [x0 + i, y, 0]); } else { const x = rng.int(0, 2), y = rng.int(0, 2); B = Array.from({ length: n }, (_, i) => [x, y, i]); } }
+        else B = v8tower(rng, d === 2 ? rng.int(4, 5) : d === 3 ? rng.int(5, 6) : d === 4 ? rng.int(4, 6) : rng.int(4, 6), d === 2 ? 2 : 3);
         const front = v8front(B), side = v8side(B), hid = B.filter(([x, y, z]) => B.some(b => b[0] === x && b[2] === z && b[1] < y)).length;
         if (d === 2 && !hid) continue;
         if (d === 3 && (!hid || new Set(B.map(b => b[1])).size < 2)) continue;
@@ -7153,11 +7245,12 @@ const W5U = {
         const holes = [], cand = [d === 4 ? front : side, v8top(B), v8mirror(sil)];
         const tops = []; sil.forEach(([u, v]) => { if (!sil.some(c => c[0] === u && c[1] === v + 1)) tops.push([u, v]); });
         if (sil.length > 1) { const t = rng.pick(tops); cand.push(v8norm(sil.filter(c => !(c[0] === t[0] && c[1] === t[1])))); }
-        for (let k = 0; k < 40; k++) cand.push(v8sky(rng));
-        (d === 1 ? rng.shuffle(cand) : cand).forEach(c => { if (holes.length < 4 && c.length && v8fits(sil, c) === null && v8key(c) !== v8key(sil) && !holes.some(x => v8key(x) === v8key(c))) holes.push(c); });
+        const wmax = d <= 2 ? 2 : 3, wide = c => Math.max(...c.map(x => x[0])) + 1 > wmax || Math.max(...c.map(x => x[1])) + 1 > 3;
+        for (let k = 0; k < 40; k++) cand.push(v8sky(rng, wmax));
+        (d === 1 ? rng.shuffle(cand) : cand).forEach(c => { if (holes.length < 4 && c.length && !wide(c) && v8fits(sil, c) === null && v8key(c) !== v8key(sil) && !holes.some(x => v8key(x) === v8key(c))) holes.push(c); });
         if (holes.length < 4) continue;
         const opts = W5U.deal(G, sil, holes, 'v8h');
-        return { k: [d, B.map(b => b.join('')).join('.')], d, side: d === 4, B, sil, holes: opts, answer: opts.indexOf(sil), opts: [0, 1, 2, 3, 4], col: rng.int(0, 5) };
+        return { k: [d, B.map(b => b.join('')).join('.')], d, side: d === 4, big: d <= 2, B, sil, holes: opts, answer: opts.indexOf(sil), opts: [0, 1, 2, 3, 4], col: rng.int(0, 5) };
       }
       return this.gen(G, Object.assign({}, o, { level: Math.max(1, d - 1) }));
     },
@@ -7172,6 +7265,8 @@ const W5U = {
         : { wall: [202, 200, 300, 200], hole: [272, 220, 160], cards: [0, 1, 2, 3, 4].map(i => (i < 3 ? [352 + (i - 1) * 166 - 75, 434] : [352 + (i === 3 ? -83 : 83) - 75, 626])), cw: 150, ch: 176 };
       if (q.side) return L ? { wall: [176, 96, 268, 424], holes: [0, 1, 2, 3, 4].map(i => (i < 4 ? [190 + (i % 2) * 130, 112 + Math.floor(i / 2) * 136] : [255, 384])), tower: [578, 214, 300], arrow: [560, 364, 452, 364] }
         : { wall: [16, 214, 268, 424], holes: [0, 1, 2, 3, 4].map(i => (i < 4 ? [30 + (i % 2) * 130, 230 + Math.floor(i / 2) * 136] : [95, 502])), tower: [386, 300, 290], arrow: [376, 450, 296, 450] };
+      if (q.big) return L ? { wall: [170, 92, 684, 208], holes: [0, 1, 2, 3, 4].map(i => [512 + (i - 2) * 134 - 62, 106]), hw: 124, hh: 180, tower: [377, 378, 280], arrow: [512, 372, 512, 304] }
+        : { wall: [20, 200, 664, 208], holes: [0, 1, 2, 3, 4].map(i => [352 + (i - 2) * 132 - 62, 214]), hw: 124, hh: 180, tower: [212, 468, 300], arrow: [352, 462, 352, 412] };
       return L ? { wall: [176, 92, 672, 200], holes: [0, 1, 2, 3, 4].map(i => [512 + (i - 2) * 132 - 60, 132]), tower: [377, 378, 280], arrow: [512, 372, 512, 300] }
         : { wall: [24, 200, 656, 330], holes: [0, 1, 2, 3, 4].map(i => (i < 3 ? [352 + (i - 1) * 146 - 60, 228] : [352 + (i === 3 ? -73 : 73) - 60, 378])), tower: [212, 586, 280], arrow: [352, 582, 352, 536] };
     },
@@ -7179,7 +7274,7 @@ const W5U = {
     place(st) {
       const g = this.geo(st.q);
       if (st.wallEl) place(st.wallEl, g.wall[0], g.wall[1], g.wall[2], g.wall[3]);
-      if (st.holeEls) st.holeEls.forEach((e, i) => place(e, g.holes[i][0], g.holes[i][1], 120, 120));
+      if (st.holeEls) st.holeEls.forEach((e, i) => place(e, g.holes[i][0], g.holes[i][1], g.hw || 120, g.hh || 120));
       if (st.bigHole) place(st.bigHole, g.hole[0], g.hole[1], g.hole[2], g.hole[2]);
       if (st.towerEl) place(st.towerEl, g.tower[0], g.tower[1], g.tower[2], g.tower[2]);
       if (st.cards && g.cards) st.cards.forEach((c, i) => place(c, g.cards[i][0], g.cards[i][1], g.cw, g.ch));
@@ -7200,15 +7295,16 @@ const W5U = {
       });
       return s;
     },
-    /* a hole in the wall (cells of 30 in a 120 box, standing on its bottom edge) */
-    holeSvg(cs, size) {
-      const s = sv(120, 120), c = 30, w = Math.max(...cs.map(x => x[0])) + 1, x0 = 60 - w * c / 2;
-      cs.forEach(([u, v]) => svg('rect', { x: x0 + u * c - 0.4, y: 108 - (v + 1) * c - 0.4, width: c + 0.8, height: c + 0.8, fill: '#2B2118' }, s));
+    /* a hole in the wall, standing on its box's bottom edge: L1-L2 big cells (56 in a 124 x 180 box: at most two wide, three
+       high), from L3 cells of 36 in a 120 box (three by three) */
+    holeSvg(cs, big) {
+      const W = big ? 124 : 120, Hh = big ? 180 : 120, c = big ? 56 : 36, fy = Hh - 6, s = sv(W, Hh), w = Math.max(...cs.map(x => x[0])) + 1, x0 = W / 2 - w * c / 2;
+      cs.forEach(([u, v]) => svg('rect', { x: x0 + u * c - 0.4, y: fy - (v + 1) * c - 0.4, width: c + 0.8, height: c + 0.8, fill: '#2B2118' }, s));
       /* its edge: a light rim */
       const H = new Set(cs.map(x => x.join(':'))); let d = '';
-      cs.forEach(([u, v]) => { const X = x0 + u * c, Y = 108 - (v + 1) * c; if (!H.has(u + ':' + (v + 1))) d += 'M' + X + ' ' + Y + 'H' + (X + c); if (!H.has(u + ':' + (v - 1)) && v > 0) d += 'M' + X + ' ' + (Y + c) + 'H' + (X + c); if (!H.has((u - 1) + ':' + v)) d += 'M' + X + ' ' + Y + 'V' + (Y + c); if (!H.has((u + 1) + ':' + v)) d += 'M' + (X + c) + ' ' + Y + 'V' + (Y + c); });
+      cs.forEach(([u, v]) => { const X = x0 + u * c, Y = fy - (v + 1) * c; if (!H.has(u + ':' + (v + 1))) d += 'M' + X + ' ' + Y + 'H' + (X + c); if (!H.has(u + ':' + (v - 1)) && v > 0) d += 'M' + X + ' ' + (Y + c) + 'H' + (X + c); if (!H.has((u - 1) + ':' + v)) d += 'M' + X + ' ' + Y + 'V' + (Y + c); if (!H.has((u + 1) + ':' + v)) d += 'M' + (X + c) + ' ' + Y + 'V' + (Y + c); });
       svg('path', { d, stroke: '#F3E2C8', 'stroke-width': 4, fill: 'none', 'stroke-linecap': 'round' }, s);
-      s._x0 = x0; s._c = c;
+      s._x0 = x0; s._c = c; s._W = W; s._fy = fy;
       return s;
     },
     wall(st, w, h) {
@@ -7230,7 +7326,7 @@ const W5U = {
         K.say(st, '哪座能穿过？');
         return;
       }
-      st.holeEls = q.holes.map((h, i) => { const e = W2X.thing(st, 120, 120, 5, ''); e.appendChild(e._s = this.holeSvg(h)); Object.assign(e.style, { borderRadius: '12px' }); K.reg(st, 'card' + i, e, {}); return e; });
+      st.holeEls = q.holes.map((h, i) => { const e = W2X.thing(st, 120, 120, 5, ''); e.appendChild(e._s = this.holeSvg(h, q.big)); Object.assign(e.style, { borderRadius: '12px' }); K.reg(st, 'card' + i, e, {}); return e; });
       st.cards = st.holeEls; st.opts = q.opts.slice();
       st.towerEl = W2X.thing(st, 10, 10, 6, ''); st.towerEl.appendChild(st.towerSvg = this.tower(q.B, q.col)); st.towerEl.style.pointerEvents = 'none';
       st.arrowEl = K.lines(st); st.arrowEl.style.zIndex = 4;
@@ -7245,9 +7341,9 @@ const W5U = {
     async feedback(st, ans) { const c = st.cards && st.cards[ans]; if (c) K.wiggle(st, c); W5U.say(st, '卡住啦'); await st.scope.wait(T(600)); },
     /* an outline laid in a hole box (its svg): the cells inside a colour, the cells outside blue dashed */
     lay(s, sil, hole, color, dash) {
-      const c = s._c, w = Math.max(...hole.map(x => x[0])) + 1, x0 = 60 - w * c / 2, b = v8fits(sil, hole), d = b !== null ? b : v8best(sil, hole, Math.ceil(-x0 / c), Math.floor((120 - x0) / c) - 1).d, H = new Set(hole.map(x => x.join(':')));
+      const c = s._c, W = s._W, fy = s._fy, w = Math.max(...hole.map(x => x[0])) + 1, x0 = W / 2 - w * c / 2, b = v8fits(sil, hole), d = b !== null ? b : v8best(sil, hole, Math.ceil(-x0 / c), Math.floor((W - x0) / c) - 1).d, H = new Set(hole.map(x => x.join(':')));
       const g = svg('g', {}, s), out = [];
-      sil.forEach(([u, v]) => { const X = x0 + (u + d) * c, Y = 108 - (v + 1) * c, inside = H.has((u + d) + ':' + v); svg('rect', { x: X + 2, y: Y + 2, width: c - 4, height: c - 4, rx: 4, fill: inside ? color : 'rgba(79,179,255,.25)', stroke: inside ? 'none' : BLUE, 'stroke-width': 3.5, 'stroke-dasharray': inside ? '' : '5 4' }, g); if (!inside) out.push(1); });
+      sil.forEach(([u, v]) => { const X = x0 + (u + d) * c, Y = fy - (v + 1) * c, inside = H.has((u + d) + ':' + v); svg('rect', { x: X + 2, y: Y + 2, width: c - 4, height: c - 4, rx: 4, fill: inside ? color : 'rgba(79,179,255,.25)', stroke: inside ? 'none' : BLUE, 'stroke-width': 3.5, 'stroke-dasharray': inside ? '' : '5 4' }, g); if (!inside) out.push(1); });
       return { g, out: out.length };
     },
     /* 1. the outline laid on his hole: what sticks out blue (the building moves up to it); 2. a lamp behind the building, its
