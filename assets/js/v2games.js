@@ -305,8 +305,11 @@ const RQ = {
       const sh = G.rng.shuffle(items).map((k, i) => ({ k, cell: cells[i], s: G.rng.int(70, 100), rot: k === 'circle' ? 0 : G.rng.pick([0, 0, 15, -15, 30, 180, 90]), col: G.rng.int(0, 5), long: k === 'tri' && G.rng.chance(0.3), jx: G.rng.int(-10, 10), jy: G.rng.int(-10, 10) }));
       return { k: ['shape', ask, sh.map(x => x.k[0] + x.cell).join('')], ask, n, sh, answer: n, opts: numOptions(G, n, 0, 10), say: '几个' + this.kinds[ask] + '？' };
     },
-    /* the picture: 6 x 3 cells (landscape) / 3 x 6 (portrait) */
-    frame() { return K.L() ? { x: 152, y: 100, w: 720, h: 380, cols: 6 } : { x: 62, y: 204, w: 580, h: 570, cols: 3 }; },
+    /* the picture (6 x 3 cells) and its five number cards, all above the friends who watch in the bottom corners (on the
+       islands of 积木城 the second one may stand further in - P6, J5, J7, H8, A8: tests/test_rq5.py): landscape the cards in
+       two columns right of the picture, portrait one row under it */
+    frame() { return K.L() ? { x: 40, y: 100, w: 600, h: 420, cols: 6 } : { x: 40, y: 200, w: 624, h: 420, cols: 6 }; },
+    cardAt(i) { const s = 120, L = K.L(); return L ? (i < 4 ? [676 + (i % 2) * (s + 16), 116 + Math.floor(i / 2) * (s + 16)] : [744, 388]) : [352 - (5 * s + 4 * 16) / 2 + i * (s + 16), 650]; },
     draw(s, x, k) {
       const ink = V2G.ink, col = ['#FF6B5B', '#4FB3FF', '#5CC46E', '#FFC93C', '#B57BFF', '#FF9F43'][x.col], h = x.s * (k || 1) / 2;
       const g = svg('g', { transform: 'rotate(' + x.rot + ')' }, s);
@@ -322,10 +325,10 @@ const RQ = {
       const s = st.picSvg = svg('svg', { viewBox: '0 0 ' + f.w + ' ' + f.h, width: '100%', height: '100%' }, pic);
       const cw = f.w / f.cols, rows = 18 / f.cols, ch = f.h / rows;
       st.shapeEls = q.sh.map(x => { const c = x.cell % f.cols, r = Math.floor(x.cell / f.cols), gg = svg('g', { transform: 'translate(' + (c * cw + cw / 2 + x.jx) + ' ' + (r * ch + ch / 2 + x.jy) + ')' }, s); RQ.shape.draw(gg, x, Math.min(cw, ch) / 126); gg._k = x.k; return gg; });
+      W2X.cards(st, q.opts.map(n => V2G.numCard(n, 1, V2G.numH(120))), q.opts, { size: 120, gap: 16 });
       RQ.shape.place(st); K.pop(st, pic);
-      RQ.numCards(st, q.opts, 1);
     },
-    place(st) { const f = RQ.shape.frame(); if (st.pic) place(st.pic, f.x, f.y, f.w, f.h); RQ.placeNum(st); },
+    place(st) { const f = RQ.shape.frame(); if (st.pic) place(st.pic, f.x, f.y, f.w, f.h); (st.cards || []).forEach((c, i) => { const p = RQ.shape.cardAt(i); place(c, p[0], p[1], 120, 120); }); },
     /* after a wrong answer: the shapes asked for counted one by one */
     async explain(st, ans) {
       const q = st.q;
