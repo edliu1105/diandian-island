@@ -4359,7 +4359,8 @@ const W5U = {
        L1 2 orders, only above / below, always by the red block · L2 3 orders, above / below / left / right (the screen's),
        by the red block or the part just put · L3 4 orders, each by the part put before (the robot grows a piece at a time)
        L4 4 orders, one "in the middle" ("绿块，" "红块和蓝块中间！") or by two parts ("绿块，" "放在蓝块下面，" "黄块右边！")
-       L5 a manual: three little pictures (a part next to another), only "照着说明书装！"
+       L5 a manual: three pictures (a part next to another; >= 110, on the stage beside the tray - the task card keeps
+          small copies), only "照着说明书装！"
      Right: every order holds for the parts where they really are (next to = the next cell that way). A random board is
      right well under 1 time in 1000. Wrong: the first part whose order does not hold ringed blue ("黄块在红块左边"); the
      order's picture lights, an arrow grows from the part it goes by, the part slides into the gold cell ("上面在这里"),
@@ -4424,6 +4425,10 @@ const W5U = {
     decor(G) { W2X.decorDone(G, this.chars); },
     geo(st) {
       const q = st.q, L = K.L(), u = 96, w = q.n * u;
+      /* L5: the tray in one column and the manual's pictures in a column beside it (portrait: the board moves left, the
+         manual stands on its right) */
+      if (q.manual) return L ? { L, u, bx: Math.round(420 - w / 2), by: Math.round(376 - w / 2), tx: 700, ty: 150, tc: 1, ts: 104, tg: 14, mx: 836, my: 132, ms: 112, mg: 12 }
+        : { L, u, bx: Math.round(270 - w / 2), by: Math.round(472 - w / 2), tx: Math.round(352 - (q.tray.length * 104 + (q.tray.length - 1) * 14) / 2), ty: 736, tc: 4, ts: 104, tg: 14, mx: 552, my: 250, ms: 112, mg: 14 };
       if (L) return { L, u, bx: Math.round(420 - w / 2), by: Math.round(376 - w / 2), tx: 700, ty: 168, tc: 2, ts: 104, tg: 14 };
       return { L, u, bx: Math.round(352 - w / 2), by: Math.round(472 - w / 2), tx: Math.round(352 - (q.tray.length * 104 + (q.tray.length - 1) * 14) / 2), ty: 736, tc: 4, ts: 104, tg: 14 };
     },
@@ -4435,6 +4440,7 @@ const W5U = {
       place(st.boardEl, g.bx - 14, g.by - 14, q.n * g.u + 28, q.n * g.u + 28);
       Object.keys(st.cells).forEach(id => { const [x, y] = id.slice(1).split('_').map(Number), b = this.cellBox(st, [x, y]); place(st.cells[id], b.x, b.y, b.w, b.h); });
       const bb = this.cellBox(st, q.body); place(st.bodyEl, bb.x + 4, bb.y + 4, bb.w - 8, bb.h - 8);
+      (st.manEls || []).forEach((e, i) => place(e, g.mx, g.my + i * (g.ms + g.mg), g.ms, g.ms));
       q.tray.forEach((p, i) => { const e = st.partEls[p], c = st.at[p]; const b = c ? this.cellBox(st, c) : this.slotBox(st, i); place(e, b.x + 4, b.y + 4, b.w - 8, b.h - 8);
         Object.assign(e.style, c ? { background: 'transparent', borderColor: 'transparent', boxShadow: 'none' } : { background: '', borderColor: '', boxShadow: '' }); const sv = e.firstChild; if (sv) { sv.setAttribute('width', c ? 84 : 72); sv.setAttribute('height', c ? 84 : 72); } });
     },
@@ -4459,15 +4465,17 @@ const W5U = {
       this.place(st);
       K.pop(st, st.boardEl); K.pop(st, st.bodyEl, 100); q.tray.forEach((p, i) => K.pop(st, st.partEls[p], 200 + 60 * i));
       if (q.manual) {
-        K.task(st, [[{ node: (() => { const d = el('span', ''); Object.assign(d.style, { display: 'flex', gap: '10px' }); q.orders.forEach(o => d.appendChild(this.manualPic(o))); return d; })() }]]);
+        st.manEls = q.orders.map((o, i) => { const e = thing(st, 4, 'item'); e.style.pointerEvents = 'none'; e.appendChild(this.manualPic(o, 112)); K.pop(st, e, 300 + 80 * i); K.reg(st, 'm' + i, e); return e; });   /* in st.map (not tappable): the step button keeps off them */
+        this.place(st);
+        K.task(st, [[{ node: (() => { const d = el('span', ''); Object.assign(d.style, { display: 'flex', gap: '8px' }); q.orders.forEach(o => d.appendChild(this.manualPic(o, 46))); return d; })() }]]);
         K.say(st, '照着说明书装！');
       } else this.nextOrder(st);
     },
     /* L5's manual: a little picture of a part next to the part it goes by */
-    manualPic(o) {
-      const e = el('span', ''); Object.assign(e.style, { display: 'block', width: '64px', height: '64px', position: 'relative', background: '#fff', borderRadius: '10px', boxShadow: '0 0 0 3px ' + INK });
-      const d = DIR[o.rel], put = (k, x, y) => { const s = partSvg(k, 26); Object.assign(s.style, { position: 'absolute', left: x + 'px', top: y + 'px' }); e.appendChild(s); };
-      put(o.ref, 19 - d[0] * 14, 19 - d[1] * 14); put(o.p, 19 + d[0] * 14, 19 + d[1] * 14);
+    manualPic(o, px) {
+      const e = el('span', ''), big = px > 60; Object.assign(e.style, { display: 'block', width: px + 'px', height: px + 'px', position: 'relative', background: '#fff', borderRadius: big ? '18px' : '10px', boxShadow: '0 0 0 ' + (big ? 4 : 3) + 'px ' + INK, pointerEvents: 'none' });
+      const ps = Math.round(px * 0.4), off = Math.round(px * 0.22), c = (px - ps) / 2, d = DIR[o.rel], put = (k, x, y) => { const s = partSvg(k, ps); Object.assign(s.style, { position: 'absolute', left: Math.round(x) + 'px', top: Math.round(y) + 'px' }); e.appendChild(s); };
+      put(o.ref, c - d[0] * off, c - d[1] * off); put(o.p, c + d[0] * off, c + d[1] * off);
       return e;
     },
     /* the orders said so far: each a little box with the part and the part(s) it goes by (no arrows - those are L5's) */
@@ -4530,6 +4538,8 @@ const W5U = {
       const rings = W5U.blue(st, e);
       await fbDone(st); if (!Session.alive(my)) return;
       W5U.hide(rings);
+      /* L5: that order's picture in the manual lights up */
+      if (st.manEls) { const me = st.manEls[q.orders.indexOf(o)]; if (me) me.firstChild.style.boxShadow = '0 0 0 4px ' + INK + ', 0 0 0 10px ' + GOLD; }
       /* the arrow from the part it goes by, toward where it should be */
       const goal = q.goal[o.p], R = o.rel === 'mid' ? null : this.cellBox(st, st.at[o.ref] || q.goal[o.ref] || q.body), G1 = this.cellBox(st, goal);
       const s = K.lines(st);
@@ -4593,7 +4603,8 @@ const W5U = {
        L2 4-5 blocks, some the same colour (two black wheels); others also a wheel more or less
        L3 a block turned in the robot is still the same block; others also a block of another size
        L4 6 blocks; one other robot has one long block where the car has two squares: as big, but not the same blocks
-       L5 two cars together: 大黄蜂's car and 擎天柱's truck - "两辆车合体！" "合成哪个大机器人？"
+       L5 two cars together: 大黄蜂's car and 擎天柱's truck (7 blocks in all) - "两辆车合体！" "合成哪个大机器人？"
+     From L4 the robots are big cards (>= 150: landscape one row of 150 x 196 under a smaller car; portrait 3 + 2 of 160 x 200)
      The right robot's place from a bag. Wrong: his robot ringed blue; the car's blocks in a row, his robot's blocks in a
      row under them, pairs joined; the one with no partner ringed blue ("这块车上没有" / "少了一个轮子" / "这块大了" ...);
      the right robot ringed gold, its blocks all paired ("零件一模一样"). */
@@ -4664,7 +4675,7 @@ const W5U = {
     if (d !== 5 && rng.chance(0.6)) car.push({ k: 'tri', c: 'R', s: 1 });
     return car;
   };
-  const TRUCK = rng => [{ k: 'rect', c: 'R', s: 2 }, { k: 'sq', c: 'B', s: 1 }, { k: 'circle', c: 'K', s: 1 }, { k: 'circle', c: 'K', s: 1 }].concat(rng.chance(0.5) ? [{ k: 'tri', c: 'G', s: 1 }] : []);
+  const TRUCK = rng => [{ k: 'rect', c: 'R', s: 2 }, rng.chance(0.5) ? { k: 'tri', c: 'G', s: 1 } : { k: 'circle', c: 'K', s: 1 }, { k: 'circle', c: 'K', s: 1 }];
   W5R.Z6 = {
     kind0: 'morph5', verb: '变！', intro: '大黄蜂变形！', praise: ['零件看得真清！'],
     gen(G, o) {
@@ -4696,15 +4707,22 @@ const W5U = {
     audit(q) { const s = msig(q.car.concat(q.car2 || [])); return [{ n: 5, at: q.answer, right: q.robots.filter(r => msig(r.list) === s).length }]; },
     decor(G) { W3X.decor2(G, this.chars); },
     geo(st) {
-      const L = K.L(), two = !!st.q.car2;
-      return L ? { L, car: two ? [[196, 116, 300, 220], [528, 116, 300, 220]] : [[312, 112, 400, 240]], cy: 520, cw: 116, ch: 168, cg: 18 }
-        : { L, car: two ? [[30, 236, 316, 230], [358, 236, 316, 230]] : [[132, 226, 440, 260]], cy: 690, cw: 120, ch: 176, cg: 12 };
+      const L = K.L(), two = !!st.q.car2, big = st.q.d >= 4;
+      if (big) return L ? { L, big, car: two ? [[196, 104, 300, 180], [528, 104, 300, 180]] : [[352, 104, 320, 180]], cy: 404, cw: 150, ch: 196, cg: 12, per: 5 }
+        : { L, big, car: two ? [[30, 222, 316, 220], [358, 222, 316, 220]] : [[152, 222, 400, 220]], cy: 470, cw: 160, ch: 200, cg: 14, per: 3 };
+      return L ? { L, car: two ? [[196, 116, 300, 220], [528, 116, 300, 220]] : [[312, 112, 400, 240]], cy: 520, cw: 116, ch: 168, cg: 18, per: 5 }
+        : { L, car: two ? [[30, 236, 316, 230], [358, 236, 316, 230]] : [[132, 226, 440, 260]], cy: 690, cw: 120, ch: 176, cg: 12, per: 5 };
+    },
+    /* robot card i: rows of g.per, each row centred (landscape: one row of five around cy; portrait L4-L5: 3 + 2 from cy) */
+    cardBox(st, i) {
+      const g = this.geo(st), r = Math.floor(i / g.per), inRow = Math.min(g.per, 5 - r * g.per), c = i % g.per, x = Math.round(Stage.W / 2 - (inRow * g.cw + (inRow - 1) * g.cg) / 2 + c * (g.cw + g.cg));
+      return { x, y: g.big && !g.L ? g.cy + r * (g.ch + g.cg) : Math.round(g.cy - g.ch / 2), w: g.cw, h: g.ch };
     },
     place(st) {
       const g = this.geo(st);
       if (!st.carEls) return;
       st.carEls.forEach((e, i) => { const r = g.car[i]; place(e, r[0], r[1], r[2], r[3]); });
-      if (st.cards) st.cards.forEach((c, i) => place(c, Math.round(Stage.W / 2 - (5 * g.cw + 4 * g.cg) / 2 + i * (g.cw + g.cg)), Math.round(g.cy - g.ch / 2), g.cw, g.ch));
+      if (st.cards) st.cards.forEach((c, i) => { const b = this.cardBox(st, i); place(c, b.x, b.y, b.w, b.h); });
       if (st.listEl) this.placeList(st);
     },
     async present(st) {
@@ -4716,8 +4734,8 @@ const W5U = {
         return e;
       });
       /* the robots wait, pale, until the car has changed (then they are registered as card0 .. card4) */
-      const lays = q.robots.map(r => robotLayout(r.list, r.seed)), u = Math.min(...q.robots.map((r, i) => fitU(r.list, lays[i], 120, 160, 10)));
-      st.cards = q.robots.map((r, i) => { const c = W3X.card(st, null, 6); c.appendChild(drawLaid(r.list, lays[i], 120, 160, 10, u)); c.style.opacity = '.45'; return c; });
+      const g0 = this.geo(st), RW = g0.cw - 12, RH = g0.ch - 12, lays = q.robots.map(r => robotLayout(r.list, r.seed)), u = Math.min(...q.robots.map((r, i) => fitU(r.list, lays[i], RW, RH, 8)));
+      st.cards = q.robots.map((r, i) => { const c = W3X.card(st, null, 6); c.appendChild(drawLaid(r.list, lays[i], RW, RH, 8, u)); c.style.opacity = '.45'; return c; });
       st.opts = q.robots.map((_, i) => i);
       this.place(st);
       st.carEls.forEach((e, i) => K.pop(st, e, 80 * i)); st.cards.forEach((c, i) => K.pop(st, c, 200 + 60 * i));
@@ -4760,7 +4778,7 @@ const W5U = {
       const q = st.q, P = this.pairs(st, ri), { A, B, pa, ma, mb } = P, col = {};
       pa.forEach((j, i) => { if (j >= 0) col[j] = i; });
       mb.forEach((j, k) => { col[j] = k < ma.length ? ma[k] : A.length + (k - ma.length); });
-      const n = Math.max(A.length, ...Object.values(col).map(c => c + 1)), cw = 86, ch = 78, LW = 92, W = LW + n * cw + 24, H = 2 * ch + 56, X = c => 12 + LW + cw / 2 + c * cw, Y = [12 + ch / 2, 44 + ch * 1.5];
+      const n = Math.max(A.length, ...Object.values(col).map(c => c + 1)), cw = 86, ch = 72, LW = 92, W = LW + n * cw + 24, H = 2 * ch + 56, X = c => 12 + LW + cw / 2 + c * cw, Y = [12 + ch / 2, 44 + ch * 1.5];
       const e = thing(st, 30, 'item'); Object.assign(e.style, { borderRadius: '22px', background: '#FFF8EC', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' }); st.listEl = e; e._w = W; e._h = H;
       const s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }, e); s.style.pointerEvents = 'none';
       pa.forEach((j, i) => { if (j >= 0) svg('path', { d: 'M' + X(i) + ' ' + (Y[0] + 30) + 'V' + (Y[1] - 30), stroke: gold ? '#E0A100' : INK, 'stroke-width': 5, 'stroke-dasharray': '5 6', 'stroke-linecap': 'round' }, s); });
@@ -4777,7 +4795,7 @@ const W5U = {
     },
     placeList(st) {
       const e = st.listEl, g = this.geo(st), r = g.car[0], r2 = g.car[g.car.length - 1], cx = (r[0] + r2[0] + r2[2]) / 2, cy = r[1] + r[3] / 2, k = Math.min(1, (Stage.W - 32) / e._w);
-      place(e, Math.round(cx - e._w * k / 2), Math.round(cy - e._h * k / 2), Math.round(e._w * k), Math.round(e._h * k)); e._k = k;
+      place(e, Math.round(cx - e._w * k / 2), Math.max(r[1], Math.round(cy - e._h * k / 2)), Math.round(e._w * k), Math.round(e._h * k)); e._k = k;
     },
     /* a ringable spot on the list (the block at p) */
     markAt(st, p) { const e = st.listEl, b = box(e), k = e._k || 1, m = thing(st, 31, 'item'); m.style.pointerEvents = 'none'; place(m, Math.round(b.x + (p.x - 40) * k), Math.round(b.y + (p.y - 34) * k), Math.round(80 * k), Math.round(68 * k)); return m; },
@@ -4865,7 +4883,7 @@ const W5U = {
     gen(G, o) {
       const d = lvOf(o), rng = o.rng, hi = [0, 5, 7, 9, 9, 10][d];
       const err = bagPick(G, 'z7e' + d, d === 1 ? ['ok', 'swap', 'swap', 'swap', 'sign', 'sign'] : d === 2 ? ['ok', 'swap', 'swap', 'sign', 'sign', 'whole'] : ['ok', 'swap', 'swap', 'sign', 'whole', 'res']);
-      const type = err === 'swap' ? (d === 1 ? 'go' : d === 5 ? bagPick(G, 'z7s5', ['go', 'part', 'cmp']) : bagPick(G, 'z7s', ['go', 'part']))
+      const type = err === 'swap' ? (d === 5 ? bagPick(G, 'z7s5', ['go', 'part', 'cmp']) : 'go')
         : d === 1 ? bagPick(G, 'z7t1', ['go', 'come']) : d === 5 ? bagPick(G, 'z7t5', ['go', 'come', 'join', 'part', 'cmp', 'cmp']) : bagPick(G, 'z7t', ['go', 'come', 'join', 'part']);
       const thing = type === 'go' || type === 'come' ? bagPick(G, 'z7a', ['duck', 'car']) : 'fish', u = thing === 'fish' ? '条' : Z7THING[thing].u;
       let v = null;
@@ -4923,6 +4941,9 @@ const W5U = {
       const panel = P => { const e = keep(thing(st, 3, 'item')); place(e, P[0], P[1], P[2], P[3]); Object.assign(e.style, { borderRadius: '22px', background: 'rgba(255,248,236,.94)', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' }); return e; };
       const pic = (src, x, y, s, flip) => { const e = keep(thing(st, 6, 'item')); e.style.pointerEvents = 'none'; place(e, Math.round(x), Math.round(y), s, s); const im = img(src, '', e); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain', transform: flip ? 'scaleX(-1)' : '' }); return e; };
       const solid = r => { if (r) { r.style.borderStyle = 'solid'; r.style.borderRadius = '22px'; } return keep(r); };
+      /* the story's question in the picture: a "?" by the group it asks about */
+      const qmark = (x, y) => { const e = keep(thing(st, 8, 'item')); e.style.pointerEvents = 'none'; place(e, Math.round(x - 23), Math.round(y - 23), 46, 46); e.innerHTML = ICONS.q; const v = e.firstChild; if (v && v.setAttribute) { v.setAttribute('width', '100%'); v.setAttribute('height', '100%'); v.style.pointerEvents = 'none'; } return e; };
+      const union = els => { const R = els.map(e => W5U.rect(e)), x = Math.min(...R.map(r => r.x)), y = Math.min(...R.map(r => r.y)); return { x, y, w: Math.max(...R.map(r => r.x + r.w)) - x, h: Math.max(...R.map(r => r.y + r.h)) - y }; };
       const grid = (n, x, y, w, h, s) => W5U.grid(n, x + w / 2, y + h / 2, s, s, 6, 6, Math.min(n, Math.max(1, Math.floor((w + 6) / (s + 6)))));
       const fit = (n, w, h) => { for (let s = g.L ? 64 : 76; s > 30; s -= 2) { const per = Math.max(1, Math.floor((w + 6) / (s + 6))); if (Math.ceil(n / per) * (s + 6) - 6 <= h) return s; } return 30; };
       if (g.two) {
@@ -4939,7 +4960,7 @@ const W5U = {
         if (q.type === 'go') {
           const all = spots.map(p => pic(src, p.x, p.y, s1)), byX = all.slice().sort((a, b) => box(a).x - box(b).x || box(a).y - box(b).y), gone = byX.slice(0, q.v[1]), left = all.filter(e => !gone.includes(e));
           st.grp.left = left;
-          const frame = () => solid(W5U.stay(st, left));
+          const frame = () => { const f = solid(W5U.stay(st, left)); if (f) { const b = box(f); qmark(b.x + b.w - 4, b.y + 4); } };
           if (!anim) { const R = gone.map(e => { const b = W5U.rect(e), gh = W5U.gone(st, e); keep(gh); e.style.visibility = 'hidden'; return { b, gh }; }); this.trails(st, R.map(r => r.b), dx, dy); st.grp.gone = R.map(r => r.gh); frame(); }
           else this.play(st, tok, async () => {
             await st.scope.wait(T(1200)); if (st.sceneTok !== tok) return;
@@ -4951,7 +4972,7 @@ const W5U = {
         } else {
           const old = spots.slice(0, n0).map(p => pic(src, p.x, p.y, s1)), nw = spots.slice(n0).map(p => { const e = pic(src, p.x, p.y, s1, q.thing === 'car'); e.insertAdjacentHTML('beforeend', SPARK); return e; });
           st.grp.came = nw; st.grp.all = old.concat(nw);
-          const frame = () => solid(W5U.stay(st, old.concat(nw)));
+          const frame = () => { const f = solid(W5U.stay(st, old.concat(nw))); if (f) { const b = box(f); qmark(b.x + b.w - 4, b.y + 4); } };
           if (!anim) frame();
           else {
             nw.forEach(e => { e.style.visibility = 'hidden'; });
@@ -4973,18 +4994,24 @@ const W5U = {
           const ls = keep(K.lines(st)); ls.style.zIndex = 5; ls.classList.add('scene');
           yel.forEach((_, i) => svg('path', { d: 'M' + (X(i) + s / 2) + ' ' + (y1 + s + 4) + 'V' + (y2 - 4), stroke: INK, 'stroke-width': 4, 'stroke-dasharray': '3 7', 'stroke-linecap': 'round' }, ls));
           st.grp.more = reds; st.grp.less = yel; st.grp.diff = reds.slice(q.v[1]);
+          /* how many more: the "?" where the yellow row has none */
+          qmark((X(q.v[1]) + X(n - 1) + s) / 2, y2 + s / 2);
         } else {
           const h = P[3] - 92;
-          if (q.type === 'join') {
-            const hw = (w - 24) / 2, s = Math.min(fit(q.v[0], hw, h), fit(q.v[1], hw, h));
-            st.grp.red = grid(q.v[0], x0, top, hw, h, s).map(p => pic(FISH.red, p.x, p.y, s));
-            st.grp.yellow = grid(q.v[1], x0 + hw + 24, top, hw, h, s).map(p => pic(FISH.yellow, p.x, p.y, s));
-            st.grp.all = st.grp.red.concat(st.grp.yellow);
-          } else {
-            const s = fit(q.v[0], w, h), sp = grid(q.v[0], x0, top, w, h, s), all = sp.map((p, i) => pic(i < q.v[1] ? FISH.red : FISH.yellow, p.x, p.y, s));
-            st.grp.all = all; st.grp.red = all.slice(0, q.v[1]); st.grp.yellow = all.slice(q.v[1]);
-          }
+          /* the red ones on the left, the yellow ones on the right, a brace under all of them */
+          const nr = q.type === 'join' ? q.v[0] : q.v[1], ny = q.type === 'join' ? q.v[1] : q.v[2], hw = (w - 30) / 2, s = Math.min(fit(nr, hw, h), fit(ny, hw, h));
+          st.grp.red = grid(nr, x0, top, hw, h, s).map(p => pic(FISH.red, p.x, p.y, s));
+          st.grp.yellow = grid(ny, x0 + hw + 30, top, hw, h, s).map(p => pic(FISH.yellow, p.x, p.y, s));
+          st.grp.all = st.grp.red.concat(st.grp.yellow);
           const br = W5U.brace(st, st.grp.all, false); if (br) { keep(br.parentNode); br.setAttribute('stroke', INK); br.setAttribute('stroke-width', 6); br.parentNode.classList.add('scene'); br.parentNode.style.zIndex = 5; }
+          const U = union(st.grp.all), Y = union(st.grp.yellow);
+          if (q.type === 'join') qmark(U.x + U.w / 2 + 40, U.y + U.h + 52);
+          else {
+            /* the other part: the yellow ones are what it asks about - a dashed frame and a "?" */
+            const f = keep(thing(st, 5, 'item')); place(f, Math.round(Y.x - 10), Math.round(Y.y - 10), Math.round(Y.w + 20), Math.round(Y.h + 20));
+            Object.assign(f.style, { border: '4px dashed ' + INK, borderRadius: '16px', boxSizing: 'border-box', pointerEvents: 'none' });
+            qmark(Y.x + Y.w + 8, Y.y - 6);
+          }
         }
       }
       return null;
@@ -5033,7 +5060,7 @@ const W5U = {
         const it = q.thing === 'fish' ? null : W5U.prop(q.thing);
         K.task(st, q.type === 'go' ? [[it, { qty: q.v[0] }], [DOOR_OUT, { qty: q.v[1] }], [BOARDIC]] : q.type === 'come' ? [[it, { qty: q.v[0] }], [DOOR_IN, { qty: q.v[1] }], [BOARDIC]]
           : q.type === 'join' ? [[FISH.red, { qty: q.v[0] }], [FISH.yellow, { qty: q.v[1] }], [BOARDIC]] : [[FISH.red, FISH.yellow, { qty: q.v[0] }], [FISH.red, { qty: q.v[1] }], [FISH.yellow, BOARDIC]]);
-      } else K.task(st, [[BOARDIC]]);
+      } else K.task(st, q.type === 'part' ? [[FISH.yellow, 'q'], [BOARDIC]] : [[BOARDIC]]);
       const first = !G.z7les; G.z7les = true;
       st.lead = S.concat(first ? ['他写对了吗？'] : []); st.lead.forEach(l => Voice.say(l, { tag: 'prompt' }));
       K.say(st, first ? '不对就改一改！' : '他写对了吗？');
@@ -5083,6 +5110,9 @@ const W5U = {
     fbLine(st, ans) {
       const q = st.q, B = this.bad(st, ans);
       if (q.err === 'ok') return '这道写对了';
+      /* the other part: the red ones where the yellow ones are asked - not "红的是六条" (true, and on the board) */
+      const a = String(ans).split(',');
+      if (q.type === 'part' && a[2] === q.right[3] && a[3] === q.right[2]) return '问的是黄的';
       if (!this.changed(st, ans).length) return B.line;
       return B.cells.length === 1 ? '还有一个要改' : B.line;
     },
@@ -5150,7 +5180,7 @@ const W5U = {
     workEls(st) { return (st.tiles || []).concat(st.doneBtn ? [st.doneBtn] : []); },
     snap(st) { return { vals: (st.vals || []).join(','), pop: st.pop ? st.pop.i : -1 }; },
     lines() {
-      const out = [this.intro, '他写对了吗？', '不对就改一改！', '这道写对了', '还有一个要改', '这是减法故事', '这是加法故事', '合起来，', '拿走红的，', '比一比，', '一共几条？', '黄的有几条？', '红的多几条？'].concat(this.praise);
+      const out = [this.intro, '他写对了吗？', '不对就改一改！', '这道写对了', '还有一个要改', '问的是黄的', '这是减法故事', '这是加法故事', '合起来，', '拿走红的，', '比一比，', '一共几条？', '黄的有几条？', '红的多几条？'].concat(this.praise);
       Object.values(Z7THING).forEach(T7 => out.push('还剩几' + T7.u + '？', '一共几' + T7.u + '？'));
       for (let n = 1; n <= 10; n++) {
         Object.values(Z7THING).forEach(T7 => {
@@ -7844,6 +7874,8 @@ const W5U = {
   /* the shapes: lists of sticks [[x1, y1, x2, y2]] in stick units (y down), with which sticks two shapes share */
   const sq = (x, y) => [[x, y, x + 1, y], [x + 1, y, x + 1, y + 1], [x + 1, y + 1, x, y + 1], [x, y + 1, x, y]];
   const tri = (x, y) => [[x, y, x + 1, y], [x + 1, y, x + 0.5, y - H3], [x + 0.5, y - H3, x, y]];
+  /* a triangle standing on its point: its top side from (x, y) to (x + 1, y) */
+  const tdn = (x, y) => [[x, y, x + 1, y], [x + 1, y, x + 0.5, y + H3], [x + 0.5, y + H3, x, y]];
   const zig = (x, y, n) => Array.from({ length: n }, (_, i) => [x + i * 0.5, y + (i % 2 ? -H3 : 0), x + (i + 1) * 0.5, y + (i % 2 ? 0 : -H3)]);
   const U7F = {
     tri: () => tri(0, 1), sq: () => sq(0, 0), zig3: () => zig(0, 1, 3), zig4: () => zig(0, 1, 4), zig5: () => zig(0, 1, 5),
@@ -7851,14 +7883,21 @@ const W5U = {
     side: () => sq(0, 0).concat([[1, 0, 1, 1], [1, 0, 1 + H3, 0.5], [1 + H3, 0.5, 1, 1]]), sq3: () => sq(0, 0).concat(sq(1, 0), sq(2, 0)),
     win: () => sq(0, 0).concat(sq(1, 0), sq(0, 1), sq(1, 1)), tower: () => sq(0, 1).concat(sq(0, 2), tri(0, 1)), house2: () => sq(0, 1).concat(sq(1, 1), tri(0, 1)),
     house3: () => sq(0, 1).concat(sq(1, 1), tri(0, 1), tri(1, 1)), stack3: () => sq(0, 0).concat(sq(1, 0), sq(0, 1)),
+    /* an oblong of six; three triangles in a row (up, down, up); a big triangle of four; a wide house with a door (a gap) */
+    rect: () => [[0, 0, 1, 0], [1, 0, 2, 0], [2, 0, 2, 1], [2, 1, 1, 1], [1, 1, 0, 1], [0, 1, 0, 0]],
+    tri3: () => tri(0, 1).concat(tdn(0.5, 1 - H3), tri(1, 1)),
+    tri4: () => tri(0, 1).concat(tdn(0.5, 1 - H3), tri(1, 1), tri(0.5, 1 - H3)),
+    door: () => [[0, 0, 1, 0], [1, 0, 2, 0], [2, 0, 2, 1], [2, 1, 1, 1], [0, 1, 0, 0]].concat(tri(0, 0), tdn(0.5, -H3), tri(1, 0)),
   };
+  /* turn (t & 3 quarter turns) and mirror (t & 4) a shape */
+  const xf = (S, t) => S.map(s => { const f = (x, y) => { if (t & 4) x = -x; for (let k = 0; k < (t & 3); k++) { const nx = -y; y = x; x = nx; } return [x, y]; }; const a = f(s[0], s[1]), b = f(s[2], s[3]); return [a[0], a[1], b[0], b[1]]; });
   const PAIRS = [['tri', 'sq'], ['sq', 'sq'], ['tri', 'tri'], ['sq', 'zig3'], ['tri', 'zig4'], ['tri', 'zig3'], ['sq', 'zig4']];
   const kS = s => s.slice().map(v => R1(v * 100) / 100);
   const skey = s => { const a = kS(s), p = [a[0] + ',' + a[1], a[2] + ',' + a[3]].sort(); return p.join('|'); };
   /* a figure: one or two shapes (two: the second moved right of the first); the sticks, without doubles, and which are shared */
-  const build7 = names => {
+  const build7 = specs => {
     const all = []; let dx = 0;
-    names.forEach(nm => { const S = U7F[nm](), xs = S.flatMap(s => [s[0], s[2]]); const x0 = Math.min(...xs); S.forEach(s => all.push([s[0] - x0 + dx, s[1], s[2] - x0 + dx, s[3]])); dx += Math.max(...xs) - x0 + 0.9; });
+    specs.forEach(sp => { const S = xf(U7F[sp.n || sp](), sp.t || 0), xs = S.flatMap(s => [s[0], s[2]]), ys = S.flatMap(s => [s[1], s[3]]); const x0 = Math.min(...xs), yc = (Math.min(...ys) + Math.max(...ys)) / 2; S.forEach(s => all.push([s[0] - x0 + dx, s[1] - yc, s[2] - x0 + dx, s[3] - yc])); dx += Math.max(...xs) - x0 + 0.9; });
     const cnt = new Map(); all.forEach(s => { const k = skey(s); cnt.set(k, (cnt.get(k) || 0) + 1); });
     const seen = new Set(), S0 = [];
     all.forEach(s => { const k = skey(s); if (seen.has(k)) return; seen.add(k); S0.push({ s, sh: cnt.get(k) > 1 }); });
@@ -7870,12 +7909,29 @@ const W5U = {
     const ordered = [];
     Object.values(groups).sort((A, B) => Math.min(...A.map(a => Math.min(a.s[0], a.s[2]))) - Math.min(...B.map(a => Math.min(a.s[0], a.s[2])))).forEach(G => {
       const cx = G.reduce((t, a) => t + a.s[0] + a.s[2], 0) / (2 * G.length), cy = G.reduce((t, a) => t + a.s[1] + a.s[3], 0) / (2 * G.length);
-      const ang = a => { const x = (a.s[0] + a.s[2]) / 2 - cx, y = (a.s[1] + a.s[3]) / 2 - cy; return (Math.atan2(y, x) + Math.PI * 2.75) % (Math.PI * 2); };
-      G.filter(a => !a.sh).sort((a, b) => ang(a) - ang(b)).concat(G.filter(a => a.sh)).forEach(a => ordered.push(a));
+      const ang = a => { const x = (a.s[0] + a.s[2]) / 2 - cx, y = (a.s[1] + a.s[3]) / 2 - cy; return (Math.atan2(y, x) + Math.PI * 19 / 18) % (Math.PI * 2); };
+      /* a closed outline: round its middle, clockwise from its left side; an open one (a zigzag, the house with a door): stick after
+         stick from its top-left end, so the numbers run along it */
+      const ns = G.filter(a => !a.sh), deg = new Map(), ends2 = a => [pt(a.s[0], a.s[1]), pt(a.s[2], a.s[3])];
+      ns.forEach(a => ends2(a).forEach(p => deg.set(p, (deg.get(p) || 0) + 1)));
+      const xy = p => p.split(',').map(Number), ends = [...deg.keys()].filter(p => deg.get(p) === 1);
+      let seq = ns.slice().sort((a, b) => ang(a) - ang(b));
+      if (ends.length) {
+        let cur = ends.sort((p, q) => xy(p)[0] + xy(p)[1] - xy(q)[0] - xy(q)[1])[0]; const left = ns.slice(); seq = [];
+        while (left.length) {
+          let k = left.findIndex(a => ends2(a).includes(cur));
+          if (k < 0) { const c = xy(cur), dd = a => Math.min(...ends2(a).map(p => Math.hypot(xy(p)[0] - c[0], xy(p)[1] - c[1]))); k = left.reduce((m, a, i) => (dd(a) < dd(left[m]) ? i : m), 0); const e2 = ends2(left[k]); cur = Math.hypot(xy(e2[0])[0] - c[0], xy(e2[0])[1] - c[1]) <= Math.hypot(xy(e2[1])[0] - c[0], xy(e2[1])[1] - c[1]) ? e2[0] : e2[1]; }
+          const a = left.splice(k, 1)[0], e2 = ends2(a); seq.push(a); cur = e2[0] === cur ? e2[1] : e2[0];
+        }
+      }
+      seq.concat(G.filter(a => a.sh)).forEach(a => ordered.push(a));
     });
     return { sticks: ordered.map(a => a.s), shared: ordered.map((a, i) => (a.sh ? i : -1)).filter(i => i >= 0) };
   };
-  const U7L = { 1: [['tri'], ['sq'], ['zig3'], ['zig4'], ['zig5']], 3: [['house'], ['sq2'], ['tri2'], ['side']], 4: [['sq3'], ['win'], ['tower'], ['house2'], ['house3'], ['stack3']] };
+  const U7L = { 1: [['tri'], ['sq'], ['zig3'], ['zig4'], ['zig5'], ['rect']], 3: [['house'], ['sq2'], ['tri2'], ['side'], ['tri3']], 4: [['sq3'], ['win'], ['tower'], ['house2'], ['house3'], ['stack3'], ['tri4'], ['door']] };
+  /* a figure as specs: every piece turned / mirrored at random, two pieces in either order */
+  const specs7 = (rng, names) => rng.shuffle(names).map(n => ({ n, t: rng.int(0, 7) }));
+  const fkey = f => f.map(x => x.n + x.t).join('+');
   W5R.U7 = {
     kind0: 'sticks5', verb: '数！', intro: '光棒搭房子！', praise: ['一根不多不少！'],
     gen(G, o) {
@@ -7883,18 +7939,18 @@ const W5U = {
       if (d === 5) {
         /* five shapes, one uses exactly seven sticks */
         for (let t = 0; t < 200; t++) {
-          const seven = rng.pick([['sq2'], ['tri', 'sq'], ['sq', 'zig3'], ['tri', 'zig4']]);
-          const pool = [['house'], ['sq', 'sq'], ['tri2'], ['tower'], ['side'], ['tri', 'tri'], ['sq3'], ['house2'], ['stack3'], ['zig5'], ['sq'], ['tri', 'zig3']].filter(f => build7(f).sticks.length !== 7);
-          const others = rng.shuffle(pool).slice(0, 4);
+          const seven = specs7(rng, rng.pick([['sq2'], ['tri', 'sq'], ['sq', 'zig3'], ['tri', 'zig4'], ['tri3']]));
+          const pool = [['house'], ['sq', 'sq'], ['tri2'], ['tower'], ['side'], ['tri', 'tri'], ['sq3'], ['house2'], ['stack3'], ['zig5'], ['sq'], ['tri', 'zig3'], ['rect'], ['tri4']].filter(f => build7(f).sticks.length !== 7);
+          const others = rng.shuffle(pool).slice(0, 4).map(f => specs7(rng, f));
           const counts = others.map(f => build7(f).sticks.length);
           if (new Set(counts).size < 3) continue;
           const deck = W5U.deal(G, seven, others, 'u7c');
-          return { d, k: [d, deck.map(f => f.join('+')).join('.')], figs: deck, n: 7, ask: 'which', answer: deck.indexOf(seven) };
+          return { d, k: [d, deck.map(fkey).join('.')], figs: deck, n: 7, ask: 'which', answer: deck.indexOf(seven) };
         }
       }
-      const names = d === 2 ? rng.pick(PAIRS) : rng.pick(U7L[d]);
+      const names = specs7(rng, d === 2 ? rng.pick(PAIRS) : rng.pick(U7L[d]));
       const f = build7(names), n = f.sticks.length;
-      return { d, k: [d, names.join('+'), rng.int(0, 2)], names, n, ask: 'count', answer: n, opts: W5U.nums(G, n, 1, 14) };
+      return { d, k: [d, fkey(names)], names, n, ask: 'count', answer: n, opts: W5U.nums(G, n, 1, 14) };
     },
     audit(q) {
       if (q.ask === 'which') return [{ n: q.figs.length, at: q.answer, right: q.figs.filter(f => build7(f).sticks.length === q.n).length }];
@@ -7902,7 +7958,7 @@ const W5U = {
     },
     geo(q) {
       const L = K.L();
-      if (q.ask === 'which') return L ? { cs: 168, cy: 392, gap: 16, per: 5 } : { cs: 196, cy: 470, gap: 18, per: 3 };
+      if (q.ask === 'which') return L ? { cs: 168, cy: 336, gap: 16, per: 5, px: 512, py: 565, pw: 600, ph: 250 } : { cs: 196, cy: 410, gap: 18, per: 3, px: 352, py: 751, pw: 600, ph: 230 };
       return L ? { fx: 512, fy: 316, fw: 600, fh: 330, umax: 120, cy: 612, cs: 116, gap: 18 } : { fx: 352, fy: 470, fw: 620, fh: 440, umax: 130, cy: 830, cs: 120, gap: 12 };
     },
     decor(G) { W3X.decor2(G, this.chars); },
@@ -7988,9 +8044,17 @@ const W5U = {
       W5U.blue(st, W5U.cardOf(st, ans));
       await fbDone(st); if (!Session.alive(my)) return;
       if (q.ask === 'which') {
-        const e = st.cards[q.answer], b = box(e), sc = b.w / this.geo(q).cs;
-        const ms = this.countSticks(st, e._P, e._f.shared, (x, y) => [b.x + x * sc, b.y + y * sc]);
-        W5U.note(st, '一根一根数');
+        /* the right figure, big, under the cards (counted there: on the small card the numbers would pile up) */
+        const e = st.cards[q.answer], g = this.geo(q), big = layer(st, 7), f = e._f, P = this.layout7(f, g.px, g.py, g.pw, g.ph, 120); P.pop();
+        big._s.innerHTML = '<rect x="' + (g.px - g.pw / 2) + '" y="' + (g.py - g.ph / 2) + '" width="' + g.pw + '" height="' + g.ph + '" rx="22" fill="rgba(240,248,255,.95)"/>' + P.map((p, i) => this.stickSvg(null, p, f.shared.includes(i) ? { glow: 'rgba(255,201,60,.7)', col: '#FFC93C', w: 22 } : {})).join('') + this.dotsSvg(P);
+        st.scope.anim(big, [{ opacity: 0, transform: 'translateY(-40px) scale(.6)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE.pop });
+        await st.scope.wait(200); if (!Session.alive(my)) return;
+        /* its frame is a ring (not gold: the gold one is the answer card's), so the step button keeps off the counting;
+           drawn now, with the counting, so it is one step with "一根一根数" */
+        const fr = K.ring(st, [{ x: g.px - g.pw / 2, y: g.py - g.ph / 2, w: g.pw, h: g.ph }], 2, '#E0A400');
+        if (fr) Object.assign(fr.style, { borderStyle: 'solid', borderRadius: '22px' });
+        const ms = this.countSticks(st, P, f.shared, (x, y) => [x, y]);
+        W5U.note(st, f.shared.length ? '这根两边都用' : '一根一根数');
         await st.scope.wait(Math.max(1000, ms)); if (!Session.alive(my)) return;
         W5U.gold(st, e);
         await W5U.sum(st, W5U.all(q.n, '根'));
@@ -8014,6 +8078,7 @@ const W5U = {
     },
     workEls(st) { return st.cards || []; },
     snap(st) { return { n: st.q.n, marks: (st.marks || []).slice() }; },
+    _sticks(specs, all) { const f = build7(specs); return all ? f : [f.sticks.length, f.shared.length]; },
     lines() {
       const out = [this.intro, '用了几根光棒？', '能搭哪一个？', '这根两边都用', '一根一根数'].concat(this.praise);
       for (let v = 1; v <= 14; v++) out.push('不是' + CNQ(v) + '根');
@@ -8031,7 +8096,8 @@ const W5U = {
        and a small tail: two; or a head and a tail two buildings apart: two · L5 heads over the roofs, tails beside, 4
        buildings, 3-5 of them: colour, size and place together.
      Wrong: his card blue ("不是四只"); the buildings turn to glass, every monster is ringed once ("头和尾巴是一只" /
-     "颜色不一样，是两只" / "大小不一样，是两只" / "离得太远，是两只"); the right card gold ("一共三只"). */
+     "颜色不一样，是两只" / "大小不一样，是两只"); the right card gold ("一共三只"). L4 has only the trap one can see (a big
+     head and a small tail); a head and a tail two buildings apart were dropped (W5R2 5: nothing on the picture says why). */
   const MCOL = { red: '#FF6B5B', blue: '#4FB3FF', green: '#5CC46E', purple: '#B57BFF', orange: '#FF9F43' };
   /* a block monster (friendly): a big square head with round eyes and two little round horns, a lower body, a tail.
      Lying: head at the front end (f = 1 faces right). Standing: head on top, the tail out to one side at the bottom.
@@ -8081,17 +8147,10 @@ const W5U = {
           M.push({ kind: 'one', b, side: f > 0 ? 'R' : 'L', part: 'head', col: c1, sz: z }, { kind: 'one', b, side: f > 0 ? 'L' : 'R', part: 'tail', col: c2, sz: z }); trap = 'color';
           if (rng.chance(0.5)) wide(); single();
         } else if (d === 4) {
-          if (rng.chance(0.5)) {
-            const b = rng.int(0, nb - 1); if (!take(b + 'L', b + 'R')) continue;
-            const c1 = col(), f = rng.pick([1, -1]);
-            M.push({ kind: 'one', b, side: f > 0 ? 'R' : 'L', part: 'head', col: c1, sz: 'b' }, { kind: 'one', b, side: f > 0 ? 'L' : 'R', part: 'tail', col: c1, sz: 's' }); trap = 'size';
-          } else {
-            /* a head at the right of building b, a tail at the left of building b + 2 ... no: a head and a tail two buildings apart */
-            if (nb < 3) continue;
-            const b = rng.int(0, nb - 3), c1 = col(), z = size();
-            if (!take(b + 'R', (b + 2) + 'L')) continue;
-            M.push({ kind: 'one', b, side: 'R', part: 'tail', col: c1, sz: z }, { kind: 'one', b: b + 2, side: 'L', part: 'head', col: c1, sz: z }); trap = 'far';
-          }
+          /* the same colour, a big head and a small tail at one building: two (you can see they differ) */
+          const b = rng.int(0, nb - 1); if (!take(b + 'L', b + 'R')) continue;
+          const c1 = col(), f = rng.pick([1, -1]);
+          M.push({ kind: 'one', b, side: f > 0 ? 'R' : 'L', part: 'head', col: c1, sz: 'b' }, { kind: 'one', b, side: f > 0 ? 'L' : 'R', part: 'tail', col: c1, sz: 's' }); trap = 'size';
           wide() || single(); if (rng.chance(0.5)) single();
         } else {
           /* standing ones: a head over the roof, its tail out beside (one), or a head over the roof and somebody else's tail */
@@ -8172,7 +8231,7 @@ const W5U = {
     onGesture(st, name, p) { return W5U.tapCard(st, name, p); },
     next(st, strat) { return W5U.cardNext(st, strat); },
     async feedback(st, ans) { const c = W5U.cardOf(st, ans); if (c) K.wiggle(st, c); W5U.say(st, '不是' + CNQ(ans) + '只'); await st.scope.wait(T(550)); },
-    trapLine(q) { return { wide: '头和尾巴是一只', stand: '头和尾巴是一只', color: '颜色不一样，是两只', size: '大小不一样，是两只', far: '离得太远，是两只' }[q.trap] || '一只一只数'; },
+    trapLine(q) { return { wide: '头和尾巴是一只', stand: '头和尾巴是一只', color: '颜色不一样，是两只', size: '大小不一样，是两只' }[q.trap] || '一只一只数'; },
     /* a box round a monster: its visible-or-not whole body (stage px) */
     monBox(p) {
       const H = p.H;
@@ -8206,7 +8265,7 @@ const W5U = {
     workEls(st) { return st.cards || []; },
     snap(st) { return { n: st.q.answer, trap: st.q.trap }; },
     lines() {
-      const out = [this.intro, '楼后面藏着几只？', '头和尾巴是一只', '颜色不一样，是两只', '大小不一样，是两只', '离得太远，是两只', '一只一只数'].concat(this.praise);
+      const out = [this.intro, '楼后面藏着几只？', '头和尾巴是一只', '颜色不一样，是两只', '大小不一样，是两只', '一只一只数'].concat(this.praise);
       for (let v = 1; v <= 9; v++) out.push('不是' + CNQ(v) + '只');
       for (let v = 2; v <= 5; v++) out.push('一共' + CNQ(v) + '只');
       return uniq(out);
