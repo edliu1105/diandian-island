@@ -8,7 +8,7 @@ import os, re, sys
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ISL = {'P': 'peppa', 'B': 'bluey', 'J': 'pjmasks', 'A': 'paw', 'H': 'huluwa', 'X': 'xiyou', 'V': 'avengers'}
+ISL = {'P': 'peppa', 'B': 'bluey', 'J': 'pjmasks', 'A': 'paw', 'H': 'huluwa', 'X': 'xiyou', 'V': 'avengers', 'Z': 'transformers', 'U': 'ultraman'}
 CJK = re.compile(r'[一-鿿]')
 HOOK = """() => { window.__lines = window.__lines || []; if (window.__lh) return; window.__lh = 1;
   const rec = t => { const st = Session.st; window.__lines.push([String(t || ''), st && st.G ? st.G.id : '', Bank.has(String(t || ''))]); };

@@ -4584,6 +4584,575 @@ const W5U = {
       return uniq(out);
     },
   };
+  /* ================================================================ Z6 变！ 车变机器人：零件一样吗 (morph5)
+     大黄蜂's car built of block shapes (rectangles, squares, triangles, round wheels, half circles; every block outlined).
+     First tap the car (or 大黄蜂): "点他变形！" - its blocks flash up in a burst of light (a getting-ready step, not the math,
+     not a hint); then the five robots can be tapped: "变成哪个机器人？" - the one built of exactly the same blocks.
+       L1 the car 3 blocks, all different colours; the others: a block in another colour, one block missing, one too many,
+          a block of another shape (the same colour)
+       L2 4-5 blocks, some the same colour (two black wheels); others also a wheel more or less
+       L3 a block turned in the robot is still the same block; others also a block of another size
+       L4 6 blocks; one other robot has one long block where the car has two squares: as big, but not the same blocks
+       L5 two cars together: 大黄蜂's car and 擎天柱's truck - "两辆车合体！" "合成哪个大机器人？"
+     The right robot's place from a bag. Wrong: his robot ringed blue; the car's blocks in a row, his robot's blocks in a
+     row under them, pairs joined; the one with no partner ringed blue ("这块车上没有" / "少了一个轮子" / "这块大了" ...);
+     the right robot ringed gold, its blocks all paired ("零件一模一样"). */
+  const BCOL = { Y: '#FFC93C', K: '#3A3F4A', B: '#4FB3FF', R: '#E8414B', G: '#B7C0CC', N: '#5CC46E' };
+  /* a block's size in units (big = 1.4 times): w, h */
+  const bsz = b => { const k = b.s === 2 ? 1.4 : 1; return b.k === 'rect' ? [2 * k, 1 * k] : b.k === 'semi' ? [1 * k, 0.5 * k] : b.k === 'tri' ? [1 * k, 0.9 * k] : b.k === 'circle' ? [0.9 * k, 0.9 * k] : [1 * k, 1 * k]; };
+  const bsig = b => b.k + b.c + b.s;
+  const msig = list => list.map(bsig).sort().join('|');
+  /* one block drawn with its middle at (x, y), u px a unit, turned rot degrees */
+  function blockDraw(g, b, x, y, u, rot) {
+    const [w, h] = bsz(b), W = w * u, H = h * u, a = { fill: BCOL[b.c], stroke: INK, 'stroke-width': Math.max(2.5, u * 0.08), 'stroke-linejoin': 'round' }, G1 = svg('g', { transform: 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') rotate(' + (rot || 0) + ')' }, g);
+    if (b.k === 'circle') { svg('circle', Object.assign({ cx: 0, cy: 0, r: W / 2 }, a), G1); if (b.c === 'K') svg('circle', { cx: 0, cy: 0, r: W / 5, fill: '#C9D3E0', stroke: INK, 'stroke-width': 2 }, G1); }
+    else if (b.k === 'semi') svg('path', Object.assign({ d: 'M' + (-W / 2) + ' ' + (H / 2) + 'A' + (W / 2) + ' ' + (W / 2) + ' 0 0 1 ' + (W / 2) + ' ' + (H / 2) + 'Z' }, a), G1);
+    else if (b.k === 'tri') svg('polygon', Object.assign({ points: [[0, -H / 2], [W / 2, H / 2], [-W / 2, H / 2]].map(p => p.join(',')).join(' ') }, a), G1);
+    else svg('rect', Object.assign({ x: -W / 2, y: -H / 2, width: W, height: H, rx: Math.min(W, H) * 0.12 }, a), G1);
+    return G1;
+  }
+  /* the car seen from the side: the body, wheels under it, a triangle as its nose, the rest on top */
+  function carLayout(list) {
+    const L = list.map((b, i) => ({ b, i })), out = [], take = f => { const j = L.findIndex(f); return j < 0 ? null : L.splice(j, 1)[0]; };
+    const body = take(x => x.b.k === 'rect') || L.shift(), [bw, bh] = bsz(body.b);
+    out.push({ i: body.i, x: 0, y: 0, rot: 0 });
+    const wheels = []; let w; while ((w = take(x => x.b.k === 'circle'))) wheels.push(w);
+    wheels.forEach((x, k) => out.push({ i: x.i, x: wheels.length === 1 ? 0 : -bw * 0.32 + k * (bw * 0.64 / (wheels.length - 1)), y: bh / 2 + bsz(x.b)[1] * 0.3, rot: 0 }));
+    const nose = take(x => x.b.k === 'tri');
+    if (nose) out.push({ i: nose.i, x: bw / 2 + bsz(nose.b)[1] / 2, y: 0, rot: 90 });
+    let left = -bw / 2 + 0.05, top = -bh / 2;
+    L.forEach(x => { const [w2, h2] = bsz(x.b); if (left + w2 > bw / 2 + 0.3) { left = -bw / 2 + 0.05; top -= h2; } out.push({ i: x.i, x: left + w2 / 2, y: top - h2 / 2, rot: 0 }); left += w2; });
+    return out;
+  }
+  /* a robot: the biggest block standing as the body, a head on it, the wheels as feet, the rest as arms (turned) */
+  function robotLayout(list, seed) {
+    const L = list.map((b, i) => ({ b, i, a: bsz(b)[0] * bsz(b)[1] })), out = [];
+    L.sort((p, q) => q.a - p.a || p.i - q.i);
+    const torso = L.shift(), tr = torso.b.k === 'rect' ? 90 : 0, [tw0, th0] = bsz(torso.b), tw = tr ? th0 : tw0, th = tr ? tw0 : th0;
+    out.push({ i: torso.i, x: 0, y: 0, rot: tr });
+    let hi = L.findIndex(x => ['semi', 'sq', 'tri'].includes(x.b.k)); if (hi < 0) hi = L.findIndex(x => x.b.k !== 'circle');
+    if (hi >= 0) { const h = L.splice(hi, 1)[0]; out.push({ i: h.i, x: 0, y: -th / 2 - bsz(h.b)[1] / 2, rot: 0 }); }
+    const feet = L.filter(x => x.b.k === 'circle'), rest = L.filter(x => x.b.k !== 'circle');
+    feet.forEach((x, k) => out.push({ i: x.i, x: (k - (feet.length - 1) / 2) * 0.95, y: th / 2 + bsz(x.b)[1] / 2, rot: 0 }));
+    const side = [0, 0];
+    rest.forEach((x, k) => {
+      const s = (k + seed) % 2, rot = x.b.k === 'rect' ? 90 : x.b.k === 'tri' ? (s ? 90 : -90) + ((seed >> 1) % 2) * 180 : 0, [w0, h0] = bsz(x.b), turned = Math.abs(rot) % 180 === 90, w = turned ? h0 : w0, h = turned ? w0 : h0;
+      out.push({ i: x.i, x: (s ? 1 : -1) * (tw / 2 + w / 2 + 0.06), y: -th / 2 + side[s] + h / 2, rot }); side[s] += h + 0.06;
+    });
+    return out;
+  }
+  /* blocks laid out, drawn to fit a W x H box */
+  function drawLaid(list, lay, W, H, pad) {
+    const s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }); s.style.pointerEvents = 'none'; s.style.overflow = 'visible';
+    const ext = lay.map(p => { const [w0, h0] = bsz(list[p.i]), t = Math.abs(p.rot) % 180 === 90, w = t ? h0 : w0, h = t ? w0 : h0; return [p.x - w / 2, p.y - h / 2, p.x + w / 2, p.y + h / 2]; });
+    const x0 = Math.min(...ext.map(e => e[0])), y0 = Math.min(...ext.map(e => e[1])), x1 = Math.max(...ext.map(e => e[2])), y1 = Math.max(...ext.map(e => e[3])), u = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0));
+    const ox = W / 2 - (x0 + x1) / 2 * u, oy = H / 2 - (y0 + y1) / 2 * u;
+    lay.forEach(p => blockDraw(s, list[p.i], ox + p.x * u, oy + p.y * u, u, p.rot));
+    return s;
+  }
+  /* 大黄蜂's car (yellow body) and 擎天柱's truck (big red body) */
+  const BEE = (rng, d) => {
+    if (d === 1) return [{ k: 'rect', c: 'Y', s: 1 }, { k: rng.pick(['semi', 'sq', 'tri']), c: rng.pick(['B', 'R']), s: 1 }, { k: 'circle', c: 'K', s: 1 }];
+    if (d === 4) return [{ k: 'rect', c: 'Y', s: 1 }, { k: 'sq', c: 'B', s: 1 }, { k: 'sq', c: 'B', s: 1 }, { k: 'circle', c: 'K', s: 1 }, { k: 'circle', c: 'K', s: 1 }, { k: 'tri', c: 'R', s: 1 }];
+    const car = [{ k: 'rect', c: 'Y', s: d === 3 ? 2 : 1 }, { k: rng.pick(['semi', 'sq']), c: 'B', s: d === 3 && rng.chance(0.5) ? 2 : 1 }, { k: 'circle', c: 'K', s: 1 }, { k: 'circle', c: 'K', s: 1 }];
+    if (d !== 5 && rng.chance(0.6)) car.push({ k: 'tri', c: 'R', s: 1 });
+    return car;
+  };
+  const TRUCK = rng => [{ k: 'rect', c: 'R', s: 2 }, { k: 'sq', c: 'B', s: 1 }, { k: 'circle', c: 'K', s: 1 }, { k: 'circle', c: 'K', s: 1 }].concat(rng.chance(0.5) ? [{ k: 'tri', c: 'G', s: 1 }] : []);
+  W5R.Z6 = {
+    kind0: 'morph5', verb: '变！', intro: '大黄蜂变形！', praise: ['零件看得真清！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      for (let t = 0; t < 300; t++) {
+        const car = BEE(rng, d), car2 = d === 5 ? TRUCK(rng) : null, all = car.concat(car2 || []), right = msig(all);
+        /* the four others, each changed one way */
+        const kinds = ['color', 'missing', 'extra', 'shape'].concat(d >= 2 ? ['wheel'] : []).concat(d >= 3 ? ['size'] : []);
+        const make = kind => {
+          const L = all.map(b => Object.assign({}, b)), any = L.map((_, i) => i), solid = any.filter(i => L[i].k !== 'circle'), j = rng.pick(kind === 'shape' || kind === 'size' ? solid : any);
+          if (kind === 'color') L[j].c = rng.pick(['Y', 'B', 'R', 'N', 'G'].filter(x => x !== L[j].c));
+          else if (kind === 'missing') L.splice(j, 1);
+          else if (kind === 'extra') L.push({ k: rng.pick(['tri', 'sq', 'semi']), c: rng.pick(['Y', 'B', 'R', 'N']), s: 1 });
+          else if (kind === 'shape') L[j].k = rng.pick(['sq', 'tri', 'semi', 'rect'].filter(x => x !== L[j].k));
+          else if (kind === 'wheel') { const w = L.findIndex(b => b.k === 'circle'); if (w < 0) return null; if (rng.chance(0.5)) L.splice(w, 1); else L.push(Object.assign({}, L[w])); }
+          else if (kind === 'size') L[j].s = L[j].s === 2 ? 1 : 2;
+          else if (kind === 'merge') { const a = L.findIndex(b => b.k === 'sq'), b2 = a < 0 ? -1 : L.findIndex((b, i) => i > a && b.k === 'sq' && b.c === L[a].c && b.s === L[a].s); if (b2 < 0) return null; const c = L[a].c; L.splice(b2, 1); L.splice(a, 1, { k: 'rect', c, s: 1 }); }
+          return L.length ? L : null;
+        };
+        const bag = (d === 4 ? ['merge'] : []).concat(rng.shuffle(kinds.slice()), rng.shuffle(kinds.slice())), others = [], seen = new Set([right]);
+        for (const k of bag) { if (others.length >= 4) break; const L = make(k); if (!L) continue; const s = msig(L); if (seen.has(s)) continue; seen.add(s); others.push({ list: L, kind: k }); }
+        if (others.length < 4) continue;
+        const ok = { list: all.map(b => Object.assign({}, b)), kind: 'ok' }, robots = W5U.deal(G, ok, others, 'z6r');
+        robots.forEach(r => { r.seed = rng.int(0, 7); });
+        return { k: [d, msig(car), car2 ? msig(car2) : '', others.map(x => msig(x.list)).join('/')], d, car, car2, robots, answer: robots.indexOf(ok) };
+      }
+      return null;
+    },
+    audit(q) { const s = msig(q.car.concat(q.car2 || [])); return [{ n: 5, at: q.answer, right: q.robots.filter(r => msig(r.list) === s).length }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    geo(st) {
+      const L = K.L(), two = !!st.q.car2;
+      return L ? { L, car: two ? [[196, 116, 300, 220], [528, 116, 300, 220]] : [[312, 112, 400, 240]], cy: 520, cw: 116, ch: 168, cg: 18 }
+        : { L, car: two ? [[30, 236, 316, 230], [358, 236, 316, 230]] : [[132, 226, 440, 260]], cy: 640, cw: 120, ch: 176, cg: 12 };
+    },
+    place(st) {
+      const g = this.geo(st);
+      if (!st.carEls) return;
+      st.carEls.forEach((e, i) => { const r = g.car[i]; place(e, r[0], r[1], r[2], r[3]); });
+      if (st.cards) st.cards.forEach((c, i) => place(c, Math.round(Stage.W / 2 - (5 * g.cw + 4 * g.cg) / 2 + i * (g.cw + g.cg)), Math.round(g.cy - g.ch / 2), g.cw, g.ch));
+      if (st.listEl) this.placeList(st);
+    },
+    async present(st) {
+      const q = st.q;
+      st.carEls = [q.car].concat(q.car2 ? [q.car2] : []).map((list, i) => {
+        const e = W3X.card(st, null, 6); e.style.padding = '0';
+        e.appendChild(drawLaid(list, carLayout(list), 300, 200, 18));
+        K.reg(st, i ? 'car2' : 'car', e, {});
+        return e;
+      });
+      /* the robots wait, pale, until the car has changed (then they are registered as card0 .. card4) */
+      st.cards = q.robots.map(r => { const c = W3X.card(st, null, 6); c.appendChild(drawLaid(r.list, robotLayout(r.list, r.seed), 120, 160, 10)); c.style.opacity = '.45'; return c; });
+      st.opts = q.robots.map((_, i) => i);
+      this.place(st);
+      st.carEls.forEach((e, i) => K.pop(st, e, 80 * i)); st.cards.forEach((c, i) => K.pop(st, c, 200 + 60 * i));
+      K.task(st, [[{ node: (() => { const d = el('span', ''); Object.assign(d.style, { width: '96px', height: '56px', display: 'block' }); d.appendChild(drawLaid(q.car, carLayout(q.car), 96, 56, 4)); return d; })() }], ['q']]);
+      if (q.car2) W3X.say2(st, '两辆车合体！', '点他变形！'); else K.say(st, '点他变形！');
+    },
+    onCharTap(st, id) { if (id === 'bumblebee' && !st.morphed && st.carEls) { gesture('tap', { id: 'car' }); return true; } return false; },
+    /* the getting-ready step: the cars flash up in a burst of light, then the robots can be tapped */
+    async morph(st) {
+      const my = st, q = st.q; st.morphed = true; Sfx.whoosh && Sfx.whoosh(0.3);
+      st.carEls.forEach(e => { if (!fast()) e.animate([{ transform: 'none', filter: 'none' }, { transform: 'translateY(-26px) scale(1.06)', filter: 'brightness(1.5) drop-shadow(0 0 18px #FFE45C)' }, { transform: 'none', filter: 'none' }], { duration: 700 }); const c = mid(e); Fx.burst(c.x, c.y, { n: 14, dist: 80 }); });
+      st.cards.forEach((c, i) => { c.style.opacity = ''; K.reg(st, 'card' + i, c, {}); K.pop(st, c, 250 + 60 * i); });
+      await st.scope.wait(T(450)); if (!Session.alive(my)) return;
+      K.say(st, q.car2 ? '合成哪个大机器人？' : '变成哪个机器人？');
+    },
+    onGesture(st, name, p) {
+      if (name !== 'tap' || st.picked) return false;
+      const id = p.id || '';
+      if (id === 'car' || id === 'car2') { if (st.morphed) { K.wiggle(st, st.carEls[id === 'car' ? 0 : 1]); return 'free'; } this.morph(st); return 'free'; }
+      if (!st.morphed) return false;
+      return W5U.tapCard(st, name, p);
+    },
+    /* his robot's blocks against the car's: which do not pair, and the line for it */
+    pairs(st, ri) {
+      const q = st.q, A = q.car.concat(q.car2 || []), B = q.robots[ri].list, pa = A.map(() => -1), used = B.map(() => false);
+      A.forEach((a, i) => { const j = B.findIndex((b, k) => !used[k] && bsig(a) === bsig(b)); if (j >= 0) { pa[i] = j; used[j] = true; } });
+      return { A, B, pa, ma: A.map((_, i) => i).filter(i => pa[i] < 0), mb: B.map((_, j) => j).filter(j => !used[j]) };
+    },
+    whyLine(P) {
+      const { A, B, ma, mb } = P;
+      if (ma.length && mb.length) { const a = A[ma[0]], b = B[mb[0]]; return a.k === b.k && a.c === b.c ? (b.s > a.s ? '这块大了' : '这块小了') : a.k === b.k ? '颜色不一样' : '这块车上没有'; }
+      if (mb.length) return B[mb[0]].k === 'circle' ? '多了一个轮子' : '这块车上没有';
+      return A[ma[0]].k === 'circle' ? '少了一个轮子' : '少了一块';
+    },
+    async feedback(st, ans) { K.wiggle(st, st.cards[ans]); await fbSay(st, '零件不一样哦'); },
+    /* the block list: the car's blocks in a row, a robot's under them (a partner right under its partner, joined by a
+       dashed line; one without a partner under one without a partner, or at the end) */
+    showList(st, ri, gold) {
+      if (st.listEl) st.listEl.remove();
+      const P = this.pairs(st, ri), { A, B, pa, ma, mb } = P, col = {};
+      pa.forEach((j, i) => { if (j >= 0) col[j] = i; });
+      mb.forEach((j, k) => { col[j] = k < ma.length ? ma[k] : A.length + (k - ma.length); });
+      const n = Math.max(A.length, ...Object.values(col).map(c => c + 1)), cw = 92, ch = 78, W = n * cw + 24, H = 2 * ch + 56, X = c => 12 + cw / 2 + c * cw, Y = [12 + ch / 2, 44 + ch * 1.5];
+      const e = thing(st, 30, 'item'); Object.assign(e.style, { borderRadius: '22px', background: '#FFF8EC', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' }); st.listEl = e; e._w = W; e._h = H;
+      const s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }, e); s.style.pointerEvents = 'none';
+      pa.forEach((j, i) => { if (j >= 0) svg('path', { d: 'M' + X(i) + ' ' + (Y[0] + 30) + 'V' + (Y[1] - 30), stroke: gold ? '#E0A100' : INK, 'stroke-width': 5, 'stroke-dasharray': '5 6', 'stroke-linecap': 'round' }, s); });
+      A.forEach((a, i) => blockDraw(s, a, X(i), Y[0], 28, 0));
+      B.forEach((b, j) => blockDraw(s, b, X(col[j]), Y[1], 28, 0));
+      e._A = A.map((_, i) => ({ x: X(i), y: Y[0] })); e._B = B.map((_, j) => ({ x: X(col[j]), y: Y[1] }));
+      this.placeList(st); K.pop(st, e);
+      return P;
+    },
+    placeList(st) {
+      const e = st.listEl, g = this.geo(st), r = g.car[0], r2 = g.car[g.car.length - 1], cx = (r[0] + r2[0] + r2[2]) / 2, cy = r[1] + r[3] / 2, k = Math.min(1, (Stage.W - 32) / e._w);
+      place(e, Math.round(cx - e._w * k / 2), Math.round(cy - e._h * k / 2), Math.round(e._w * k), Math.round(e._h * k)); e._k = k;
+    },
+    /* a ringable spot on the list (the block at p) */
+    markAt(st, p) { const e = st.listEl, b = box(e), k = e._k || 1, m = thing(st, 31, 'item'); m.style.pointerEvents = 'none'; place(m, Math.round(b.x + (p.x - 40) * k), Math.round(b.y + (p.y - 34) * k), Math.round(80 * k), Math.round(68 * k)); return m; },
+    /* 1. his robot blue (the feedback line ends); the two lists, the block without a partner blue + why;
+       2. the right robot gold, its list all paired: "零件一模一样" */
+    async explain(st, ans) {
+      const my = st, q = st.q, r = W5U.blue(st, st.cards[ans]);
+      await fbDone(st); if (!Session.alive(my)) return;
+      const P = this.showList(st, ans, false);
+      const marks = P.mb.map(j => this.markAt(st, st.listEl._B[j])).concat(P.ma.map(i => this.markAt(st, st.listEl._A[i]))).slice(0, 2);
+      const r2 = W5U.blue(st, marks);
+      await say(st, this.whyLine(P)); if (!Session.alive(my)) return;
+      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      W5U.hide(r.concat(r2)); marks.forEach(m => m.remove());
+      this.showList(st, q.answer, true);
+      W5U.gold(st, st.cards[q.answer]); K.hop(st, st.cards[q.answer], 12);
+      await W5U.sum(st, '零件一模一样');
+      await st.scope.wait(T(150));
+    },
+    rightEls(st) { return [st.cards[st.q.answer]]; },
+    async reveal(st) {
+      const my = st, q = st.q; Sfx.reveal();
+      this.showList(st, q.answer, true);
+      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      W5U.gold(st, st.cards[q.answer]); this.cheerAll(st);
+      st.summary = '零件一模一样'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    next(st, strat) {
+      if (st.picked || !st.carEls) return null;
+      if (!st.morphed) return { g: 'tap', p: { id: 'car' } };
+      if (!st.map || !st.map.card0) return null;
+      const q = st.q, i = strat === 'wrong' ? (q.answer + 1 + st.gen % 4) % 5 : q.answer;
+      return { g: 'tap', p: { id: 'card' + i } };
+    },
+    gestureHint(st) { if (!st.morphed && st.carEls) W3X.tapHint(st, st.carEls[0]); },
+    workEls(st) { return st.morphed ? st.cards : st.carEls || []; },
+    snap(st) { return { morphed: !!st.morphed }; },
+    lines() { return uniq([this.intro, '点他变形！', '变成哪个机器人？', '两辆车合体！', '合成哪个大机器人？', '零件不一样哦', '这块车上没有', '少了一个轮子', '多了一个轮子', '少了一块', '这块大了', '这块小了', '颜色不一样', '零件一模一样'].concat(this.praise)); },
+  };
+
+  /* ================================================================ Z7 改！ 帮大黄蜂改作业 (fix5; errors ok / swap / sign / whole / res)
+     A little story above, drawn as §3.3 says (two panels, before / after: what went away walks out of the door - W5U.leave
+     leaves its grey dashed outline and a trail; what is still here is framed - W5U.stay; what came sparkles - W5U.came;
+     together - W5U.brace), and on a blackboard the number sentence 大黄蜂 wrote: three number tiles, a symbol tile, "=".
+     "他写对了吗？" - tap a number: a row of five number cards pops up above it, tap one and it goes in; tap the symbol: + and
+     − change places; drag a number onto another: the two change places (made for "what went and what is left written the
+     wrong way round"); then "好了" (also when it was right all along - then it must not be changed).
+       L1 a story that moves (went away / came), <= 5, dots under the numbers; errors ok 1, swap 3, sign 2 (of 6)
+       L2 + the two stories that stand still (together: red and yellow fish; the other part), <= 7; + whole
+       L3 <= 9; + res (the answer worked out wrong)        L4 only heard: no picture, the task card writes it; <= 9
+       L5 + compare (7 red fish, 4 yellow: how many more - 7 − 4 = 3) and the other part written the wrong way round; <= 10
+     swap is always a take-away story (5 − 3 = 2 for "5, 2 went away": true sums, the roles the wrong way round - his own
+     confusion). Judged by ROLE (together: either part first). Random play: "好了" at once is right only when it was right
+     (1 in 6), changing at random almost never - about 0.18 in all. Wrong: one line (the part he let pass: "走了的是两只" /
+     "这是减法故事" / "还剩三只哦"; he changed a right one: "这道写对了"; one is still to fix: "还有一个要改"); 1. the wrong
+     tiles ringed blue (the line ends; it is not said again); 2. each number flies from its group in the picture into its
+     tile, the group glowing ("走了两只，" "还剩三只！"); 3. the blackboard gold: "五减二等于三". q.fact: the story's sum. */
+  const FISHP = c => '<path d="M20 50Q46 22 72 50Q46 78 20 50Z" fill="' + c + '" stroke="#2B2118" stroke-width="5"/><path d="M70 50L92 34V66Z" fill="' + c + '" stroke="#2B2118" stroke-width="5" stroke-linejoin="round"/><circle cx="34" cy="46" r="4" fill="#2B2118"/>';
+  const FISH = { red: W2X.icon(FISHP('#E8414B')), yellow: W2X.icon(FISHP('#FFC93C')) };
+  const DOOR_OUT = W2X.icon('<rect x="8" y="14" width="40" height="76" rx="6" fill="#B97A3C" stroke="#2B2118" stroke-width="5"/><path d="M92 52H58M70 38L56 52L70 66" fill="none" stroke="#9AA3AD" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>');
+  const DOOR_IN = W2X.icon('<rect x="8" y="14" width="40" height="76" rx="6" fill="#B97A3C" stroke="#2B2118" stroke-width="5"/><path d="M56 52H90M78 38L92 52L78 66" fill="none" stroke="#2B2118" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><path d="M74 20L77 27L84 28L78 32L80 39L74 35L68 39L70 32L64 28L71 27Z" fill="#FFC93C" stroke="#2B2118" stroke-width="2"/>');
+  const BOARDIC = W2X.icon('<rect x="6" y="14" width="88" height="62" rx="6" fill="#2F5D4E" stroke="#B97A3C" stroke-width="6"/><path d="M20 44h12M26 38v12M44 44h10M62 40h12M62 48h12" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M34 86L44 76M66 86L56 76" stroke="#2B2118" stroke-width="5" stroke-linecap="round"/>');
+  const RADIO = '<svg viewBox="0 0 60 50" width="100%" height="100%" style="pointer-events:none"><path d="M14 14L40 4" stroke="#2B2118" stroke-width="4" stroke-linecap="round"/><rect x="4" y="14" width="52" height="32" rx="8" fill="#FFC93C" stroke="#2B2118" stroke-width="4"/><circle cx="20" cy="30" r="9" fill="#3A3F4A" stroke="#2B2118" stroke-width="3"/><path d="M36 24h12M36 31h12M36 38h12" stroke="#2B2118" stroke-width="3" stroke-linecap="round"/></svg>';
+  const SPARK = '<svg viewBox="0 0 30 30" width="22" height="22" style="position:absolute;right:-6px;top:-8px;pointer-events:none"><path d="M15 1L18 12L29 15L18 18L15 29L12 18L1 15L12 12Z" fill="#FFE45C" stroke="#2B2118" stroke-width="2" stroke-linejoin="round"/></svg>';
+  const SYM7 = { '+': '加', '−': '减' };
+  const Z7THING = { duck: { u: '只', name: '小鸭', go: '走了', come: '又来了' }, car: { u: '辆', name: '车', go: '开走了', come: '又开来' } };
+  /* the three roles of a story, in the order of the sentence (a op b = c) */
+  const Z7ROLES = { go: ['start', 'gone', 'left'], come: ['start', 'came', 'all'], join: ['red', 'yellow', 'all'], part: ['all', 'red', 'yellow'], cmp: ['more', 'less', 'diff'] };
+  const Z7OP = { go: '−', come: '+', join: '+', part: '−', cmp: '−' };
+  const z7role = (r, n, u) => ({ start: '一开始是' + CNQ(n) + u, gone: '走了的是' + CNQ(n) + u, came: '来了的是' + CNQ(n) + u, left: '还剩' + CNQ(n) + u + '哦', all: '一共是' + CNQ(n) + u, red: '红的是' + CNQ(n) + '条', yellow: '黄的是' + CNQ(n) + '条', more: '红的是' + CNQ(n) + '条', less: '黄的是' + CNQ(n) + '条', diff: '多的是' + CNQ(n) + '条' })[r];
+  const z7eq = (a, op, b, c) => CN[a] + SYM7[op] + CN[b] + '等于' + CN[c];
+  /* the two lines while the numbers fly (the first number flies without one): §3.3's two sentences */
+  const z7fly = q => { const [, b, c] = q.v, u = q.u;
+    return { go: [null, W5U.went(b, u) + '，', W5U.left(c, u) + '！'], come: [null, W5U.came2(b, u) + '，', W5U.all(c, u) + '！'], join: [null, '合起来，', '一共' + CNQ(c) + '条！'], part: [null, '拿走红的，', '黄的' + CNQ(c) + '条！'], cmp: [null, '比一比，', '红的多' + CNQ(c) + '条！'] }[q.type]; };
+  const z7story = q => { const [a, b] = q.v.map(CNQ), T7 = Z7THING[q.thing];
+    if (q.type === 'go') return ['这里有' + a + T7.u + T7.name + '。', T7.go + b + T7.u + '。', '还剩几' + T7.u + '？'];
+    if (q.type === 'come') return ['这里有' + a + T7.u + T7.name + '。', T7.come + b + T7.u + '。', '一共几' + T7.u + '？'];
+    if (q.type === 'join') return ['有' + a + '条红鱼，', b + '条黄鱼。', '一共几条？'];
+    if (q.type === 'part') return ['一共' + a + '条鱼，', b + '条是红的。', '黄的有几条？'];
+    return ['有' + a + '条红鱼，', b + '条黄鱼。', '红的多几条？']; };
+
+  W5R.Z7 = {
+    kind0: 'fix5', verb: '改！', intro: '大黄蜂的作业！', praise: ['改得真对！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, hi = [0, 5, 7, 9, 9, 10][d];
+      const err = bagPick(G, 'z7e' + d, d === 1 ? ['ok', 'swap', 'swap', 'swap', 'sign', 'sign'] : d === 2 ? ['ok', 'swap', 'swap', 'sign', 'sign', 'whole'] : ['ok', 'swap', 'swap', 'sign', 'whole', 'res']);
+      const type = err === 'swap' ? (d === 1 ? 'go' : d === 5 ? bagPick(G, 'z7s5', ['go', 'part', 'cmp']) : bagPick(G, 'z7s', ['go', 'part']))
+        : d === 1 ? bagPick(G, 'z7t1', ['go', 'come']) : d === 5 ? bagPick(G, 'z7t5', ['go', 'come', 'join', 'part', 'cmp', 'cmp']) : bagPick(G, 'z7t', ['go', 'come', 'join', 'part']);
+      const thing = type === 'go' || type === 'come' ? bagPick(G, 'z7a', ['duck', 'car']) : 'fish', u = thing === 'fish' ? '条' : Z7THING[thing].u;
+      let v = null;
+      for (let t = 0; t < 200 && !v; t++) {
+        const whole = rng.int(d === 1 ? 3 : 4, hi), p = rng.int(1, whole - 1), r = whole - p;
+        if (p === r) continue;
+        v = type === 'come' ? [r, p, whole] : type === 'join' ? [p, r, whole] : [whole, p, r];
+      }
+      const op = Z7OP[type], S = x => String(x), right = [S(v[0]), op, S(v[1]), S(v[2])];
+      const off = (n, lo) => { const c = rng.shuffle([-2, -1, 1, 2]).map(k => n + k).filter(x => x >= lo && x <= 10); return c[0]; };
+      let shown = right.slice();
+      if (err === 'ok' && type === 'join' && rng.chance(0.5)) shown = [S(v[1]), '+', S(v[0]), S(v[2])];
+      else if (err === 'swap') shown = [S(v[0]), '−', S(v[2]), S(v[1])];
+      else if (err === 'sign') shown[1] = op === '+' ? '−' : '+';
+      else if (err === 'whole') shown[0] = S(off(v[0], 1));
+      else if (err === 'res') shown[3] = S(off(v[2], 1));
+      const q = { d, type, thing, u, v, op, roles: Z7ROLES[type], err, right, shown, answer: right.join(','), heard: d === 4 };
+      q.k = [d, type, thing, v.join('.'), err];
+      q.fact = factOf(op === '+' ? '+' : '-', v[0], v[1]);
+      return q;
+    },
+    /* by role; together: either part first */
+    evaluate(st, ans) { const q = st.q, a = String(ans).split(','), R = q.right; if (a.join(',') === R.join(',')) return true; return q.type === 'join' && a[0] === R[2] && a[1] === R[1] && a[2] === R[0] && a[3] === R[3]; },
+    audit() { return [{ build: true, chance: 0.18 }]; },
+    decor(G) { W2X.decorDone(G, this.chars); },
+    geo(st) {
+      const q = st.q, L = K.L(), two = q.type === 'go' || q.type === 'come', heard = q.heard && !st.showPic;
+      const panels = two ? (L ? [[112, 104, 372, 200], [540, 104, 372, 200]] : [[20, 214, 318, 210], [366, 214, 318, 210]]) : (L ? [[232, 104, 560, 200]] : [[52, 214, 600, 210]]);
+      const by = heard ? (L ? 230 : 330) : (L ? 318 : 470), dots = q.d === 1 ? 46 : 0;
+      return { L, two, panels, by, bh: 104 + 40 + dots, ts: 104, os: 96, es: 56, gap: 14, cx: L ? 512 : 352 };
+    },
+    /* the five places on the blackboard: n0 op n1 = n2 (x, w) */
+    row(st) {
+      const g = this.geo(st), ws = [g.ts, g.os, g.ts, g.es, g.ts], tot = ws.reduce((a, w) => a + w, 0) + 4 * g.gap;
+      let x = g.cx - tot / 2; return ws.map(w => { const b = { x: Math.round(x), w }; x += w + g.gap; return b; });
+    },
+    place(st) {
+      const q = st.q, g = this.geo(st);
+      if (!st.boardEl) return;
+      if (st.sceneL !== g.L) this.scene(st, false);
+      const R = this.row(st), y = g.by + 20;
+      place(st.boardEl, R[0].x - 28, g.by, R[4].x + R[4].w - R[0].x + 56, g.bh);
+      [0, 1, 2, 4].forEach((p, i) => place(st.tiles[i], R[p].x, y, R[p].w, g.ts));
+      place(st.eqEl, R[3].x, y, R[3].w, g.ts);
+      (st.dotEls || []).forEach((e, i) => { const p = [0, 2, 4][i]; place(e, R[p].x - 6, y + g.ts + 8, R[p].w + 12, 34); });
+      if (st.radio) { const a = st.G.actors[this.chars[0]]; if (a && a.x > 0) place(st.radio, Math.round(a.x + 4), Math.round(a.y - a.h - 40), 52, 44); }
+      if (st.pop) this.closePop(st);
+    },
+    /* ---------------------------------------------------------------- the story picture (built again when the stage turns) */
+    scene(st, anim) {
+      const q = st.q, g = this.geo(st), tok = (st.sceneTok || 0) + 1;
+      st.sceneTok = tok; (st.sc || []).forEach(e => e && e.remove()); st.sc = []; st.grp = {}; st.sceneL = g.L;
+      if (q.heard && !st.showPic) return null;
+      const keep = e => { if (e) st.sc.push(e); return e; };
+      const panel = P => { const e = keep(thing(st, 3, 'item')); place(e, P[0], P[1], P[2], P[3]); Object.assign(e.style, { borderRadius: '22px', background: 'rgba(255,248,236,.94)', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' }); return e; };
+      const pic = (src, x, y, s, flip) => { const e = keep(thing(st, 6, 'item')); e.style.pointerEvents = 'none'; place(e, Math.round(x), Math.round(y), s, s); const im = img(src, '', e); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain', transform: flip ? 'scaleX(-1)' : '' }); return e; };
+      const solid = r => { if (r) { r.style.borderStyle = 'solid'; r.style.borderRadius = '22px'; } return keep(r); };
+      const grid = (n, x, y, w, h, s) => W5U.grid(n, x + w / 2, y + h / 2, s, s, 6, 6, Math.min(n, Math.max(1, Math.floor((w + 6) / (s + 6)))));
+      const fit = (n, w, h) => { for (let s = 64; s > 30; s -= 2) { const per = Math.max(1, Math.floor((w + 6) / (s + 6))); if (Math.ceil(n / per) * (s + 6) - 6 <= h) return s; } return 30; };
+      if (g.two) {
+        const [P0, P1] = g.panels; panel(P0); panel(P1);
+        const ar = keep(thing(st, 4, 'item')); ar.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%" style="pointer-events:none"><path d="M8 30H44M32 16L48 30L32 44" fill="none" stroke="#2B2118" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        place(ar, P0[0] + P0[2] + 2, P0[1] + P0[3] / 2 - 20, P1[0] - P0[0] - P0[2] - 4, 40);
+        const src = W5U.prop(q.thing), n0 = q.v[0], nAll = q.type === 'go' ? n0 : q.v[2];
+        const s0 = fit(n0, P0[2] - 28, P0[3] - 28);
+        st.grp.start = grid(n0, P0[0] + 14, P0[1] + 14, P0[2] - 28, P0[3] - 28, s0).map(p => pic(src, p.x, p.y, s0));
+        /* the door of the after picture, on its left */
+        const door = keep(thing(st, 4, 'item')); place(door, P1[0] + 10, P1[1] + 24, 38, P1[3] - 48); Object.assign(door.style, { borderRadius: '8px', background: '#B97A3C', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' });
+        const ax = P1[0] + 58, aw = P1[2] - 70, s1 = fit(nAll, aw, P1[3] - 28), spots = grid(nAll, ax, P1[1] + 14, aw, P1[3] - 28, s1), dx = P1[0] + 29, dy = P1[1] + P1[3] / 2;
+        if (q.type === 'go') {
+          const all = spots.map(p => pic(src, p.x, p.y, s1)), byX = all.slice().sort((a, b) => box(a).x - box(b).x || box(a).y - box(b).y), gone = byX.slice(0, q.v[1]), left = all.filter(e => !gone.includes(e));
+          st.grp.left = left;
+          const frame = () => solid(W5U.stay(st, left));
+          if (!anim) { const R = gone.map(e => { const b = W5U.rect(e), gh = W5U.gone(st, e); keep(gh); e.style.visibility = 'hidden'; return { b, gh }; }); this.trails(st, R.map(r => r.b), dx, dy); st.grp.gone = R.map(r => r.gh); frame(); }
+          else this.play(st, tok, async () => {
+            await st.scope.wait(T(1200)); if (st.sceneTok !== tok) return;
+            const R = gone.map(e => W5U.leave(st, e, dx, dy, T(700)));
+            R.forEach(r => r.then(x => { if (st.sceneTok !== tok) { x.ghost.remove(); x.trail.parentNode && x.trail.parentNode.remove(); return; } keep(x.ghost); keep(x.trail.parentNode); }));
+            st.grp.gone = []; const done = await Promise.all(R); if (st.sceneTok !== tok) return;
+            st.grp.gone = done.map(x => x.ghost); frame();
+          });
+        } else {
+          const old = spots.slice(0, n0).map(p => pic(src, p.x, p.y, s1)), nw = spots.slice(n0).map(p => { const e = pic(src, p.x, p.y, s1, q.thing === 'car'); e.insertAdjacentHTML('beforeend', SPARK); return e; });
+          st.grp.came = nw; st.grp.all = old.concat(nw);
+          const frame = () => solid(W5U.stay(st, old.concat(nw)));
+          if (!anim) frame();
+          else {
+            nw.forEach(e => { e.style.visibility = 'hidden'; });
+            this.play(st, tok, async () => {
+              await st.scope.wait(T(1200)); if (st.sceneTok !== tok) return;
+              await Promise.all(nw.map(e => { const b = W5U.rect(e); e.style.visibility = ''; return st.scope.anim(e, [{ transform: 'translate(' + (dx - b.x - b.w / 2) + 'px,' + (dy - b.y - b.h / 2) + 'px) scale(.5)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: T(600), easing: EASE.glide }); }));
+              if (st.sceneTok !== tok) return;
+              nw.forEach(e => W5U.came(st, e)); frame();
+            });
+          }
+        }
+      } else {
+        const P = g.panels[0]; panel(P);
+        const x0 = P[0] + 18, w = P[2] - 36, top = P[1] + 14;
+        if (q.type === 'cmp') {
+          /* two rows from the left, one under one: the red ones left over are "more" */
+          const n = q.v[0], s = Math.min(54, Math.floor((w + 6) / n) - 6), X = i => x0 + i * (s + 6), y1 = top + 8, y2 = top + 8 + s + 40;
+          const reds = Array.from({ length: n }, (_, i) => pic(FISH.red, X(i), y1, s)), yel = Array.from({ length: q.v[1] }, (_, i) => pic(FISH.yellow, X(i), y2, s));
+          const ls = keep(K.lines(st)); ls.style.zIndex = 5; ls.classList.add('scene');
+          yel.forEach((_, i) => svg('path', { d: 'M' + (X(i) + s / 2) + ' ' + (y1 + s + 4) + 'V' + (y2 - 4), stroke: INK, 'stroke-width': 4, 'stroke-dasharray': '3 7', 'stroke-linecap': 'round' }, ls));
+          st.grp.more = reds; st.grp.less = yel; st.grp.diff = reds.slice(q.v[1]);
+        } else {
+          const h = P[3] - 92;
+          if (q.type === 'join') {
+            const hw = (w - 24) / 2, s = Math.min(fit(q.v[0], hw, h), fit(q.v[1], hw, h));
+            st.grp.red = grid(q.v[0], x0, top, hw, h, s).map(p => pic(FISH.red, p.x, p.y, s));
+            st.grp.yellow = grid(q.v[1], x0 + hw + 24, top, hw, h, s).map(p => pic(FISH.yellow, p.x, p.y, s));
+            st.grp.all = st.grp.red.concat(st.grp.yellow);
+          } else {
+            const s = fit(q.v[0], w, h), sp = grid(q.v[0], x0, top, w, h, s), all = sp.map((p, i) => pic(i < q.v[1] ? FISH.red : FISH.yellow, p.x, p.y, s));
+            st.grp.all = all; st.grp.red = all.slice(0, q.v[1]); st.grp.yellow = all.slice(q.v[1]);
+          }
+          const br = W5U.brace(st, st.grp.all, false); if (br) { keep(br.parentNode); br.setAttribute('stroke', INK); br.setAttribute('stroke-width', 6); br.parentNode.classList.add('scene'); br.parentNode.style.zIndex = 5; }
+        }
+      }
+      return null;
+    },
+    /* a story animation that stops when the picture is built again */
+    play(st, tok, f) { f().catch(() => {}); },
+    /* grey trails from where they stood to the door (the picture built again without the animation) */
+    trails(st, rects, dx, dy) {
+      const s = K.lines(st); st.sc.push(s);
+      rects.forEach(b => { const a = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; svg('path', { d: 'M' + a.x + ' ' + a.y + 'L' + dx + ' ' + dy, stroke: W5U.GREY, 'stroke-width': 7, 'stroke-linecap': 'round', 'stroke-dasharray': '3 14', fill: 'none' }, s); svg('path', { d: W5U.arrowHead(a, { x: dx, y: dy }, 22), fill: W5U.GREY }, s); });
+    },
+    /* ---------------------------------------------------------------- the blackboard */
+    tileNode(v, px) {
+      const e = el('div', ''); Object.assign(e.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', pointerEvents: 'none' });
+      if (v === '+' || v === '−') e.innerHTML = '<svg viewBox="0 0 40 40" width="' + (px || 62) + '" height="' + (px || 62) + '"><rect x="5" y="16" width="30" height="8" rx="4" fill="#2B2118"/>' + (v === '+' ? '<rect x="16" y="5" width="8" height="30" rx="4" fill="#2B2118"/>' : '') + '</svg>';
+      else if (v !== '' && v != null) e.appendChild(UI.num(+v, px || 64));
+      return e;
+    },
+    show(st, i, v) { const t = st.tiles[i]; t.innerHTML = ''; t.appendChild(this.tileNode(v)); if (st.dotEls && i !== 1) this.dots(st, i === 0 ? 0 : i === 2 ? 1 : 2, v); },
+    dots(st, k, v) {
+      const e = st.dotEls[k], n = v === '' ? 0 : +v; e.innerHTML = '';
+      const s = svg('svg', { viewBox: '0 0 116 34', width: '100%', height: '100%' }, e); s.style.pointerEvents = 'none';
+      for (let i = 0; i < n; i++) svg('circle', { cx: 58 - (Math.min(n, 5) - 1) * 11 + (i % 5) * 22, cy: n > 5 ? (i < 5 ? 9 : 25) : 17, r: 7, fill: '#FFF8EC' }, s);
+    },
+    /* the cell index (0 a, 1 op, 2 b, 3 c) of tile i, and back */
+    cellEl(st, c) { return st.tiles[[0, 1, 2, 3][c]]; },
+    async present(st) {
+      const q = st.q, G = st.G;
+      st.vals = q.shown.slice(); st.pop = null; st.showPic = false;
+      st.boardEl = thing(st, 3, 'item'); Object.assign(st.boardEl.style, { borderRadius: '18px', background: '#2F5D4E', border: '7px solid #B97A3C', boxShadow: '0 0 0 4px ' + INK, boxSizing: 'border-box' });
+      st.tiles = [0, 1, 2, 3].map(i => {
+        const t = W3X.card(st, null, 6); if (i === 1) t.style.background = '#FFF3C4';
+        K.reg(st, i === 1 ? 'op' : 'n' + [0, 0, 1, 2][i], t, i === 1 ? {} : { drag: true, drops: () => this.drops(st, i) });
+        return t;
+      });
+      st.eqEl = thing(st, 5, 'item'); st.eqEl.innerHTML = '<svg viewBox="0 0 40 40" width="100%" height="100%" style="pointer-events:none"><rect x="5" y="11" width="30" height="7" rx="3.5" fill="#FFF8EC"/><rect x="5" y="23" width="30" height="7" rx="3.5" fill="#FFF8EC"/></svg>';
+      if (q.d === 1) st.dotEls = [0, 1, 2].map(() => { const e = thing(st, 5, 'item'); e.style.pointerEvents = 'none'; return e; });
+      st.tiles.forEach((_, i) => this.show(st, i, st.vals[i]));
+      st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {}); st.doneBtn.classList.add('ready');
+      st.radio = thing(st, 7, 'item'); st.radio.innerHTML = RADIO; st.radio.style.pointerEvents = 'none';
+      this.scene(st, !q.heard);
+      this.place(st);
+      K.pop(st, st.boardEl); st.tiles.forEach((t, i) => K.pop(st, t, 120 + 60 * i));
+      const S = z7story(q);
+      if (q.heard) {
+        const it = q.thing === 'fish' ? null : W5U.prop(q.thing);
+        K.task(st, q.type === 'go' ? [[it, { qty: q.v[0] }], [DOOR_OUT, { qty: q.v[1] }], [BOARDIC]] : q.type === 'come' ? [[it, { qty: q.v[0] }], [DOOR_IN, { qty: q.v[1] }], [BOARDIC]]
+          : q.type === 'join' ? [[FISH.red, { qty: q.v[0] }], [FISH.yellow, { qty: q.v[1] }], [BOARDIC]] : [[FISH.red, FISH.yellow, { qty: q.v[0] }], [FISH.red, { qty: q.v[1] }], [FISH.yellow, BOARDIC]]);
+      } else K.task(st, [[BOARDIC]]);
+      const first = !G.z7les; G.z7les = true;
+      st.lead = S.concat(first ? ['他写对了吗？'] : []); st.lead.forEach(l => Voice.say(l, { tag: 'prompt' }));
+      K.say(st, first ? '不对就改一改！' : '他写对了吗？');
+    },
+    drops(st, i) { return [0, 2, 3].filter(j => j !== i).map(j => ({ id: 'n' + [0, 0, 1, 2][j], rect: () => box(st.tiles[j]) })); },
+    tileOf(id) { const m = /^n(\d)$/.exec(id || ''); return m ? [0, 2, 3][+m[1]] : id === 'op' ? 1 : -1; },
+    /* the row of five number cards above tile i: the numbers around the one in it */
+    openPop(st, i) {
+      this.closePop(st);
+      const cur = +st.vals[i], lo = Math.max(1, Math.min(6, cur - 2)), vals = [0, 1, 2, 3, 4].map(k => lo + k), tb = box(st.tiles[i]), s = 92, gp = 8, W = 5 * s + 4 * gp;
+      const x0 = Math.max(8, Math.min(Stage.W - 8 - W, Math.round(tb.x + tb.w / 2 - W / 2))), y0 = Math.round(tb.y - s - 30);
+      const els = vals.map((v, k) => { const c = W3X.card(st, null, 60); c.style.zIndex = 60; c.appendChild(this.tileNode(String(v), 54)); place(c, x0 + k * (s + gp), y0, s, s); if (v === cur) c.style.boxShadow = '0 0 0 5px ' + GOLD + ', 0 0 0 9px ' + INK; K.reg(st, 'p' + k, c, {}); K.pop(st, c, 30 * k); return c; });
+      st.pop = { i, els, vals }; st.tiles[i].style.outline = '6px solid ' + GOLD; st.tiles[i].style.outlineOffset = '3px';
+    },
+    closePop(st) {
+      const P = st.pop; if (!P) return; st.pop = null;
+      P.els.forEach((c, k) => { Input.unbind(c); if (st.map) delete st.map['p' + k]; c.remove(); });
+      st.tiles[P.i].style.outline = '';
+    },
+    set(st, i, v) { st.vals[i] = String(v); this.show(st, i, st.vals[i]); K.pop(st, st.tiles[i]); Sfx.place(); },
+    onGesture(st, name, p) {
+      if (st.picked || !st.tiles) return false;
+      const id = p.id || '', i = this.tileOf(id); let m;
+      if (name === 'drop' && i >= 0) {
+        const j = this.tileOf(p.to); st.tiles[i].style.transform = '';
+        if (j < 0 || j === i || j === 1) return 'free';
+        this.closePop(st); const a = st.vals[i]; st.vals[i] = st.vals[j]; st.vals[j] = a; this.show(st, i, st.vals[i]); this.show(st, j, st.vals[j]);
+        K.pop(st, st.tiles[i]); K.pop(st, st.tiles[j]); Sfx.place(); return 'ok';
+      }
+      if (name !== 'tap') return false;
+      if (i === 1) { this.closePop(st); this.set(st, 1, st.vals[1] === '+' ? '−' : '+'); return 'ok'; }
+      if (i >= 0) { if (st.pop && st.pop.i === i) { this.closePop(st); return 'free'; } this.openPop(st, i); Sfx.touch && Sfx.touch(); return 'ok'; }
+      if ((m = /^p(\d)$/.exec(id)) && st.pop) { const P = st.pop, v = P.vals[+m[1]]; this.closePop(st); this.set(st, P.i, v); return 'ok'; }
+      if (id === 'done') { this.closePop(st); st.picked = true; Session.submit(st, st.vals.join(',')); return 'ok'; }
+      return false;
+    },
+    /* the cells that do not fit the story (by role; together: the better way round) and the line for the first */
+    bad(st, ans) {
+      const q = st.q, a = String(ans).split(','), R = q.right, alt = q.type === 'join' ? [R[2], R[1], R[0], R[3]] : null;
+      const miss = W => [0, 1, 2, 3].filter(k => a[k] !== W[k]);
+      let cells = miss(R), want = R, order = q.roles;
+      if (alt && miss(alt).length < cells.length) { cells = miss(alt); want = alt; order = [q.roles[1], q.roles[0], q.roles[2]]; }
+      const c = cells[0], line = c == null ? '' : c === 1 ? (q.op === '−' ? '这是减法故事' : '这是加法故事') : z7role(order[[0, 0, 1, 2][c]], +want[c], q.u);
+      return { cells, line };
+    },
+    changed(st, ans) { const a = String(ans).split(','); return [0, 1, 2, 3].filter(k => a[k] !== st.q.shown[k]); },
+    fbLine(st, ans) {
+      const q = st.q, B = this.bad(st, ans);
+      if (q.err === 'ok') return '这道写对了';
+      if (!this.changed(st, ans).length) return B.line;
+      return B.cells.length === 1 ? '还有一个要改' : B.line;
+    },
+    async feedback(st, ans) {
+      const q = st.q, cells = q.err === 'ok' ? this.changed(st, ans) : this.bad(st, ans).cells;
+      cells.forEach(c => K.wiggle(st, this.cellEl(st, c)));
+      await fbSay(st, this.fbLine(st, ans));
+    },
+    /* 1. the tiles that do not fit (he changed: the ones he changed) blue; 2. each number from its group into its tile, the
+       group glowing: "走了两只，" "还剩三只！"; 3. the blackboard gold: "五减二等于三" */
+    async explain(st, ans) {
+      const my = st, q = st.q, cells = q.err === 'ok' ? this.changed(st, ans) : this.bad(st, ans).cells;
+      this.closePop(st);
+      const rings = W5U.blue(st, cells.map(c => this.cellEl(st, c)));
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      await W5U.beat(st); if (!Session.alive(my)) return;
+      /* L4 (only heard): now the picture */
+      if (q.heard && !st.showPic) { st.showPic = true; this.scene(st, false); this.place(st); }
+      [0, 2, 3].forEach(c => { st.vals[c] = ''; this.show(st, c, ''); });
+      if (st.vals[1] !== q.op) this.set(st, 1, q.op);
+      const lines = z7fly(q);
+      for (let k = 0; k < 3; k++) {
+        if (!Session.alive(my)) return;
+        const c = [0, 2, 3][k], grp = (st.grp || {})[q.roles[k]] || [], t = st.tiles[c];
+        grp.forEach(e => { e.classList.add('glow'); st.scope.timeout(() => e.classList.remove('glow'), 1500); });
+        st.vals[c] = q.right[c]; this.show(st, c, st.vals[c]);
+        const to = box(t), R = grp.map(e => W5U.rect(e)), src = R.length ? { x: Math.min(...R.map(r => r.x)), y: Math.min(...R.map(r => r.y)), w: Math.max(...R.map(r => r.x + r.w)) - Math.min(...R.map(r => r.x)), h: Math.max(...R.map(r => r.y + r.h)) - Math.min(...R.map(r => r.y)) } : to;
+        if (!ff(st)) t.animate([{ transform: 'translate(' + Math.round(src.x + src.w / 2 - to.x - to.w / 2) + 'px,' + Math.round(src.y + src.h / 2 - to.y - to.h / 2) + 'px) scale(.6)' }, { transform: 'none' }], { duration: T(340), easing: EASE.glide });
+        Sfx.place();
+        if (lines[k]) await say(st, lines[k]); else await st.scope.wait(T(380));
+        await st.scope.wait(T(30));
+      }
+      if (!Session.alive(my)) return;
+      W5U.gold(st, st.boardEl, 6);
+      await W5U.sum(st, z7eq(q.v[0], q.op, q.v[1], q.v[2]));
+      await st.scope.wait(T(40));
+    },
+    rightEls(st) { return [st.boardEl]; },
+    async reveal(st) {
+      const my = st, q = st.q; Sfx.reveal();
+      st.tiles.forEach(t => K.hop(st, t, 12));
+      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      W5U.gold(st, st.boardEl, 6); this.cheerAll(st);
+      st.summary = z7eq(q.v[0], q.op, q.v[1], q.v[2]); W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    /* tests: 'right' mends the sentence (symbol, a swap by dragging, numbers through the cards), then 好了; 'wrong' lets it
+       pass (a right one: the symbol changed first) */
+    next(st, strat) {
+      if (st.picked || !st.tiles) return null;
+      const q = st.q, cur = st.vals;
+      if (strat === 'wrong') return q.err === 'ok' && cur.join(',') === q.shown.join(',') ? { g: 'tap', p: { id: 'op' } } : { g: 'tap', p: { id: 'done' } };
+      if (this.evaluate(st, cur.join(','))) return { g: 'tap', p: { id: 'done' } };
+      const R = q.right;
+      if (cur[1] !== R[1]) return { g: 'tap', p: { id: 'op' } };
+      if (cur[2] === R[3] && cur[3] === R[2] && cur[2] !== cur[3] && !st.pop) return { g: 'drop', p: { id: 'n1', to: 'n2' } };
+      for (const c of [0, 2, 3]) {
+        if (cur[c] === R[c]) continue;
+        if (st.pop && st.pop.i === c) { const want = +R[c], k = st.pop.vals.reduce((b, v, j) => (Math.abs(v - want) < Math.abs(st.pop.vals[b] - want) ? j : b), 0); return { g: 'tap', p: { id: 'p' + k } }; }
+        return { g: 'tap', p: { id: 'n' + [0, 0, 1, 2][c] } };
+      }
+      return { g: 'tap', p: { id: 'done' } };
+    },
+    gestureHint(st) { if (st.tiles) W3X.tapHint(st, st.tiles[0]); },
+    workEls(st) { return (st.tiles || []).concat(st.doneBtn ? [st.doneBtn] : []); },
+    snap(st) { return { vals: (st.vals || []).join(','), pop: st.pop ? st.pop.i : -1 }; },
+    lines() {
+      const out = [this.intro, '他写对了吗？', '不对就改一改！', '这道写对了', '还有一个要改', '这是减法故事', '这是加法故事', '合起来，', '拿走红的，', '比一比，', '一共几条？', '黄的有几条？', '红的多几条？'].concat(this.praise);
+      Object.values(Z7THING).forEach(T7 => out.push('还剩几' + T7.u + '？', '一共几' + T7.u + '？'));
+      for (let n = 1; n <= 10; n++) {
+        Object.values(Z7THING).forEach(T7 => {
+          ['start', 'gone', 'came', 'left', 'all'].forEach(r => out.push(z7role(r, n, T7.u)));
+          out.push(W5U.went(n, T7.u) + '，', W5U.left(n, T7.u) + '！', W5U.came2(n, T7.u) + '，', W5U.all(n, T7.u) + '！', '这里有' + CNQ(n) + T7.u + T7.name + '。', T7.go + CNQ(n) + T7.u + '。', T7.come + CNQ(n) + T7.u + '。');
+        });
+        ['all', 'red', 'yellow', 'diff'].forEach(r => out.push(z7role(r, n, '条')));
+        out.push('一共' + CNQ(n) + '条！', '黄的' + CNQ(n) + '条！', '红的多' + CNQ(n) + '条！', '有' + CNQ(n) + '条红鱼，', CNQ(n) + '条黄鱼。', '一共' + CNQ(n) + '条鱼，', CNQ(n) + '条是红的。');
+        for (let m = 1; m <= 10; m++) { if (n + m <= 10 && n !== m) out.push(z7eq(n, '+', m, n + m)); if (n - m >= 1 && m !== n - m) out.push(z7eq(n, '−', m, n - m)); }
+      }
+      return uniq(out);
+    },
+  };
+
   /* ================================================================ Z8 挪！ 卡车开出去 (park5, the reasoning test)
      A block car park seen from above (5 x 5 cells of 96); 擎天柱's red truck (2 cells) lies across the middle row, the gate is
      at that row's right end. 5-7 other vehicles: little block cars (2 cells), long lorries (3); one lying across moves only
@@ -6940,7 +7509,7 @@ const W5U = {
       if (q.ask === 'flip') return [{ n: q.opts.length, at: q.answer, right: q.opts.filter(key => trace(Object.assign({}, q.mir, { [key]: q.mir[key] === '/' ? '\\' : '/' }), q.wall, q.r0).exit === q.target).length }];
       return [{ n: q.opts.length, at: q.answer, right: q.opts.filter(key => trace(Object.assign({}, q.mir, { [key]: q.m }), q.wall, q.r0).exit === q.target).length }];
     },
-    geo() { const L = K.L(); return L ? { cs: 96, x0: 262, y0: 196 } : { cs: 100, x0: 70, y0: 332 }; },
+    geo() { const L = K.L(); return L ? { cs: 96, x0: 262, y0: 196 } : { cs: 100, x0: 92, y0: 312 }; },
     decor(G) { W3X.decor2(G, this.chars); },
     cellXY(r, c) { const g = this.geo(); return [g.x0 + (c + 0.5) * g.cs, g.y0 + (r + 0.5) * g.cs]; },
     slotXY(s) { const g = this.geo(), i = +s[1]; return s[0] === 'T' ? [g.x0 + (i + 0.5) * g.cs, g.y0 - 52] : s[0] === 'R' ? [g.x0 + N5 * g.cs + 54, g.y0 + (i + 0.5) * g.cs] : s[0] === 'B' ? [g.x0 + (i + 0.5) * g.cs, g.y0 + N5 * g.cs + 40] : [g.x0 - 40, g.y0 + (i + 0.5) * g.cs]; },
@@ -7023,7 +7592,9 @@ const W5U = {
       this.place(st);
       K.pop(st, st.floor); (st.lampEls || st.cellEls).forEach((e, i) => K.pop(st, e, 80 + 40 * i));
       const mirIc = '<rect x="6" y="6" width="88" height="88" rx="10" fill="#DFF0FF" stroke="#2B2118" stroke-width="4"/><path d="M18 82L82 18" stroke="#2B2118" stroke-width="14" stroke-linecap="round"/><path d="M18 82L82 18" stroke="#9EE7FF" stroke-width="8" stroke-linecap="round"/><path d="M4 50H44V8" fill="none" stroke="#FFC93C" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>';
-      if (q.ask === 'where') { K.task(st, [[ic(mirIc)], ['q']]); if (st.demo) Voice.say('光碰到镜子会拐弯！', { tag: 'prompt' }); K.say(st, '光会照到哪里？'); }
+      /* the first time (the demo): the rule first */
+      if (st.demo) Voice.say('光碰到镜子会拐弯！', { tag: 'prompt' });
+      if (q.ask === 'where') { K.task(st, [[ic(mirIc)], ['q']]); K.say(st, '光会照到哪里？'); }
       else if (q.ask === 'flip') { K.task(st, [[ic(mirIc)], [{ node: thumb('kaiju2', 50) }]]); W3X.say2(st, '转哪面镜子，', '光能照到小恐龙？'); }
       else { const one = q.m === '/' ? 'M18 82L82 18' : 'M18 18L82 82'; K.task(st, [[ic('<rect x="6" y="6" width="88" height="88" rx="10" fill="#fff" stroke="#2E6FD8" stroke-width="5" stroke-dasharray="12 8"/><path d="' + one + '" stroke="#2B2118" stroke-width="14" stroke-linecap="round"/><path d="' + one + '" stroke="#9EE7FF" stroke-width="8" stroke-linecap="round"/>')], [{ node: thumb('kaiju2', 50) }]]); W3X.say2(st, '镜子放哪一格，', '光能照到小恐龙？'); }
     },
