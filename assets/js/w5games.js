@@ -4641,11 +4641,17 @@ const W5U = {
     });
     return out;
   }
-  /* blocks laid out, drawn to fit a W x H box */
-  function drawLaid(list, lay, W, H, pad) {
-    const s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }); s.style.pointerEvents = 'none'; s.style.overflow = 'visible';
+  /* the extent of laid-out blocks (units), and the unit that fits it into W x H */
+  function layExt(list, lay) {
     const ext = lay.map(p => { const [w0, h0] = bsz(list[p.i]), t = Math.abs(p.rot) % 180 === 90, w = t ? h0 : w0, h = t ? w0 : h0; return [p.x - w / 2, p.y - h / 2, p.x + w / 2, p.y + h / 2]; });
-    const x0 = Math.min(...ext.map(e => e[0])), y0 = Math.min(...ext.map(e => e[1])), x1 = Math.max(...ext.map(e => e[2])), y1 = Math.max(...ext.map(e => e[3])), u = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0));
+    return [Math.min(...ext.map(e => e[0])), Math.min(...ext.map(e => e[1])), Math.max(...ext.map(e => e[2])), Math.max(...ext.map(e => e[3]))];
+  }
+  const fitU = (list, lay, W, H, pad) => { const [x0, y0, x1, y1] = layExt(list, lay); return Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0)); };
+  /* blocks laid out, drawn to fit a W x H box (or at the unit uFix - the five robots share one scale, so a bigger block
+     looks bigger) */
+  function drawLaid(list, lay, W, H, pad, uFix) {
+    const s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }); s.style.pointerEvents = 'none'; s.style.overflow = 'visible';
+    const [x0, y0, x1, y1] = layExt(list, lay), u = uFix || fitU(list, lay, W, H, pad);
     const ox = W / 2 - (x0 + x1) / 2 * u, oy = H / 2 - (y0 + y1) / 2 * u;
     lay.forEach(p => blockDraw(s, list[p.i], ox + p.x * u, oy + p.y * u, u, p.rot));
     return s;
@@ -4692,7 +4698,7 @@ const W5U = {
     geo(st) {
       const L = K.L(), two = !!st.q.car2;
       return L ? { L, car: two ? [[196, 116, 300, 220], [528, 116, 300, 220]] : [[312, 112, 400, 240]], cy: 520, cw: 116, ch: 168, cg: 18 }
-        : { L, car: two ? [[30, 236, 316, 230], [358, 236, 316, 230]] : [[132, 226, 440, 260]], cy: 640, cw: 120, ch: 176, cg: 12 };
+        : { L, car: two ? [[30, 236, 316, 230], [358, 236, 316, 230]] : [[132, 226, 440, 260]], cy: 690, cw: 120, ch: 176, cg: 12 };
     },
     place(st) {
       const g = this.geo(st);
@@ -4710,7 +4716,8 @@ const W5U = {
         return e;
       });
       /* the robots wait, pale, until the car has changed (then they are registered as card0 .. card4) */
-      st.cards = q.robots.map(r => { const c = W3X.card(st, null, 6); c.appendChild(drawLaid(r.list, robotLayout(r.list, r.seed), 120, 160, 10)); c.style.opacity = '.45'; return c; });
+      const lays = q.robots.map(r => robotLayout(r.list, r.seed)), u = Math.min(...q.robots.map((r, i) => fitU(r.list, lays[i], 120, 160, 10)));
+      st.cards = q.robots.map((r, i) => { const c = W3X.card(st, null, 6); c.appendChild(drawLaid(r.list, lays[i], 120, 160, 10, u)); c.style.opacity = '.45'; return c; });
       st.opts = q.robots.map((_, i) => i);
       this.place(st);
       st.carEls.forEach((e, i) => K.pop(st, e, 80 * i)); st.cards.forEach((c, i) => K.pop(st, c, 200 + 60 * i));
@@ -4750,15 +4757,20 @@ const W5U = {
        dashed line; one without a partner under one without a partner, or at the end) */
     showList(st, ri, gold) {
       if (st.listEl) st.listEl.remove();
-      const P = this.pairs(st, ri), { A, B, pa, ma, mb } = P, col = {};
+      const q = st.q, P = this.pairs(st, ri), { A, B, pa, ma, mb } = P, col = {};
       pa.forEach((j, i) => { if (j >= 0) col[j] = i; });
       mb.forEach((j, k) => { col[j] = k < ma.length ? ma[k] : A.length + (k - ma.length); });
-      const n = Math.max(A.length, ...Object.values(col).map(c => c + 1)), cw = 92, ch = 78, W = n * cw + 24, H = 2 * ch + 56, X = c => 12 + cw / 2 + c * cw, Y = [12 + ch / 2, 44 + ch * 1.5];
+      const n = Math.max(A.length, ...Object.values(col).map(c => c + 1)), cw = 86, ch = 78, LW = 92, W = LW + n * cw + 24, H = 2 * ch + 56, X = c => 12 + LW + cw / 2 + c * cw, Y = [12 + ch / 2, 44 + ch * 1.5];
       const e = thing(st, 30, 'item'); Object.assign(e.style, { borderRadius: '22px', background: '#FFF8EC', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' }); st.listEl = e; e._w = W; e._h = H;
       const s = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%' }, e); s.style.pointerEvents = 'none';
       pa.forEach((j, i) => { if (j >= 0) svg('path', { d: 'M' + X(i) + ' ' + (Y[0] + 30) + 'V' + (Y[1] - 30), stroke: gold ? '#E0A100' : INK, 'stroke-width': 5, 'stroke-dasharray': '5 6', 'stroke-linecap': 'round' }, s); });
-      A.forEach((a, i) => blockDraw(s, a, X(i), Y[0], 28, 0));
-      B.forEach((b, j) => blockDraw(s, b, X(col[j]), Y[1], 28, 0));
+      /* who each row is: the car(s) on top, the robot under them */
+      svg('path', { d: 'M' + (LW + 8) + ' 14V' + (H - 14), stroke: 'rgba(43,33,24,.25)', 'stroke-width': 3 }, s);
+      const lab = (list, lay, y, w, h) => { const t = drawLaid(list, lay, w, h, 2); ['x', 'y', 'width', 'height'].forEach((k, j) => t.setAttribute(k, [12, y, w, h][j])); s.appendChild(t); };
+      if (q.car2) { lab(q.car, carLayout(q.car), Y[0] - 36, LW - 8, 34); lab(q.car2, carLayout(q.car2), Y[0] + 2, LW - 8, 34); } else lab(q.car, carLayout(q.car), Y[0] - 30, LW - 8, 60);
+      lab(B, robotLayout(B, q.robots[ri].seed), Y[1] - 36, LW - 8, 72);
+      A.forEach((a, i) => blockDraw(s, a, X(i), Y[0], 26, 0));
+      B.forEach((b, j) => blockDraw(s, b, X(col[j]), Y[1], 26, 0));
       e._A = A.map((_, i) => ({ x: X(i), y: Y[0] })); e._B = B.map((_, j) => ({ x: X(col[j]), y: Y[1] }));
       this.placeList(st); K.pop(st, e);
       return P;
@@ -4881,8 +4893,8 @@ const W5U = {
     decor(G) { W2X.decorDone(G, this.chars); },
     geo(st) {
       const q = st.q, L = K.L(), two = q.type === 'go' || q.type === 'come', heard = q.heard && !st.showPic;
-      const panels = two ? (L ? [[112, 104, 372, 200], [540, 104, 372, 200]] : [[20, 214, 318, 210], [366, 214, 318, 210]]) : (L ? [[232, 104, 560, 200]] : [[52, 214, 600, 210]]);
-      const by = heard ? (L ? 230 : 330) : (L ? 318 : 470), dots = q.d === 1 ? 46 : 0;
+      const panels = two ? (L ? [[112, 104, 372, 200], [540, 104, 372, 200]] : [[20, 214, 318, 250], [366, 214, 318, 250]]) : (L ? [[232, 104, 560, 200]] : [[52, 214, 600, 250]]);
+      const by = heard ? (L ? 230 : 360) : (L ? 318 : 510), dots = q.d === 1 ? 46 : 0;
       return { L, two, panels, by, bh: 104 + 40 + dots, ts: 104, os: 96, es: 56, gap: 14, cx: L ? 512 : 352 };
     },
     /* the five places on the blackboard: n0 op n1 = n2 (x, w) */
@@ -4912,17 +4924,18 @@ const W5U = {
       const pic = (src, x, y, s, flip) => { const e = keep(thing(st, 6, 'item')); e.style.pointerEvents = 'none'; place(e, Math.round(x), Math.round(y), s, s); const im = img(src, '', e); Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'contain', transform: flip ? 'scaleX(-1)' : '' }); return e; };
       const solid = r => { if (r) { r.style.borderStyle = 'solid'; r.style.borderRadius = '22px'; } return keep(r); };
       const grid = (n, x, y, w, h, s) => W5U.grid(n, x + w / 2, y + h / 2, s, s, 6, 6, Math.min(n, Math.max(1, Math.floor((w + 6) / (s + 6)))));
-      const fit = (n, w, h) => { for (let s = 64; s > 30; s -= 2) { const per = Math.max(1, Math.floor((w + 6) / (s + 6))); if (Math.ceil(n / per) * (s + 6) - 6 <= h) return s; } return 30; };
+      const fit = (n, w, h) => { for (let s = g.L ? 64 : 76; s > 30; s -= 2) { const per = Math.max(1, Math.floor((w + 6) / (s + 6))); if (Math.ceil(n / per) * (s + 6) - 6 <= h) return s; } return 30; };
       if (g.two) {
         const [P0, P1] = g.panels; panel(P0); panel(P1);
         const ar = keep(thing(st, 4, 'item')); ar.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%" style="pointer-events:none"><path d="M8 30H44M32 16L48 30L32 44" fill="none" stroke="#2B2118" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         place(ar, P0[0] + P0[2] + 2, P0[1] + P0[3] / 2 - 20, P1[0] - P0[0] - P0[2] - 4, 40);
         const src = W5U.prop(q.thing), n0 = q.v[0], nAll = q.type === 'go' ? n0 : q.v[2];
-        const s0 = fit(n0, P0[2] - 28, P0[3] - 28);
-        st.grp.start = grid(n0, P0[0] + 14, P0[1] + 14, P0[2] - 28, P0[3] - 28, s0).map(p => pic(src, p.x, p.y, s0));
+        const ax = P1[0] + 58, aw = P1[2] - 70, s1 = Math.min(fit(n0, P0[2] - 28, P0[3] - 28), fit(nAll, aw, P1[3] - 28)), per = Math.min(5, Math.max(1, Math.floor((aw + 6) / (s1 + 6))));
+        const lay = (n, x, w, P) => W5U.grid(n, x + w / 2, P[1] + P[3] / 2, s1, s1, 6, 6, Math.min(n, per));
+        st.grp.start = lay(n0, P0[0] + 14, P0[2] - 28, P0).map(p => pic(src, p.x, p.y, s1));
         /* the door of the after picture, on its left */
         const door = keep(thing(st, 4, 'item')); place(door, P1[0] + 10, P1[1] + 24, 38, P1[3] - 48); Object.assign(door.style, { borderRadius: '8px', background: '#B97A3C', boxShadow: '0 0 0 4px ' + INK, pointerEvents: 'none' });
-        const ax = P1[0] + 58, aw = P1[2] - 70, s1 = fit(nAll, aw, P1[3] - 28), spots = grid(nAll, ax, P1[1] + 14, aw, P1[3] - 28, s1), dx = P1[0] + 29, dy = P1[1] + P1[3] / 2;
+        const spots = lay(nAll, ax, aw, P1), dx = P1[0] + 29, dy = P1[1] + P1[3] / 2;
         if (q.type === 'go') {
           const all = spots.map(p => pic(src, p.x, p.y, s1)), byX = all.slice().sort((a, b) => box(a).x - box(b).x || box(a).y - box(b).y), gone = byX.slice(0, q.v[1]), left = all.filter(e => !gone.includes(e));
           st.grp.left = left;
@@ -4955,7 +4968,7 @@ const W5U = {
         const x0 = P[0] + 18, w = P[2] - 36, top = P[1] + 14;
         if (q.type === 'cmp') {
           /* two rows from the left, one under one: the red ones left over are "more" */
-          const n = q.v[0], s = Math.min(54, Math.floor((w + 6) / n) - 6), X = i => x0 + i * (s + 6), y1 = top + 8, y2 = top + 8 + s + 40;
+          const n = q.v[0], s = Math.min(g.L ? 54 : 60, Math.floor((w + 6) / n) - 6), X = i => x0 + i * (s + 6), y1 = Math.round(P[1] + (P[3] - 2 * s - 40) / 2), y2 = y1 + s + 40;
           const reds = Array.from({ length: n }, (_, i) => pic(FISH.red, X(i), y1, s)), yel = Array.from({ length: q.v[1] }, (_, i) => pic(FISH.yellow, X(i), y2, s));
           const ls = keep(K.lines(st)); ls.style.zIndex = 5; ls.classList.add('scene');
           yel.forEach((_, i) => svg('path', { d: 'M' + (X(i) + s / 2) + ' ' + (y1 + s + 4) + 'V' + (y2 - 4), stroke: INK, 'stroke-width': 4, 'stroke-dasharray': '3 7', 'stroke-linecap': 'round' }, ls));
@@ -5086,7 +5099,6 @@ const W5U = {
       const rings = W5U.blue(st, cells.map(c => this.cellEl(st, c)));
       await fbDone(st); if (!Session.alive(my)) return;
       W5U.hide(rings);
-      await W5U.beat(st); if (!Session.alive(my)) return;
       /* L4 (only heard): now the picture */
       if (q.heard && !st.showPic) { st.showPic = true; this.scene(st, false); this.place(st); }
       [0, 2, 3].forEach(c => { st.vals[c] = ''; this.show(st, c, ''); });
