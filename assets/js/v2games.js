@@ -1244,13 +1244,24 @@ const Laps = {
     ids.sort((a, b) => fl.indexOf(b) - fl.indexOf(a));
     return ids[0] || null;
   },
-  css() { if ($('#lapcss')) return; const c = el('style', '', document.head); c.id = 'lapcss'; c.textContent = '#tray[data-lap="2"] i.on{filter:grayscale(1) brightness(1.35)}#tray[data-lap="3"] i.on{filter:saturate(1.6) brightness(1.1)}#tray[data-lap="4"] i.on{animation:laprb 2.4s linear infinite}@keyframes laprb{to{filter:hue-rotate(360deg)}}.lapb{position:absolute;right:12px;top:-4px;display:flex;flex-direction:row-reverse;align-items:flex-end;gap:2px;pointer-events:none}.lapb .rk{position:relative}.lapb .rk b{position:absolute;right:-12px;top:-6px;font:900 16px/1 system-ui,sans-serif;color:#fff;background:#FF6B5B;border-radius:10px;padding:2px 5px;box-shadow:0 0 0 2px #2B2118}#map:has(.gstars) .bigstars{opacity:.2}.gstars.laprow{background:rgba(255,255,255,.92);border-radius:14px;box-shadow:0 0 0 2px rgba(43,33,24,.3);padding:2px 6px}'; },
+  css() { if ($('#lapcss')) return; const c = el('style', '', document.head); c.id = 'lapcss'; c.textContent = '#tray[data-lap="2"] i.on,.isl[data-lap="2"] .lantern i.on::after,.isl[data-lap="2"] .bigstars img{filter:grayscale(1) brightness(1.35)}#tray[data-lap="3"] i.on,.isl[data-lap="3"] .lantern i.on::after,.isl[data-lap="3"] .bigstars img{filter:saturate(1.6) brightness(1.1)}#tray[data-lap="4"] i.on,.isl[data-lap="4"] .lantern i.on::after,.isl[data-lap="4"] .bigstars img{animation:laprb 2.4s linear infinite}.isl[data-lap] .lantern{box-shadow:var(--stk-sm),0 0 0 3px rgba(255,255,255,.95)}@keyframes laprb{to{filter:hue-rotate(360deg)}}.lapb{position:absolute;right:12px;top:-4px;display:flex;flex-direction:row-reverse;align-items:flex-end;gap:2px;pointer-events:none}.lapb .rk{position:relative}.lapb .rk b{position:absolute;right:-12px;top:-6px;font:900 16px/1 system-ui,sans-serif;color:#fff;background:#FF6B5B;border-radius:10px;padding:2px 5px;box-shadow:0 0 0 2px #2B2118}#map:has(.gstars) .bigstars{opacity:.2}.gstars.laprow{background:rgba(255,255,255,.92);border-radius:14px;box-shadow:0 0 0 2px rgba(43,33,24,.3);padding:2px 6px}'; },
   /* the map: crown / rocket (xN) by every flag, a sparkle on the island inviting a lap */
   draw(M) {
     this.css();
     const tg = this.target(M);
     Object.keys(M.isl || {}).forEach(id => {
-      const I = M.isl[id]; if (!I || !I.flag || !WORLDS[id] || !this.on(id)) { const old = I && I.flag && I.flag.querySelector('.lapb'); if (old) old.remove(); return; }
+      const I = M.isl[id];
+      /* the client (2026-10-19): on the map too, an island on a lap shows THIS lap's stars in the lap's colour (silver /
+         gold / rainbow, as in the tray), so the child sees from outside where another lap still has stars to win */
+      if (I && I.d) {
+        if (WORLDS[id] && this.on(id) && I.lan && I.big) {
+          const s = this.st(id), tot = s.due ? WORLDS[id].games.length * 5 : WORLDS[id].games.reduce((t, g) => t + (s.g[g] || 0), 0), tens = Math.min(Math.floor(tot / 10), 6);
+          I.d.dataset.lap = String(Math.min(s.n, 4));
+          $$('i', I.lan).forEach((l, i) => l.classList.toggle('on', i < tot % 10));
+          if (I.big.childElementCount !== tens || I.big.dataset.lap !== '1') { I.big.innerHTML = ''; I.big.dataset.lap = '1'; for (let i = 0; i < tens; i++) img('assets/props/ui_star.png', '', I.big); }
+        } else if (I.d.dataset.lap) { delete I.d.dataset.lap; if (I.big) delete I.big.dataset.lap; }
+      }
+      if (!I || !I.flag || !WORLDS[id] || !this.on(id)) { const old = I && I.flag && I.flag.querySelector('.lapb'); if (old) old.remove(); return; }
       let b = I.flag.querySelector('.lapb'); if (!b) b = el('div', 'lapb', I.flag);
       const s = this.st(id), key = s.got + ':' + s.n + ':' + (id === tg ? 1 : 0); if (b.dataset.k === key) return; b.dataset.k = key; b.innerHTML = '';
       if (s.got >= 1) { const c = el('span', 'cr', b); c.innerHTML = LAPSVG.crown; Object.assign(c.style, { width: '34px', height: '28px', display: 'block' }); }
