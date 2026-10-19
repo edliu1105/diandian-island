@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import optimize
 from cutout import cutout
-from w5_batches import W5
+from w5_batches import W5, W5B
 from w2fresh_process import on_white
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,7 +19,7 @@ A = os.path.join(ROOT, 'assets')
 
 def main(only=None):
     tiles = []
-    for aid, kind, world, subject in W5:
+    for aid, kind, world, subject in W5 + W5B:
         if only and aid not in only:
             continue
         sub = {'bg': 'bg', 'island': 'islands'}.get(kind, 'props')

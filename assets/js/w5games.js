@@ -1,7 +1,7 @@
 /* 点点岛 · 积木城 (world 5): the 28 games. Loaded after the entry tap by W3.load() in index.html (after w4games.js). Source: raw/js/w5/ (raw/js/build_w5.py). */
 "use strict";
 const W5R = {};
-const W5HAVE = new Set(["avengers_armory", "avengers_field", "avengers_hangar", "avengers_hangar5", "avengers_lab", "avengers_tilehall", "avengers_workshop", "avengers_yard", "bluey_blockyard", "bluey_candyshop", "bluey_creek", "bluey_kitepark", "bluey_picnic", "bluey_pool", "bluey_shop", "bluey_yard", "huluwa_fields", "huluwa_meadow", "huluwa_orchard", "huluwa_papercut", "huluwa_study", "huluwa_terraces", "huluwa_treasure", "huluwa_treasure5", "paw_busstop", "paw_city", "paw_classroom", "paw_control", "paw_controlroom", "paw_mapmat", "paw_townmat", "paw_townpark", "peppa_artroom", "peppa_blockroom", "peppa_easel", "peppa_garden", "peppa_playground", "peppa_porch", "peppa_stage", "peppa_zoo", "pj_canteen", "pj_hq", "pj_hqlab", "pj_moonlab", "pj_museum", "pj_robotlab", "pj_toyroom", "pj_workshop", "xiyou_cliffs", "xiyou_courtyard", "xiyou_mountainroad", "xiyou_palace", "xiyou_peak", "xiyou_temple", "xiyou_templehall", "xiyou_vinegrove", "prop_bush", "prop_balloon", "prop_flower", "prop_bone", "prop_fish"]);
+const W5HAVE = new Set(["avengers_armory", "avengers_field", "avengers_hangar", "avengers_hangar5", "avengers_lab", "avengers_tilehall", "avengers_workshop", "avengers_yard", "bluey_blockyard", "bluey_candyshop", "bluey_creek", "bluey_kitepark", "bluey_picnic", "bluey_pool", "bluey_shop", "bluey_yard", "huluwa_fields", "huluwa_meadow", "huluwa_orchard", "huluwa_papercut", "huluwa_study", "huluwa_terraces", "huluwa_treasure", "huluwa_treasure5", "paw_busstop", "paw_city", "paw_classroom", "paw_control", "paw_controlroom", "paw_mapmat", "paw_townmat", "paw_townpark", "peppa_artroom", "peppa_blockroom", "peppa_easel", "peppa_garden", "peppa_playground", "peppa_porch", "peppa_stage", "peppa_zoo", "pj_canteen", "pj_hq", "pj_hqlab", "pj_moonlab", "pj_museum", "pj_robotlab", "pj_toyroom", "pj_workshop", "trans_assembly", "trans_control", "trans_dock", "trans_garage5", "trans_hangar", "trans_school", "trans_yard", "ultra_crystalhall", "ultra_lab", "ultra_plaza", "ultra_street", "xiyou_cliffs", "xiyou_courtyard", "xiyou_mountainroad", "xiyou_palace", "xiyou_peak", "xiyou_temple", "xiyou_templehall", "xiyou_vinegrove", "zz_ultra2_quiz", "zz_ultra4_abc", "zz_ultra4_write", "zz_ultra_find", "prop_bush", "prop_balloon", "prop_flower", "prop_bone", "prop_fish"]);
 /* ================================================================ 积木城 (world 5): what the 28 rules share. This file comes
    first in assets/js/w5games.js; only W5U is global (each island file is wrapped in its own (() => { ... })()).
    docs/W5-DESIGN.md §4 and docs/OPTIONS-EXPLAIN-SPEC.md, the iron rules:
@@ -4330,6 +4330,475 @@ const W5U = {
     lines() { return uniq([this.intro, '路上捡骨头！', '捡骨头，', '不踩水坑！', '两根骨头都要捡！', '先拿钥匙，', '再开门！', '别吵醒小熊！', '接到小猫啦'].concat(Object.values(this.LINE), Object.values(this.GOLD), this.praise)); },
   };
 })();
+/* ================================================================ 变形金刚·积木厂 (trans5, the 5th island, from level 2): Z5 听口令装
+   机器人 · Z6 车变机器人，零件一样吗 · Z7 帮大黄蜂改作业 · Z8 卡车开出去 (reasoning). docs/W5-DESIGN.md §16.4. One function,
+   no top-level names; each rule is W5R.<id> (registered in games.js). The 积木厂 package. */
+(() => {
+  const INK = '#2B2118', GOLD = '#FFC93C';
+  const lvOf = o => Math.min(5, Math.max(1, o.level || 1));
+  const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
+  const thing = (st, z, cls) => { const d = el('div', cls || 'item', Stage.el); d.style.position = 'absolute'; d.style.zIndex = z || 5; place(d, 0, 0, 10, 10); st.els.push(d); return d; };
+  const mid = e => { const b = box(e); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; };
+  const ff = st => st.explaining && st.ff;
+  /* a line inside an explanation (a tap cuts it, and after a tap it is not said) */
+  const say = (st, t) => (ff(st) ? Promise.resolve('ff') : W5U.note(st, t));
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine) */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
+  /* the feedback line, heard to its end before the explanation starts */
+  const fbSay = async (st, line) => { W5U.say(st, line); await st.scope.wait(T(600)); await st.scope.guard(Voice.afterSay(60)); };
+  const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const DIRW = { up: '上面', down: '下面', left: '左边', right: '右边' };
+
+  /* ================================================================ Z5 装！ 听口令装机器人 (assem5)
+     An assembly board of empty cells (>= 96; L1-L2 4 x 4, from L3 5 x 5) with the red body block in the middle; a tray of
+     parts (yellow, blue, green block, an orange triangle = antenna, a black wheel: every one different by colour or shape).
+     擎天柱 says one order at a time; after every part put on the board (right or not - nothing tells him) he says the next.
+     The orders said stay on the task card as small pictures (the part and the part it goes by). Drag a part into a cell
+     (or tap it, then the cell); tap a placed part and it goes back; then "装好了".
+       L1 2 orders, only above / below, always by the red block · L2 3 orders, above / below / left / right (the screen's),
+       by the red block or the part just put · L3 4 orders, each by the part put before (the robot grows a piece at a time)
+       L4 4 orders, one "in the middle" ("绿块，" "红块和蓝块中间！") or by two parts ("绿块，" "放在蓝块下面，" "黄块右边！")
+       L5 a manual: three little pictures (a part next to another), only "照着说明书装！"
+     Right: every order holds for the parts where they really are (next to = the next cell that way). A random board is
+     right well under 1 time in 1000. Wrong: the first part whose order does not hold ringed blue ("黄块在红块左边"); the
+     order's picture lights, an arrow grows from the part it goes by, the part slides into the gold cell ("上面在这里"),
+     the rest too; the robot ringed gold ("机器人装好了"). */
+  const PN = { r: '红块', y: '黄块', b: '蓝块', g: '绿块', t: '三角', w: '轮子' };
+  const PCOL = { r: '#E8414B', y: '#FFC93C', b: '#4FB3FF', g: '#5CC46E', t: '#FF9F43', w: '#3A3F4A' };
+  function partSvg(k, px) {
+    const s = svg('svg', { viewBox: '0 0 100 100', width: px, height: px }); s.style.pointerEvents = 'none'; s.style.overflow = 'visible'; s.style.display = 'block';
+    const a = { stroke: INK, 'stroke-width': 5, 'stroke-linejoin': 'round' };
+    if (k === 't') svg('polygon', Object.assign({ points: '50,10 90,88 10,88', fill: PCOL.t }, a), s);
+    else if (k === 'w') { svg('circle', Object.assign({ cx: 50, cy: 50, r: 40, fill: PCOL.w }, a), s); svg('circle', { cx: 50, cy: 50, r: 15, fill: '#C9D3E0', stroke: INK, 'stroke-width': 4 }, s); }
+    else { svg('rect', Object.assign({ x: 8, y: 16, width: 84, height: 76, rx: 10, fill: PCOL[k] }, a), s); [30, 70].forEach(x => svg('rect', { x: x - 11, y: 6, width: 22, height: 12, rx: 4, fill: PCOL[k], stroke: INK, 'stroke-width': 4 }, s)); if (k === 'r') { svg('circle', { cx: 36, cy: 48, r: 7, fill: '#fff', stroke: INK, 'stroke-width': 3 }, s); svg('circle', { cx: 64, cy: 48, r: 7, fill: '#fff', stroke: INK, 'stroke-width': 3 }, s); svg('path', { d: 'M36 70H64', stroke: INK, 'stroke-width': 5, 'stroke-linecap': 'round' }, s); } }
+    return s;
+  }
+  /* where an order puts its part, from where the parts it goes by are */
+  const targetOf = (o, at) => {
+    const A = at[o.ref]; if (!A) return null;
+    if (o.rel === 'mid') { const B = at[o.ref2]; if (!B) return null; const x = (A[0] + B[0]) / 2, y = (A[1] + B[1]) / 2; return Number.isInteger(x) && Number.isInteger(y) && Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1]) === 2 && (A[0] === B[0] || A[1] === B[1]) ? [x, y] : null; }
+    const t = [A[0] + DIR[o.rel][0], A[1] + DIR[o.rel][1]];
+    if (o.rel2) { const B = at[o.ref2]; if (!B || B[0] + DIR[o.rel2][0] !== t[0] || B[1] + DIR[o.rel2][1] !== t[1]) return null; }
+    return t;
+  };
+  const holds = (o, at) => { const t = targetOf(o, at), p = at[o.p]; return !!(t && p && t[0] === p[0] && t[1] === p[1]); };
+  /* the words of an order: [the part, (how)] */
+  const orderLines = o => o.rel === 'mid' ? [PN[o.p] + '，', PN[o.ref] + '和' + PN[o.ref2] + '中间！'] : o.rel2 ? [PN[o.p] + '，', '放在' + PN[o.ref] + DIRW[o.rel] + '，', PN[o.ref2] + DIRW[o.rel2] + '！'] : [PN[o.p] + '，', '放在' + PN[o.ref] + DIRW[o.rel] + '！'];
+
+  W5R.Z5 = {
+    kind0: 'assem5', verb: '装！', intro: '跟着口令装！', praise: ['装得一点不差！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, n = d <= 2 ? 4 : 5, N = [0, 2, 3, 4, 4, 3][d];
+      for (let t = 0; t < 400; t++) {
+        const body = n === 5 ? [2, 2] : rng.pick([[1, 1], [2, 1], [1, 2], [2, 2]]), at = { r: body }, orders = [];
+        const parts = rng.shuffle(['y', 'b', 'g', 't', 'w']).slice(0, N);
+        let ok = true;
+        for (let i = 0; i < N && ok; i++) {
+          const p = parts[i], placed = Object.keys(at), prev = i ? parts[i - 1] : 'r';
+          const refs = d === 1 ? ['r'] : d === 3 ? [prev] : d === 2 ? ['r', prev] : placed, rels = d === 1 ? ['up', 'down'] : ['up', 'down', 'left', 'right'];
+          const cands = [];
+          refs.forEach(ref => rels.forEach(rel => { const c = [at[ref][0] + DIR[rel][0], at[ref][1] + DIR[rel][1]]; if (c[0] >= 0 && c[1] >= 0 && c[0] < n && c[1] < n && !Object.values(at).some(q => q[0] === c[0] && q[1] === c[1])) cands.push({ p, ref, rel, c }); }));
+          /* L4: the last order in the middle of two parts or by two parts, when the board allows it */
+          if (d === 4 && i === N - 1) {
+            const two = [];
+            for (let x = 0; x < n; x++) for (let y = 0; y < n; y++) {
+              if (Object.values(at).some(q => q[0] === x && q[1] === y)) continue;
+              const by = (dx, dy) => placed.find(k => at[k][0] === x + dx && at[k][1] === y + dy);
+              [[1, 0], [0, 1]].forEach(([dx, dy]) => { const A = by(-dx, -dy), B = by(dx, dy); if (A && B) two.push({ p, rel: 'mid', ref: A, ref2: B, c: [x, y] }); });
+              [['up', 'left'], ['up', 'right'], ['down', 'left'], ['down', 'right']].forEach(([r1, r2]) => { const A = by(-DIR[r1][0], -DIR[r1][1]), B = by(-DIR[r2][0], -DIR[r2][1]); if (A && B && A !== B) two.push({ p, rel: r1, ref: A, rel2: r2, ref2: B, c: [x, y] }); });
+            }
+            if (!two.length) { ok = false; break; }
+            const c = rng.pick(two); orders.push(c); at[p] = c.c; continue;
+          }
+          if (!cands.length) { ok = false; break; }
+          const c = rng.pick(cands); orders.push(c); at[p] = c.c;
+        }
+        if (!ok) continue;
+        const tray = rng.shuffle(parts.slice());
+        return { k: [d, body.join(''), orders.map(x => x.p + x.rel + x.ref + (x.ref2 || '') + (x.rel2 || '')).join(' ')], d, n, body, orders: orders.map(x => { const y = Object.assign({}, x); delete y.c; return y; }), goal: at, tray, manual: d === 5, answer: 'ok' };
+      }
+      return null;
+    },
+    audit(q) { const cells = q.n * q.n - 1; let c = 1; for (let i = 0; i < q.orders.length; i++) c /= (cells - i); return [{ build: true, chance: c }]; },
+    decor(G) { W2X.decorDone(G, this.chars); },
+    geo(st) {
+      const q = st.q, L = K.L(), u = 96, w = q.n * u;
+      if (L) return { L, u, bx: Math.round(420 - w / 2), by: Math.round(376 - w / 2), tx: 700, ty: 168, tc: 2, ts: 104, tg: 14 };
+      return { L, u, bx: Math.round(352 - w / 2), by: Math.round(472 - w / 2), tx: Math.round(352 - (q.tray.length * 104 + (q.tray.length - 1) * 14) / 2), ty: 736, tc: 4, ts: 104, tg: 14 };
+    },
+    cellBox(st, c) { const g = this.geo(st); return { x: g.bx + c[0] * g.u, y: g.by + c[1] * g.u, w: g.u, h: g.u }; },
+    slotBox(st, i) { const g = this.geo(st), r = Math.floor(i / g.tc), c = i % g.tc; return { x: g.tx + c * (g.ts + g.tg), y: g.ty + r * (g.ts + g.tg), w: g.ts, h: g.ts }; },
+    place(st) {
+      const q = st.q, g = this.geo(st);
+      if (!st.boardEl) return;
+      place(st.boardEl, g.bx - 14, g.by - 14, q.n * g.u + 28, q.n * g.u + 28);
+      Object.keys(st.cells).forEach(id => { const [x, y] = id.slice(1).split('_').map(Number), b = this.cellBox(st, [x, y]); place(st.cells[id], b.x, b.y, b.w, b.h); });
+      const bb = this.cellBox(st, q.body); place(st.bodyEl, bb.x + 4, bb.y + 4, bb.w - 8, bb.h - 8);
+      q.tray.forEach((p, i) => { const e = st.partEls[p], c = st.at[p]; const b = c ? this.cellBox(st, c) : this.slotBox(st, i); place(e, b.x + 4, b.y + 4, b.w - 8, b.h - 8);
+        Object.assign(e.style, c ? { background: 'transparent', borderColor: 'transparent', boxShadow: 'none' } : { background: '', borderColor: '', boxShadow: '' }); const sv = e.firstChild; if (sv) { sv.setAttribute('width', c ? 84 : 72); sv.setAttribute('height', c ? 84 : 72); } });
+    },
+    async present(st) {
+      const q = st.q;
+      st.at = {}; st.sel = null; st.said = 0; st.placedN = 0;
+      st.boardEl = thing(st, 3, 'item'); Object.assign(st.boardEl.style, { borderRadius: '22px', background: 'rgba(225,232,242,.93)', boxShadow: '0 0 0 4px ' + INK });
+      st.cells = {};
+      for (let y = 0; y < q.n; y++) for (let x = 0; x < q.n; x++) {
+        if (x === q.body[0] && y === q.body[1]) continue;
+        const id = 'c' + x + '_' + y, e = thing(st, 4, 'item'); Object.assign(e.style, { borderRadius: '12px', boxShadow: 'inset 0 0 0 3px rgba(43,33,24,.18)', background: 'rgba(255,255,255,.55)' });
+        K.reg(st, id, e, {}); st.cells[id] = e;
+      }
+      st.bodyEl = thing(st, 6, 'item'); st.bodyEl.appendChild(partSvg('r', '100%')); st.bodyEl.firstChild.setAttribute('width', '100%'); st.bodyEl.firstChild.setAttribute('height', '100%');
+      st.partEls = {};
+      q.tray.forEach((p, i) => {
+        const e = W3X.card(st, null, 8); const s = partSvg(p, 72); e.appendChild(s);
+        K.reg(st, 'p' + p, e, { drag: true, drops: () => this.drops(st, p) });
+        st.partEls[p] = e;
+      });
+      st.doneBtn = K.done(st, 'check'); K.reg(st, 'done', st.doneBtn, {});
+      this.place(st);
+      K.pop(st, st.boardEl); K.pop(st, st.bodyEl, 100); q.tray.forEach((p, i) => K.pop(st, st.partEls[p], 200 + 60 * i));
+      if (q.manual) {
+        K.task(st, [[{ node: (() => { const d = el('span', ''); Object.assign(d.style, { display: 'flex', gap: '10px' }); q.orders.forEach(o => d.appendChild(this.manualPic(o))); return d; })() }]]);
+        K.say(st, '照着说明书装！');
+      } else this.nextOrder(st);
+    },
+    /* L5's manual: a little picture of a part next to the part it goes by */
+    manualPic(o) {
+      const e = el('span', ''); Object.assign(e.style, { display: 'block', width: '64px', height: '64px', position: 'relative', background: '#fff', borderRadius: '10px', boxShadow: '0 0 0 3px ' + INK });
+      const d = DIR[o.rel], put = (k, x, y) => { const s = partSvg(k, 26); Object.assign(s.style, { position: 'absolute', left: x + 'px', top: y + 'px' }); e.appendChild(s); };
+      put(o.ref, 19 - d[0] * 14, 19 - d[1] * 14); put(o.p, 19 + d[0] * 14, 19 + d[1] * 14);
+      return e;
+    },
+    /* the orders said so far: each a little box with the part and the part(s) it goes by (no arrows - those are L5's) */
+    ordersNode(list) {
+      const d = el('span', ''); Object.assign(d.style, { display: 'flex', gap: '8px' });
+      list.forEach(o => { const b = el('span', '', d); Object.assign(b.style, { display: 'flex', gap: '2px', padding: '3px 6px', background: '#fff', borderRadius: '10px', boxShadow: '0 0 0 3px ' + INK }); [o.p, o.ref].concat(o.ref2 ? [o.ref2] : []).forEach(k => b.appendChild(partSvg(k, 34))); });
+      return d;
+    },
+    /* say the next order (and draw it on the task card) */
+    nextOrder(st) {
+      const q = st.q; if (q.manual || st.said >= q.orders.length) return;
+      const o = q.orders[st.said++], L = orderLines(o);
+      $$('.task', Stage.el).forEach(t => t.remove());
+      K.task(st, [[{ node: this.ordersNode(q.orders.slice(0, st.said)) }]]);
+      st.lead = L.slice(0, -1); st.lead.forEach(l => Voice.say(l, { tag: 'prompt' })); K.say(st, L[L.length - 1]);
+    },
+    drops(st, p) { return Object.keys(st.cells).map(id => ({ id, rect: () => box(st.cells[id]) })); },
+    occupied(st, c) { if (c[0] === st.q.body[0] && c[1] === st.q.body[1]) return 'r'; return Object.keys(st.at).find(k => st.at[k] && st.at[k][0] === c[0] && st.at[k][1] === c[1]) || null; },
+    put(st, p, c) {
+      const was = !st.at[p], other = this.occupied(st, c);
+      if (other === 'r') return 'free';
+      if (other && other !== p) st.at[other] = null;
+      st.at[p] = c; st.partEls[p].style.transform = '';
+      if (st.sel != null) this.select(st, st.sel);
+      this.place(st); K.pop(st, st.partEls[p]); Sfx.place();
+      if (was) { st.placedN++; if (st.placedN >= st.said) this.nextOrder(st); }
+      st.doneBtn.classList.toggle('ready', st.q.tray.every(k => st.at[k]));
+      return 'ok';
+    },
+    select(st, p) { st.sel = st.sel === p ? null : p; st.q.tray.forEach(k => { const e = st.partEls[k]; e.style.outline = k === st.sel ? '7px solid ' + GOLD : ''; e.style.outlineOffset = '3px'; }); },
+    onGesture(st, name, p) {
+      if (st.picked || !st.cells) return false;
+      const id = p.id || ''; let m;
+      if (name === 'drop' && (m = /^p([a-z])$/.exec(id))) { const c = /^c(\d)_(\d)$/.exec(p.to || ''); st.partEls[m[1]].style.transform = ''; if (!c) { this.place(st); return 'free'; } return this.put(st, m[1], [+c[1], +c[2]]); }
+      if (name !== 'tap') return false;
+      if ((m = /^p([a-z])$/.exec(id))) { const k = m[1]; if (st.at[k]) { st.at[k] = null; this.place(st); Sfx.back(); st.doneBtn.classList.remove('ready'); return 'ok'; } this.select(st, k); return 'ok'; }
+      if ((m = /^c(\d)_(\d)$/.exec(id))) { if (st.sel == null) return 'free'; return this.put(st, st.sel, [+m[1], +m[2]]); }
+      if (id === 'done') {
+        if (!st.q.tray.every(k => st.at[k]) || (!st.q.manual && st.said < st.q.orders.length)) { K.wiggle(st, st.doneBtn); return 'free'; }
+        st.picked = true; if (st.sel != null) this.select(st, st.sel);
+        const at = Object.assign({ r: st.q.body }, st.at), bad = st.q.orders.findIndex(o => !holds(o, at));
+        Session.submit(st, bad < 0 ? 'ok' : 'o' + bad);
+        return 'ok';
+      }
+      return false;
+    },
+    /* where his part is: "黄块在红块左边" / "黄块没挨着红块" / "黄块还没装" */
+    whereLine(st, o) {
+      const at = Object.assign({ r: st.q.body }, st.at), P = at[o.p], R = at[o.ref];
+      if (!P) return PN[o.p] + '还没装';
+      const k = Object.keys(DIR).find(r => P[0] === R[0] + DIR[r][0] && P[1] === R[1] + DIR[r][1]);
+      return k ? PN[o.p] + '在' + PN[o.ref] + DIRW[k] : PN[o.p] + '没挨着' + PN[o.ref];
+    },
+    badOrder(st, ans) { return st.q.orders[+String(ans).slice(1)] || st.q.orders[0]; },
+    async feedback(st, ans) { const o = this.badOrder(st, ans); if (st.at[o.p]) K.wiggle(st, st.partEls[o.p]); await fbSay(st, this.whereLine(st, o)); },
+    /* 1. the part of the first order that does not hold ringed blue; 2. an arrow from the part it goes by, the part slides
+       into the gold cell ("上面在这里"), the others too; 3. the robot ringed gold: "机器人装好了" */
+    async explain(st, ans) {
+      const my = st, q = st.q, o = this.badOrder(st, ans), e = st.partEls[o.p];
+      const rings = W5U.blue(st, e);
+      await fbDone(st); if (!Session.alive(my)) return;
+      W5U.hide(rings);
+      /* the arrow from the part it goes by, toward where it should be */
+      const goal = q.goal[o.p], R = o.rel === 'mid' ? null : this.cellBox(st, st.at[o.ref] || q.goal[o.ref] || q.body), G1 = this.cellBox(st, goal);
+      const s = K.lines(st);
+      if (R) { const a = { x: R.x + R.w / 2, y: R.y + R.h / 2 }, b = { x: G1.x + G1.w / 2, y: G1.y + G1.h / 2 }; svg('path', { d: 'M' + a.x + ' ' + a.y + 'L' + b.x + ' ' + b.y, stroke: GOLD, 'stroke-width': 10, 'stroke-linecap': 'round' }, s); svg('path', { d: W5U.arrowHead(a, b, 22), fill: GOLD, stroke: INK, 'stroke-width': 2 }, s); }
+      const gc = thing(st, 5, 'item'); place(gc, G1.x + 2, G1.y + 2, G1.w - 4, G1.h - 4); Object.assign(gc.style, { borderRadius: '14px', background: 'rgba(255,201,60,.55)', boxShadow: 'inset 0 0 0 5px ' + GOLD });
+      await st.scope.wait(T(250)); if (!Session.alive(my)) return;
+      const slide = p => { const e2 = st.partEls[p], from = box(e2); st.at[p] = q.goal[p]; this.place(st); const to = box(e2); if (!ff(st)) e2.animate([{ transform: 'translate(' + (from.x - to.x) + 'px,' + (from.y - to.y) + 'px)' }, { transform: 'none' }], { duration: T(380), easing: EASE.glide }); };
+      /* everything not where it belongs goes back first, then each slides in */
+      q.tray.forEach(p => { const c = st.at[p], gp = q.goal[p]; if (c && (c[0] !== gp[0] || c[1] !== gp[1])) st.at[p] = null; });
+      this.place(st);
+      slide(o.p); Sfx.place();
+      await say(st, o.rel === 'mid' ? '中间在这里' : DIRW[o.rel] + '在这里'); if (!Session.alive(my)) return;
+      q.tray.forEach(p => { if (!st.at[p]) slide(p); });
+      await st.scope.wait(T(300)); if (!Session.alive(my)) return;
+      W5U.ring(st, [st.bodyEl].concat(q.tray.map(p => st.partEls[p])), GOLD, 12);
+      await W5U.sum(st, '机器人装好了');
+      await st.scope.wait(T(100));
+    },
+    rightEls(st) { return [st.bodyEl].concat(st.q.tray.map(p => st.partEls[p])); },
+    async reveal(st) {
+      const my = st, q = st.q; Sfx.reveal();
+      q.tray.forEach(p => K.hop(st, st.partEls[p], 12));
+      await st.scope.wait(T(200)); if (!Session.alive(my)) return;
+      W5U.ring(st, [st.bodyEl].concat(q.tray.map(p => st.partEls[p])), GOLD, 12); this.cheerAll(st);
+      st.summary = '机器人装好了'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    /* tests: the parts in the orders' order (a part in a wrong cell is tapped back first), then 装好了; 'wrong': the first
+       part a cell off */
+    next(st, strat) {
+      if (st.picked || !st.cells) return null;
+      const q = st.q;
+      let goal = q.goal;
+      if (strat === 'wrong') {
+        const o = q.orders[0], g0 = q.goal[o.p], alt = [[g0[0] + 1, g0[1]], [g0[0] - 1, g0[1]], [g0[0], g0[1] + 1], [g0[0], g0[1] - 1]].find(c => st.cells['c' + c[0] + '_' + c[1]] && !Object.values(q.goal).some(x => x[0] === c[0] && x[1] === c[1]));
+        if (alt) goal = Object.assign({}, q.goal, { [o.p]: alt });
+      }
+      for (const o of q.orders) {
+        const c = st.at[o.p], gp = goal[o.p];
+        if (c && (c[0] !== gp[0] || c[1] !== gp[1])) return { g: 'tap', p: { id: 'p' + o.p } };
+        if (!c) { const b = this.cellBox(st, gp); return { g: 'drop', p: { id: 'p' + o.p, to: 'c' + gp[0] + '_' + gp[1] }, to: { x: b.x + b.w / 2, y: b.y + b.h / 2 } }; }
+      }
+      return { g: 'tap', p: { id: 'done' } };
+    },
+    gestureHint(st) { const p = st.q.tray.find(k => !st.at[k]); if (!p) return; const a = mid(st.partEls[p]), b = mid(st.boardEl); Hand.busy++; Hand.drag(st.scope, a.x, a.y, a.x + (b.x - a.x) * 0.5, a.y + (b.y - a.y) * 0.5, 600).then(() => { Hand.done(); Hand.hide(st.scope); }); },
+    workEls(st) { return (st.q && st.partEls) ? st.q.tray.map(p => st.partEls[p]) : []; },
+    snap(st) { return { at: JSON.stringify(st.at || {}), said: st.said }; },
+    lines() {
+      const out = [this.intro, '照着说明书装！', '机器人装好了', '中间在这里'].concat(this.praise), ks = Object.keys(PN);
+      Object.values(DIRW).forEach(w => out.push(w + '在这里'));
+      ks.forEach(p => { if (p === 'r') return; out.push(PN[p] + '，', PN[p] + '还没装'); ks.forEach(r => { if (r === p) return; out.push(PN[p] + '没挨着' + PN[r]); Object.values(DIRW).forEach(w => out.push('放在' + PN[r] + w + '！', '放在' + PN[r] + w + '，', PN[r] + w + '！', PN[p] + '在' + PN[r] + w)); ks.forEach(r2 => { if (r2 !== r && r2 !== p) out.push(PN[r] + '和' + PN[r2] + '中间！'); }); }); });
+      return uniq(out);
+    },
+  };
+  /* ================================================================ Z8 挪！ 卡车开出去 (park5, the reasoning test)
+     A block car park seen from above (5 x 5 cells of 96); 擎天柱's red truck (2 cells) lies across the middle row, the gate is
+     at that row's right end. 5-7 other vehicles: little block cars (2 cells), long lorries (3); one lying across moves only
+     left / right, one standing only up / down (L1-L2 draw arrows on their roofs). 大黄蜂's yellow car is one of them.
+       first (L1-L3): "卡车要开出去！" "先挪哪辆车？" - tap a car (or drag it: the car he moves first is his answer)
+       count (L4-L5): "最少挪几辆车？" - five number cards (1-5)
+     A small search (5 x 5, <= 8 vehicles) finds every shortest way (a move = one car slid any distance); "first" questions
+     only where every shortest way starts with the same car, "count" questions only where no shortest way moves a car twice.
+       L1 one standing car in the truck's way that can move off by itself; 4+ others not in the way
+       L2 the car in the way cannot move off (a car above, the wall below): the first move is the car that holds it
+       L3 two cars in the way, both held by the same car: that car first (3 moves)
+       L4 count, 2-3 cars · L5 count, 3-4 cars, a long lorry has to move on the way (a 5 x 5 park: a standing lorry of 3
+       across the middle row could never get out of it, so the lorry is the one that makes room for a car in the way)
+     A random tap is right 1 time in 5-7 cars; a card 1 in 5 (its place and rank from bags). Wrong: his car ringed blue tries
+     to go ("它被挡住了" - it bumps / "它不挡卡车" - it moves, the truck is still shut in; count: "不是两辆"); the cars move
+     in the right order, one by one ("先挪这辆", "一辆、两辆"); the truck drives out ("卡车开出去了"). */
+  const PKCOL = ['#4FB3FF', '#5CC46E', '#B57BFF', '#FF9F43', '#3DD6C6', '#FF7FA8', '#9AA3AD'];
+  /* the search: vehicles [{ o: 'h' | 'v', len, x, y }] (0 = the truck, it does not move until it leaves) */
+  const parkOcc = (V, p) => { const g = Array(25).fill(-1); V.forEach((v, i) => { for (let k = 0; k < v.len; k++) { const x = v.o === 'h' ? p[i] + k : v.x, y = v.o === 'h' ? v.y : p[i] + k; g[y * 5 + x] = i; } }); return g; };
+  /* every move from positions p: a car (not the truck) slid any distance */
+  const parkMoves = (V, p) => { const g = parkOcc(V, p), out = []; for (let i = 1; i < V.length; i++) { const v = V[i]; for (const s of [-1, 1]) { let q = p[i]; for (;;) { const nq = q + s; if (nq < 0 || nq + v.len > 5) break; const cell = s < 0 ? nq : nq + v.len - 1, x = v.o === 'h' ? cell : v.x, y = v.o === 'h' ? v.y : cell; if (g[y * 5 + x] >= 0) break; q = nq; const np = p.slice(); np[i] = q; out.push({ i, np }); } } } return out; };
+  function parkSolve(V, maxD) {
+    const key = p => p.join(','), start = V.map(v => (v.o === 'h' ? v.x : v.y));
+    const occ = p => parkOcc(V, p), moves = p => parkMoves(V, p);
+    const goal = p => { const g = occ(p); for (let x = p[0] + V[0].len; x < 5; x++) if (g[10 + x] >= 0) return false; return true; };
+    const dist = new Map([[key(start), 0]]), preds = new Map(), stateOf = new Map([[key(start), start]]);
+    let layer = [start], M = goal(start) ? 0 : -1;
+    for (let d = 0; d < maxD && M < 0; d++) {
+      const next = [];
+      for (const p of layer) for (const m of moves(p)) {
+        const k = key(m.np), seen = dist.get(k);
+        if (seen === undefined) { dist.set(k, d + 1); stateOf.set(k, m.np); preds.set(k, [{ from: key(p), i: m.i }]); next.push(m.np); }
+        else if (seen === d + 1) preds.get(k).push({ from: key(p), i: m.i });
+      }
+      if (next.some(goal)) M = d + 1;
+      layer = next;
+    }
+    if (M <= 0) return { M };
+    /* the shortest ways: back from the goals of depth M */
+    const on = new Set(), goals = layer.filter(goal).map(key); goals.forEach(k => on.add(k));
+    const edges = new Map();
+    let cur = goals;
+    for (let d = M; d > 0; d--) { const prev = new Set(); cur.forEach(k => (preds.get(k) || []).forEach(e => { if (dist.get(e.from) === d - 1) { prev.add(e.from); (edges.get(e.from) || edges.set(e.from, []).get(e.from)).push({ to: k, i: e.i }); } })); prev.forEach(k => on.add(k)); cur = Array.from(prev); }
+    const first = uniq((edges.get(key(start)) || []).map(e => e.i));
+    /* every shortest way: does one move a car twice? (and one way, for the demonstration) */
+    let twice = false, way = null, count = 0;
+    const walk = (k, used, path) => { if (count > 4000) return; if (path.length === M) { count++; if (!way) way = path.slice(); return; } (edges.get(k) || []).forEach(e => { if (used.includes(e.i)) twice = true; walk(e.to, used.concat(e.i), path.concat({ i: e.i, p: stateOf.get(e.to)[e.i] })); }); };
+    walk(key(start), [], []);
+    return { M, first, twice, way, occ: occ(start), moves: moves(start) };
+  }
+  W5R.Z8 = {
+    kind0: 'park5', verb: '挪！', intro: '帮卡车开出去！', praise: ['卡车出来啦！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, want = [0, 1, 2, 3, 0, 0][d];
+      for (let t = 0; t < 3000; t++) {
+        const V = [], g = Array(25).fill(false);
+        const fill = v => { for (let k = 0; k < v.len; k++) { const x = v.o === 'h' ? v.x + k : v.x, y = v.o === 'h' ? v.y : v.y + k; if (x > 4 || y > 4 || g[y * 5 + x]) return false; } for (let k = 0; k < v.len; k++) { const x = v.o === 'h' ? v.x + k : v.x, y = v.o === 'h' ? v.y : v.y + k; g[y * 5 + x] = true; } V.push(v); return true; };
+        fill({ o: 'h', len: 2, x: 0, y: 2, truck: 1 });
+        /* the cars in the truck's way: standing, across the middle row */
+        const nb = d === 3 ? 2 : d === 5 ? rng.int(1, 2) : d === 4 ? rng.int(1, 2) : 1, cols = rng.shuffle([2, 3, 4]).slice(0, nb);
+        cols.forEach(x => fill({ o: 'v', len: 2, x, y: rng.int(1, 2) }));
+        const K = rng.int(5, 7);
+        for (let tries = 0; V.length < K + 1 && tries < 60; tries++) { const ov = rng.chance(0.5) ? 'h' : 'v', len = rng.chance(0.25) ? 3 : 2; fill({ o: ov, len, x: rng.int(0, ov === 'h' ? 5 - len : 4), y: rng.int(0, ov === 'v' ? 5 - len : 4) }); }
+        if (V.length < 6) continue;
+        const R = parkSolve(V, 5);
+        if (R.M < 1 || R.twice || !R.way) continue;
+        const inWay = i => { const v = V[i]; return v.o === 'v' && v.x >= 2 && v.y <= 2 && v.y + v.len > 2; };
+        if (d <= 3) {
+          if (R.M !== want || R.first.length !== 1) continue;
+          const a = R.first[0];
+          if (d === 1 && !inWay(a)) continue;
+          if (d >= 2 && inWay(a)) continue;
+          /* a car in the way that is not the answer cannot get out of the way by one move */
+          const stuckOk = V.every((v, i) => i === 0 || i === a || !inWay(i) || !R.moves.some(m => m.i === i && !(m.np[i] <= 2 && m.np[i] + v.len > 2)));
+          if (!stuckOk) continue;
+          const yellow = rng.pick(V.map((_, i) => i).filter(i => i > 0));
+          const cars = V.slice(1).map((v, i) => i + 1);
+          return { k: [d, V.map(v => v.o + v.len + v.x + v.y).join('')], d, V, yellow, ask: 'first', answer: a, way: R.way, M: R.M, arrows: d <= 2, cars };
+        }
+        if ((d === 4 && (R.M < 2 || R.M > 3)) || (d === 5 && (R.M < 3 || R.M > 4))) continue;
+        if (d === 5 && !R.way.some(w => V[w.i].len === 3)) continue;
+        const yellow = rng.pick(V.map((_, i) => i).filter(i => i > 0));
+        return { k: [d, V.map(v => v.o + v.len + v.x + v.y).join('')], d, V, yellow, ask: 'count', answer: R.M, cards: W5U.nums(G, R.M, 1, 5), way: R.way, M: R.M, arrows: false };
+      }
+      return null;
+    },
+    audit(q) { if (q.cards) return [{ n: 5, at: q.cards.indexOf(q.answer), right: q.cards.filter(c => c === q.answer).length }]; return [{ build: true, chance: 1 / (q.V.length - 1) }]; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    geo(st) { const L = K.L(); return L ? { L, u: 96, gx: 230, gy: 120, cx: 770, cy: 108, cw: 108, ch: 92 } : { L, u: 96, gx: 112, gy: 214, cy: 726, cw: 120, ch: 120 }; },
+    vBox(st, i, pos) { const g = this.geo(st), v = st.q.V[i], p = pos == null ? st.pos[i] : pos, x = v.o === 'h' ? p : v.x, y = v.o === 'h' ? v.y : p; return { x: g.gx + x * g.u, y: g.gy + y * g.u, w: (v.o === 'h' ? v.len : 1) * g.u, h: (v.o === 'v' ? v.len : 1) * g.u }; },
+    place(st) {
+      const g = this.geo(st);
+      if (!st.lot) return;
+      place(st.lot, g.gx - 16, g.gy - 16, 5 * g.u + 32, 5 * g.u + 32);
+      place(st.exit, g.gx + 5 * g.u + 2, g.gy + 2 * g.u + 12, 54, 72);
+      st.vEls.forEach((e, i) => { const b = this.vBox(st, i); place(e, b.x + 4, b.y + 4, b.w - 8, b.h - 8); });
+      if (st.cards) st.cards.forEach((c, i) => { if (g.L) place(c, g.cx, g.cy + i * (g.ch + 10), g.cw, g.ch); else place(c, Math.round(352 - (5 * g.cw + 48) / 2 + i * (g.cw + 12)), g.cy, g.cw, g.ch); });
+    },
+    /* a vehicle seen from above: body, windscreen, wheels; the truck has a cab; arrows on the roof at L1-L2 */
+    vehicle(st, i) {
+      const q = st.q, v = q.V[i], e = thing(st, 6, 'item'), w = (v.o === 'h' ? v.len : 1) * 100, h = (v.o === 'v' ? v.len : 1) * 100;
+      const col = i === 0 ? '#E8414B' : i === q.yellow ? '#FFC93C' : PKCOL[(i - 1) % PKCOL.length];
+      let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="100%" preserveAspectRatio="none" style="pointer-events:none;overflow:visible">';
+      const wh = (x, y) => '<rect x="' + x + '" y="' + y + '" width="22" height="12" rx="4" fill="#2B2118"/>';
+      if (v.o === 'h') { s += wh(14, -2) + wh(w - 36, -2) + wh(14, h - 10) + wh(w - 36, h - 10); s += '<rect x="2" y="6" width="' + (w - 4) + '" height="' + (h - 12) + '" rx="16" fill="' + col + '" stroke="#2B2118" stroke-width="5"/><rect x="' + (w - 34) + '" y="18" width="18" height="' + (h - 36) + '" rx="6" fill="#BFE3FF" stroke="#2B2118" stroke-width="3"/>'; if (i === 0) s += '<rect x="' + (w - 62) + '" y="10" width="6" height="' + (h - 20) + '" fill="#2B2118"/>'; }
+      else { s += wh(-2, 14) + wh(-2, h - 36) + wh(w - 20, 14) + wh(w - 20, h - 36); s = s.replace(/width="22" height="12"/g, 'width="12" height="22"'); s += '<rect x="6" y="2" width="' + (w - 12) + '" height="' + (h - 4) + '" rx="16" fill="' + col + '" stroke="#2B2118" stroke-width="5"/><rect x="18" y="16" width="' + (w - 36) + '" height="18" rx="6" fill="#BFE3FF" stroke="#2B2118" stroke-width="3"/>'; }
+      if (q.arrows && i > 0) { const c = { x: w / 2, y: h / 2 }; s += v.o === 'h' ? '<path d="M' + (c.x - 26) + ' ' + c.y + 'H' + (c.x + 26) + 'M' + (c.x - 14) + ' ' + (c.y - 10) + 'L' + (c.x - 26) + ' ' + c.y + 'L' + (c.x - 14) + ' ' + (c.y + 10) + 'M' + (c.x + 14) + ' ' + (c.y - 10) + 'L' + (c.x + 26) + ' ' + c.y + 'L' + (c.x + 14) + ' ' + (c.y + 10) + '" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' : '<path d="M' + c.x + ' ' + (c.y - 26) + 'V' + (c.y + 26) + 'M' + (c.x - 10) + ' ' + (c.y - 14) + 'L' + c.x + ' ' + (c.y - 26) + 'L' + (c.x + 10) + ' ' + (c.y - 14) + 'M' + (c.x - 10) + ' ' + (c.y + 14) + 'L' + c.x + ' ' + (c.y + 26) + 'L' + (c.x + 10) + ' ' + (c.y + 14) + '" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>'; }
+      e.innerHTML = s + '</svg>';
+      return e;
+    },
+    async present(st) {
+      const q = st.q;
+      st.pos = q.V.map(v => (v.o === 'h' ? v.x : v.y));
+      st.lot = thing(st, 3, 'item');
+      let s = '<svg viewBox="0 0 512 512" width="100%" height="100%" style="pointer-events:none"><rect x="2" y="2" width="508" height="508" rx="18" fill="#9AA3AD" stroke="#2B2118" stroke-width="4"/><rect x="16" y="16" width="480" height="480" fill="#D7DCE3"/>';
+      for (let i = 1; i < 5; i++) s += '<path d="M' + (16 + i * 96) + ' 16V496M16 ' + (16 + i * 96) + 'H496" stroke="#fff" stroke-width="3" stroke-dasharray="10 8"/>';
+      s += '<rect x="496" y="208" width="16" height="96" fill="#D7DCE3"/></svg>';
+      st.lot.innerHTML = s;
+      st.exit = thing(st, 4, 'item'); st.exit.innerHTML = '<svg viewBox="0 0 54 72" width="100%" height="100%" style="pointer-events:none"><path d="M6 36H44M30 20L46 36L30 52" fill="none" stroke="#2B2118" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 36H44M30 20L46 36L30 52" fill="none" stroke="#5CC46E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      st.vEls = q.V.map((_, i) => this.vehicle(st, i));
+      if (q.ask === 'first') q.V.forEach((v, i) => { if (i) K.reg(st, 'v' + i, st.vEls[i], { drag: true, drops: () => [{ id: 'lot', rect: () => box(st.lot) }] }); });
+      else { W5U.cards(st, q.cards.map(n => { const x = UI.num(n, 62); x.style.pointerEvents = 'none'; return x; }), q.cards); st.cards.forEach((c, i) => K.pop(st, c, 60 * i)); }
+      this.place(st);
+      K.pop(st, st.lot); st.vEls.forEach((e, i) => K.pop(st, e, 40 * i));
+      K.task(st, [[{ node: (() => { const d = el('span', ''); d.innerHTML = '<svg viewBox="0 0 90 46" width="90" height="46"><rect x="3" y="6" width="62" height="34" rx="10" fill="#E8414B" stroke="#2B2118" stroke-width="4"/><path d="M68 23H86M78 14L87 23L78 32" fill="none" stroke="#2B2118" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>'; return d; })() }], ['q']]);
+      W3X.say2(st, '卡车要开出去！', q.ask === 'first' ? '先挪哪辆车？' : '最少挪几辆车？');
+    },
+    /* can car i slide (from now) at all; one that is in the truck's way */
+    canGo(st, i, pos) { return parkMoves(st.q.V, pos || st.pos).filter(m => m.i === i); },
+    inWay(st, i) { const v = st.q.V[i], p = st.pos[i]; return v.o === 'v' && v.x >= 2 && p <= 2 && p + v.len > 2; },
+    onGesture(st, name, p) {
+      if (st.picked) return false;
+      const id = p.id || '', q = st.q;
+      if (q.ask === 'count') return W5U.tapCard(st, name, p);
+      const m = /^v(\d)$/.exec(id); if (!m) return false;
+      const i = +m[1], e = st.vEls[i];
+      if (name === 'drop') {
+        /* dragged: it goes that way as far as it can (or bumps) - the car he moved first is his answer */
+        const t = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(e.style.transform || ''), v = q.V[i], dd = t ? (v.o === 'h' ? +t[1] : +t[2]) : 0;
+        e.style.transform = ''; st.picked = true; this.tryGo(st, i, dd >= 0 ? 1 : -1); Session.submit(st, i); return 'ok';
+      }
+      if (name !== 'tap') return false;
+      st.picked = true; K.pop(st, e); Session.submit(st, i); return 'ok';
+    },
+    /* slide car i one way as far as it goes (a little bump when it cannot) */
+    tryGo(st, i, s) {
+      const ms = this.canGo(st, i).filter(m => Math.sign(m.np[i] - st.pos[i]) === s), e = st.vEls[i];
+      if (!ms.length) { const v = st.q.V[i], d = (v.o === 'h' ? 'translateX(' : 'translateY(') + (s * 14) + 'px)'; if (!fast()) e.animate([{ transform: 'none' }, { transform: d }, { transform: 'none' }], { duration: 280 }); Sfx.thud && Sfx.thud(); return false; }
+      const far = ms.reduce((a, m) => (Math.abs(m.np[i] - st.pos[i]) > Math.abs(a.np[i] - st.pos[i]) ? m : a), ms[0]);
+      this.slide(st, i, far.np[i]); return true;
+    },
+    slide(st, i, to) { const e = st.vEls[i], a = box(e); st.pos[i] = to; this.place(st); const b = box(e); if (!ff(st)) e.animate([{ transform: 'translate(' + (a.x - b.x) + 'px,' + (a.y - b.y) + 'px)' }, { transform: 'none' }], { duration: T(320), easing: EASE.glide }); Sfx.whoosh && Sfx.whoosh(0.15); },
+    whyLine(st, i) { return this.inWay(st, i) ? '它被挡住了' : '它不挡卡车'; },
+    async feedback(st, ans) {
+      if (st.q.ask === 'count') { K.wiggle(st, W5U.cardOf(st, ans)); await fbSay(st, '不是' + CNQ(ans) + '辆'); return; }
+      st.pos = st.q.V.map(v => (v.o === 'h' ? v.x : v.y)); this.place(st);
+      await fbSay(st, this.whyLine(st, ans));
+    },
+    /* the cars in the right order, one by one, then the truck drives out */
+    async demo(st, gold) {
+      const my = st, q = st.q, per = Math.max(260, Math.min(480, 1500 / q.way.length));
+      st.pos = q.V.map(v => (v.o === 'h' ? v.x : v.y)); this.place(st);
+      for (let k = 0; k < q.way.length; k++) {
+        if (!Session.alive(my)) return;
+        const s = q.way[k]; this.slide(st, s.i, s.p);
+        if (k === 0 && gold) { W5U.gold(st, st.vEls[s.i], 6); await say(st, '先挪这辆'); }
+        else if (q.ask === 'count' && st.explaining) await say(st, CNQ(k + 1) + '辆');
+        else await st.scope.wait(T(per));
+      }
+      if (!Session.alive(my)) return;
+      const e = st.vEls[0], g = this.geo(st);
+      if (!ff(st)) await st.scope.anim(e, [{ transform: 'none' }, { transform: 'translateX(' + (5 * g.u) + 'px)', opacity: 0 }], { duration: T(600), easing: EASE.glide, fill: 'forwards' });
+      Sfx.whoosh && Sfx.whoosh(0.3);
+    },
+    /* 1. his car (card) blue, it tries to go; 2. the right order; 3. the truck out: "卡车开出去了" */
+    async explain(st, ans) {
+      const my = st, q = st.q;
+      if (q.ask === 'count') { const r = W5U.blue(st, W5U.cardOf(st, ans)); await fbDone(st); if (!Session.alive(my)) return; W5U.hide(r); }
+      else {
+        const r = W5U.blue(st, st.vEls[ans]);
+        this.tryGo(st, ans, 1) || this.tryGo(st, ans, -1);
+        await fbDone(st); if (!Session.alive(my)) return; W5U.hide(r);
+        await st.scope.wait(T(250)); if (!Session.alive(my)) return;
+      }
+      await W5U.beat(st); if (!Session.alive(my)) return;
+      await this.demo(st, q.ask === 'first'); if (!Session.alive(my)) return;
+      if (q.ask === 'count') W5U.gold(st, W5U.cardOf(st, q.answer));
+      await W5U.sum(st, '卡车开出去了');
+      await st.scope.wait(T(100));
+    },
+    rightEls(st) { return [st.q.ask === 'count' ? W5U.cardOf(st, st.q.answer) : st.vEls[st.q.answer]]; },
+    async reveal(st) {
+      const my = st, q = st.q; Sfx.reveal();
+      W5U.gold(st, q.ask === 'count' ? W5U.cardOf(st, q.answer) : st.vEls[q.answer], 6);
+      await this.demo(st, false); if (!Session.alive(my)) return;
+      this.cheerAll(st); st.summary = '卡车开出去了'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(700));
+    },
+    next(st, strat) {
+      if (st.picked) return null; const q = st.q;
+      if (q.ask === 'count') { if (!st.cards) return null; const i = strat === 'wrong' ? q.cards.findIndex(v => v !== q.answer) : q.cards.indexOf(q.answer); return { g: 'tap', p: { id: 'card' + i } }; }
+      if (!st.vEls) return null;
+      const others = q.V.map((_, i) => i).filter(i => i > 0 && i !== q.answer), i = strat === 'wrong' ? others[st.gen % others.length] : q.answer;
+      return { g: 'tap', p: { id: 'v' + i } };
+    },
+    gestureHint(st) { if (st.q.ask !== 'first') return; const i = st.q.V.findIndex((v, k) => k > 0), a = mid(st.vEls[i]); W3X.tapHint(st, st.vEls[i]); void a; },
+    workEls(st) { return st.cards || (st.vEls || []).slice(1); },
+    snap(st) { return { pos: (st.pos || []).join(',') }; },
+    lines() {
+      const out = [this.intro, '卡车要开出去！', '先挪哪辆车？', '最少挪几辆车？', '它被挡住了', '它不挡卡车', '先挪这辆', '卡车开出去了'].concat(this.praise);
+      for (let n = 1; n <= 5; n++) out.push('不是' + CNQ(n) + '辆', CNQ(n) + '辆');
+      return uniq(out);
+    },
+  };
+})();
 /* ================================================================ ⑤ 葫芦娃·积木山 (huluwa5, from level 2): H5 剪纸对折 · H6 几个几个圈 ·
    H7 哪块地大 · H8 千里眼找宝贝 (reasoning). docs/W5-DESIGN.md §5 ⑤. One function, no top-level names: each rule is W5R.<id>,
    registered (background, friends, icon) in games.js. Package C. */
@@ -6366,6 +6835,801 @@ const W5U = {
     },
   };
 })();
+/* ================================================================ ⑧ 奥特曼·积木光之国 (ultra5, from level 2): U5 光线拐弯 · U6 变大变小 ·
+   U7 光棒搭房子 · U8 楼后面几只小怪兽 (reasoning). docs/W5-DESIGN.md §16.4. One function, no top-level names: each rule is
+   W5R.<id>, registered (background, friends, icon, review card) in games.js. The little monsters are friends who play - the
+   light lights lamps, makes things bigger and builds houses; nobody fights. */
+(() => {
+  const INK = '#2B2118', GOLD = '#FFC93C', BLUE = '#4FB3FF';
+  const lvOf = o => Math.min(5, Math.max(1, o.level || 1));
+  const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
+  const R1 = v => Math.round(v * 10) / 10;
+  const ic = s => W3X.ic(s, 52);
+  /* step 1 of an explanation: the feedback line (said just before) ends while his choice is ringed blue - it is not said
+     twice; step by step, the engine says it again at the first stop (Step.boundary: st.fbLine). (W5R1 2) */
+  const fbDone = st => st.scope.guard(Voice.afterSay(80)).then(() => st.scope.wait(T(180)));
+  const thumb = (id, px) => { const s = el('span', ''); Object.assign(s.style, { display: 'block', width: px + 'px', height: px + 'px', borderRadius: '50%', overflow: 'hidden', background: '#fff', boxShadow: '0 0 0 3px ' + INK, pointerEvents: 'none', flex: '0 0 auto' }); const i = img('assets/thumbs/' + id + '.png', '', s); Object.assign(i.style, { width: '100%', height: '100%', objectFit: 'cover' }); return s; };
+  /* a number badge at a stage point (counting in the explain step) */
+  const badgeAt = (st, x, y, n, size, delay) => { size = size || 40; const b = UI.badge(n, size); Stage.el.appendChild(b); b.style.position = 'absolute'; b.style.pointerEvents = 'none'; place(b, Math.round(x - size / 2), Math.round(y - size / 2)); st.els.push(b); st.scope.anim(b, [{ transform: 'scale(0)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: 240, delay: delay || 0, easing: EASE.pop, fill: 'both' }); return b; };
+  /* a row of number cards (ids card0 ...) */
+  const numRow = (st, vals, size) => vals.map((v, i) => { const c = UI.card(v, size, { layout: 'frame' }); Stage.el.appendChild(c); c.style.position = 'absolute'; K.reg(st, 'card' + i, c, {}); st.els.push(c); K.pop(st, c, 60 * i); return c; });
+  /* a full-stage svg layer (stage coordinates) */
+  const layer = (st, z) => { const e = W2X.thing(st, Stage.W, Stage.H, z, ''); e.style.pointerEvents = 'none'; const s = svg('svg', { viewBox: '0 0 ' + Stage.W + ' ' + Stage.H, width: '100%', height: '100%' }, e); s.style.overflow = 'visible'; e._s = s; return e; };
+  const relayer = e => { if (!e) return; place(e, 0, 0, Stage.W, Stage.H); e._s.setAttribute('viewBox', '0 0 ' + Stage.W + ' ' + Stage.H); };
+
+  /* ================================================================ U5 照！ 光线拐弯 (S1 Chase It, S3 Step by Step, F5 City
+     Adventure). A crystal floor of 5 x 5 cells (>= 96); the light comes in from the left (奥特曼's crystal) along one row;
+     crystal mirrors (/ or \) turn it 90°; from L3 a crystal wall stops it. Star lamps on the top and the right edge.
+       L1 one mirror on its way · L2 two · L3 three and a wall (the light still ends at a lamp) - "光会照到哪里？" (five lamps)
+       L4 "转哪面镜子，光能照到小恐龙？" - 5-6 mirrors, turning exactly one of them sends the light to the lamp with 小恐龙
+       L5 "镜子放哪一格，光能照到小恐龙？" - the mirror is given, five dashed cells, exactly one works.
+     A mirror: / turns right->up, up->right, left->down, down->left; \ turns right->down, down->right, left->up, up->left.
+     Wrong: his lamp (mirror, cell) blue ("光走不到这里" / "转这面不行哦" / "放这里不行哦"; turning or placing shows where the
+     light would go then); the real light walks, a flash at its first mirror ("碰到镜子拐弯"); the lamp lights, gold
+     ("光照到这里"). */
+  const N5 = 5;
+  const turn = (m, d) => (m === '/' ? [-d[1], -d[0]] : [d[1], d[0]]);
+  /* the light from the left of row r0: the cells it crosses, the mirrors it meets, where it leaves (top i / right i / ...) */
+  const trace = (mir, wall, r0) => {
+    let r = r0, c = -1, d = [1, 0]; const cells = [], hits = [];
+    for (let k = 0; k < 60; k++) {
+      c += d[0]; r += d[1];
+      if (c < 0 || r < 0 || c >= N5 || r >= N5) return { cells, hits, exit: c >= N5 ? 'R' + r : r < 0 ? 'T' + c : r >= N5 ? 'B' + c : 'L' + r };
+      const key = r + ',' + c; cells.push([r, c]);
+      if (wall[key]) return { cells, hits, exit: null, wall: key };
+      if (mir[key]) { hits.push(key); d = turn(mir[key], d); }
+    }
+    return { cells, hits, exit: null };
+  };
+  const SLOTS = ['T0', 'T1', 'T2', 'T3', 'T4', 'R0', 'R1', 'R2', 'R3', 'R4'];
+  const ok5 = e => !!e && (e[0] === 'T' || e[0] === 'R');
+  W5R.U5 = {
+    kind0: 'beam5', verb: '照！', intro: '光线会拐弯！', praise: ['光线算得准！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng, ask = d <= 3 ? 'where' : d === 4 ? 'flip' : 'place';
+      const randCell = () => [rng.int(0, N5 - 1), rng.int(0, N5 - 1)];
+      for (let t = 0; t < 3000; t++) {
+        const r0 = rng.int(0, N5 - 1), mir = {}, wall = {};
+        if (ask === 'where') {
+          const want = d, extra = d === 1 ? rng.int(1, 2) : rng.int(1, 2);
+          for (let k = 0; k < want + extra + 2; k++) { const [r, c] = randCell(); mir[r + ',' + c] = rng.pick(['/', '\\']); }
+          if (d === 3) { const [r, c] = randCell(); if (!mir[r + ',' + c]) wall[r + ',' + c] = 1; }
+          const tr = trace(mir, wall, r0);
+          if (!ok5(tr.exit) || tr.hits.length !== want) continue;
+          if (d === 3 && !Object.keys(wall).length) continue;
+          if (Object.keys(mir).length < want + 1) continue;
+          /* five lamps: the right one and four that look possible (next to it, straight on, others) */
+          const near = SLOTS.filter(s => s !== tr.exit), score = s => (s[0] === tr.exit[0] && Math.abs(+s[1] - +tr.exit[1]) === 1 ? 0 : s === 'R' + r0 ? 0 : 1) + rng() * 0.9;
+          const others = near.sort((a, b) => score(a) - score(b)).slice(0, 4);
+          const lamps = W5U.deal(G, tr.exit, others, 'u5l');
+          return { d, ask, k: [d, r0, JSON.stringify(mir), JSON.stringify(wall)], r0, mir, wall, lamps, answer: lamps.indexOf(tr.exit), exit: tr.exit };
+        }
+        /* flip / place: a target lamp the light reaches only by the one right change */
+        const nm = ask === 'flip' ? rng.int(5, 6) : rng.int(2, 4);
+        for (let k = 0; k < nm; k++) { const [r, c] = randCell(); mir[r + ',' + c] = rng.pick(['/', '\\']); }
+        if (Object.keys(mir).length < nm) continue;
+        if (rng.chance(0.4)) { const [r, c] = randCell(); if (!mir[r + ',' + c]) wall[r + ',' + c] = 1; }
+        const now0 = trace(mir, wall, r0);
+        if (ask === 'flip') {
+          const keys = Object.keys(mir), ex = keys.map(key => { const m2 = Object.assign({}, mir, { [key]: mir[key] === '/' ? '\\' : '/' }); return trace(m2, wall, r0).exit; });
+          const goodIdx = keys.map((_, i) => i).filter(i => ok5(ex[i]) && ex[i] !== now0.exit && ex.filter(x => x === ex[i]).length === 1);
+          if (!goodIdx.length) continue;
+          const gi = rng.pick(goodIdx), target = ex[gi];
+          if (keys.filter(key => mir[key]).length < 5) continue;
+          const order = W5U.deal(G, keys[gi], keys.filter((_, i) => i !== gi), 'u5f' + keys.length);
+          return { d, ask, k: [d, r0, JSON.stringify(mir), JSON.stringify(wall)], r0, mir, wall, target, opts: order, answer: order.indexOf(keys[gi]), now: now0.exit };
+        }
+        /* place: the given mirror; five empty cells, one of them sends the light to the lamp */
+        const m = rng.pick(['/', '\\']), empty = [];
+        for (let r = 0; r < N5; r++) for (let c = 0; c < N5; c++) { const key = r + ',' + c; if (!mir[key] && !wall[key]) empty.push(key); }
+        const res = empty.map(key => trace(Object.assign({}, mir, { [key]: m }), wall, r0).exit);
+        const good = empty.filter((key, i) => ok5(res[i]) && res[i] !== now0.exit);
+        if (!good.length) continue;
+        const pick = rng.pick(good), target = res[empty.indexOf(pick)];
+        /* the other four: cells the light crosses now (they change its way) that do not lead there; then any */
+        const onPath = new Set(now0.cells.map(x => x.join(',')));
+        const bad = rng.shuffle(empty.filter((key, i) => key !== pick && res[i] !== target)).sort((a, b) => (onPath.has(b) ? 1 : 0) - (onPath.has(a) ? 1 : 0)).slice(0, 4);
+        if (bad.length < 4) continue;
+        const order = W5U.deal(G, pick, bad, 'u5p');
+        return { d, ask, k: [d, r0, JSON.stringify(mir), m, pick], r0, mir, wall, target, m, opts: order, answer: order.indexOf(pick), now: now0.exit };
+      }
+      const mir = { '2,2': '/' }; return { d, ask: 'where', k: [d, 'x'], r0: 2, mir, wall: {}, lamps: ['T2', 'T1', 'T3', 'R2', 'T0'], answer: 0, exit: 'T2' };
+    },
+    audit(q) {
+      if (q.ask === 'where') return [{ n: q.lamps.length, at: q.answer, right: q.lamps.filter(s => s === trace(q.mir, q.wall, q.r0).exit).length }];
+      if (q.ask === 'flip') return [{ n: q.opts.length, at: q.answer, right: q.opts.filter(key => trace(Object.assign({}, q.mir, { [key]: q.mir[key] === '/' ? '\\' : '/' }), q.wall, q.r0).exit === q.target).length }];
+      return [{ n: q.opts.length, at: q.answer, right: q.opts.filter(key => trace(Object.assign({}, q.mir, { [key]: q.m }), q.wall, q.r0).exit === q.target).length }];
+    },
+    geo() { const L = K.L(); return L ? { cs: 96, x0: 262, y0: 196 } : { cs: 100, x0: 70, y0: 332 }; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    cellXY(r, c) { const g = this.geo(); return [g.x0 + (c + 0.5) * g.cs, g.y0 + (r + 0.5) * g.cs]; },
+    slotXY(s) { const g = this.geo(), i = +s[1]; return s[0] === 'T' ? [g.x0 + (i + 0.5) * g.cs, g.y0 - 52] : s[0] === 'R' ? [g.x0 + N5 * g.cs + 54, g.y0 + (i + 0.5) * g.cs] : s[0] === 'B' ? [g.x0 + (i + 0.5) * g.cs, g.y0 + N5 * g.cs + 40] : [g.x0 - 40, g.y0 + (i + 0.5) * g.cs]; },
+    place(st) {
+      const q = st.q, g = this.geo(); if (!st.floor) return;
+      relayer(st.floor); relayer(st.beamL);
+      this.drawFloor(st);
+      (st.lampEls || []).forEach((e, i) => { const [x, y] = this.slotXY(q.lamps[i]); place(e, Math.round(x - 46), Math.round(y - 46), 92, 92); });
+      if (st.dino) { const [x, y] = this.slotXY(q.target); place(st.dino, Math.round(x - 46), Math.round(y - 46), 92, 92); }
+      (st.cellEls || []).forEach((e, i) => { const [r, c] = q.opts[i].split(',').map(Number); place(e, g.x0 + c * g.cs, g.y0 + r * g.cs, g.cs, g.cs); });
+      if (st.src) { const [x, y] = this.cellXY(q.r0, -1); place(st.src, Math.round(x - 28), Math.round(y - 30), 60, 60); }
+      if (st.beamMir) this.drawBeam(st, this.beamPts(st, st.beamMir).P, st.beamCol);
+    },
+    /* the floor, the mirrors (st.mirNow), the walls */
+    drawFloor(st) {
+      const q = st.q, g = this.geo(), s = st.floor._s, cs = g.cs; while (s.firstChild) s.removeChild(s.firstChild);
+      svg('rect', { x: g.x0 - 8, y: g.y0 - 8, width: N5 * cs + 16, height: N5 * cs + 16, rx: 16, fill: 'rgba(223,240,255,.78)', stroke: '#7BA7D8', 'stroke-width': 4 }, s);
+      for (let r = 0; r < N5; r++) for (let c = 0; c < N5; c++) svg('rect', { x: g.x0 + c * cs + 3, y: g.y0 + r * cs + 3, width: cs - 6, height: cs - 6, rx: 10, fill: (r + c) % 2 ? 'rgba(255,255,255,.55)' : 'rgba(205,228,250,.65)' }, s);
+      Object.keys(q.wall).forEach(key => { const [r, c] = key.split(',').map(Number), x = g.x0 + c * cs, y = g.y0 + r * cs; svg('rect', { x: x + 8, y: y + 8, width: cs - 16, height: cs - 16, rx: 8, fill: '#8E7CC3', stroke: INK, 'stroke-width': 4 }, s); svg('path', { d: 'M' + (x + 18) + ' ' + (y + 30) + 'L' + (x + 40) + ' ' + (y + 18) + 'M' + (x + 22) + ' ' + (y + 52) + 'L' + (x + 60) + ' ' + (y + 30), stroke: '#fff', 'stroke-width': 4, opacity: 0.6, 'stroke-linecap': 'round' }, s); });
+      st.mirG = {};
+      Object.keys(st.mirNow).forEach(key => { st.mirG[key] = this.mirrorSvg(s, key, st.mirNow[key]); });
+      if (st.ghost) st.mirG[st.ghost.key] = this.mirrorSvg(s, st.ghost.key, st.ghost.m, st.ghost.col);
+      /* the candidate cells of L5: dashed */
+      if (q.ask === 'place') q.opts.forEach(key => { const [r, c] = key.split(',').map(Number); svg('rect', { x: g.x0 + c * cs + 9, y: g.y0 + r * cs + 9, width: cs - 18, height: cs - 18, rx: 10, fill: 'rgba(255,255,255,.5)', stroke: '#2E6FD8', 'stroke-width': 4, 'stroke-dasharray': '10 7' }, s); });
+    },
+    mirrorSvg(s, key, m, col) {
+      const g = this.geo(), cs = g.cs, [r, c] = key.split(',').map(Number), x = g.x0 + c * cs, y = g.y0 + r * cs, a = 14, b = cs - 14;
+      const gg = svg('g', {}, s), d = m === '/' ? 'M' + (x + a) + ' ' + (y + b) + 'L' + (x + b) + ' ' + (y + a) : 'M' + (x + a) + ' ' + (y + a) + 'L' + (x + b) + ' ' + (y + b);
+      svg('path', { d, stroke: INK, 'stroke-width': 16, 'stroke-linecap': 'round' }, gg);
+      svg('path', { d, stroke: col || '#9EE7FF', 'stroke-width': 10, 'stroke-linecap': 'round' }, gg);
+      svg('path', { d, stroke: '#fff', 'stroke-width': 3, 'stroke-linecap': 'round', opacity: 0.85 }, gg);
+      gg.style.transformBox = 'fill-box'; gg.style.transformOrigin = 'center';
+      return gg;
+    },
+    /* the light's way: from the crystal on the left through the cells' middles to its lamp (or the wall) */
+    beamPts(st, mir) {
+      const q = st.q, tr = trace(mir, q.wall, q.r0), P = [this.cellXY(q.r0, -1)];
+      tr.cells.forEach(([r, c]) => { if (mir[r + ',' + c] || q.wall[r + ',' + c]) P.push(this.cellXY(r, c)); });
+      const last = tr.cells[tr.cells.length - 1];
+      if (tr.exit) P.push(this.slotXY(tr.exit)); else if (last) P.push(this.cellXY(last[0], last[1]));
+      return { P, tr };
+    },
+    drawBeam(st, P, col, k) {
+      const s = st.beamL._s; while (s.firstChild) s.removeChild(s.firstChild);
+      if (!P) { st.beamMir = null; return; }
+      const d = 'M' + P.map(p => R1(p[0]) + ' ' + R1(p[1])).join('L');
+      svg('path', { d, stroke: col === BLUE ? 'rgba(79,179,255,.35)' : 'rgba(255,236,140,.45)', 'stroke-width': 22, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+      const p = svg('path', { d, stroke: col || '#FFE45C', 'stroke-width': 9, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': col === BLUE ? '16 10' : 'none' }, s);
+      st.beamCol = col;
+      return p;
+    },
+    /* the light walks its way (0.9 s); at its first mirror a flash */
+    async shine(st, mir, col) {
+      const my = st, { P, tr } = this.beamPts(st, mir);
+      const s = st.beamL._s; while (s.firstChild) s.removeChild(s.firstChild);
+      const d = 'M' + P.map(p => R1(p[0]) + ' ' + R1(p[1])).join('L'), L = P.reduce((a, p, i) => a + (i ? Math.hypot(p[0] - P[i - 1][0], p[1] - P[i - 1][1]) : 0), 0);
+      svg('path', { d, stroke: col === BLUE ? 'rgba(79,179,255,.3)' : 'rgba(255,236,140,.45)', 'stroke-width': 22, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+      const p = svg('path', { d, stroke: col || '#FFE45C', 'stroke-width': 9, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': L + ' ' + L }, s);
+      st.beamMir = mir; st.beamCol = col;
+      Sfx.zap && Sfx.zap();
+      if (tr.hits.length) { const [r, c] = tr.hits[0].split(',').map(Number), [x, y] = this.cellXY(r, c), seg = P.slice(0, 2), k = Math.hypot(seg[1][0] - seg[0][0], seg[1][1] - seg[0][1]) / Math.max(1, L); st.scope.timeout(() => { if (Session.alive(my)) Fx.burst(x, y, { n: 10, dist: 46, colors: ['#FFE45C', '#FFFFFF', '#9EE7FF'] }); }, 800 * k); }
+      await st.scope.anim(p, [{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: 800, easing: 'linear', fill: 'forwards' });
+      return tr;
+    },
+    lampSvg(on) { return '<svg viewBox="0 0 92 92" width="100%" height="100%" style="pointer-events:none;overflow:visible">' + (on ? '<circle cx="46" cy="46" r="44" fill="rgba(255,228,92,.55)"/>' : '') + '<circle cx="46" cy="46" r="36" fill="' + (on ? '#FFF6B8' : '#E9EEF6') + '" stroke="' + INK + '" stroke-width="4"/><polygon points="' + W2X.pts(W2X.star(46, 47, 25)) + '" fill="' + (on ? '#FFC93C' : '#B8C2D0') + '" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/></svg>'; },
+    light(st, e) { if (!e) return; e.innerHTML = this.lampSvg(true) + (e._dino ? '' : ''); if (e._dino) e.appendChild(e._dino); K.pop(st, e); Sfx.sparkle && Sfx.sparkle(); },
+    present(st) {
+      const q = st.q, g = this.geo();
+      st.mirNow = Object.assign({}, q.mir);
+      st.floor = layer(st, 3); st.beamL = layer(st, 6);
+      st.src = W2X.thing(st, 60, 60, 7, ''); st.src.style.pointerEvents = 'none';
+      st.src.innerHTML = '<svg viewBox="0 0 60 60" width="100%" height="100%" style="overflow:visible"><polygon points="30,2 54,18 54,42 30,58 6,42 6,18" fill="#BFE9FF" stroke="' + INK + '" stroke-width="4"/><polygon points="30,14 42,22 42,38 30,46 18,38 18,22" fill="#FFF6B8"/></svg>';
+      const t = thumb('ultraman', 34); Object.assign(t.style, { position: 'absolute', left: '-14px', top: '-22px' }); st.src.appendChild(t);
+      if (q.ask === 'where') st.lampEls = q.lamps.map((s, i) => { const e = W2X.thing(st, 92, 92, 7, ''); e.innerHTML = this.lampSvg(false); e.style.borderRadius = '50%'; K.reg(st, 'lamp' + i, e, {}); return e; });
+      else {
+        st.dino = W2X.thing(st, 92, 92, 7, ''); st.dino.style.pointerEvents = 'none'; st.dino.innerHTML = this.lampSvg(false);
+        const dn = thumb('kaiju2', 46); Object.assign(dn.style, { position: 'absolute', right: '-18px', bottom: '-14px' }); st.dino._dino = dn; st.dino.appendChild(dn);
+        st.cellEls = q.opts.map((key, i) => { const e = W2X.thing(st, 10, 10, 7, ''); e.style.borderRadius = '12px'; K.reg(st, 'm' + i, e, {}); return e; });
+      }
+      this.place(st);
+      K.pop(st, st.floor); (st.lampEls || st.cellEls).forEach((e, i) => K.pop(st, e, 80 + 40 * i));
+      const mirIc = '<rect x="6" y="6" width="88" height="88" rx="10" fill="#DFF0FF" stroke="#2B2118" stroke-width="4"/><path d="M18 82L82 18" stroke="#2B2118" stroke-width="14" stroke-linecap="round"/><path d="M18 82L82 18" stroke="#9EE7FF" stroke-width="8" stroke-linecap="round"/><path d="M4 50H44V8" fill="none" stroke="#FFC93C" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>';
+      if (q.ask === 'where') { K.task(st, [[ic(mirIc)], ['q']]); if (st.demo) Voice.say('光碰到镜子会拐弯！', { tag: 'prompt' }); K.say(st, '光会照到哪里？'); }
+      else if (q.ask === 'flip') { K.task(st, [[ic(mirIc)], [{ node: thumb('kaiju2', 50) }]]); W3X.say2(st, '转哪面镜子，', '光能照到小恐龙？'); }
+      else { const one = q.m === '/' ? 'M18 82L82 18' : 'M18 18L82 82'; K.task(st, [[ic('<rect x="6" y="6" width="88" height="88" rx="10" fill="#fff" stroke="#2E6FD8" stroke-width="5" stroke-dasharray="12 8"/><path d="' + one + '" stroke="#2B2118" stroke-width="14" stroke-linecap="round"/><path d="' + one + '" stroke="#9EE7FF" stroke-width="8" stroke-linecap="round"/>')], [{ node: thumb('kaiju2', 50) }]]); W3X.say2(st, '镜子放哪一格，', '光能照到小恐龙？'); }
+    },
+    onGesture(st, name, p) {
+      if (name !== 'tap' || st.picked) return false;
+      const id = p.id || '', a = /^lamp(\d)$/.exec(id), b = /^m(\d)$/.exec(id);
+      if (st.q.ask === 'where' && a) { st.picked = true; K.pop(st, st.lampEls[+a[1]]); Session.submit(st, +a[1]); return 'ok'; }
+      if (st.q.ask !== 'where' && b) { st.picked = true; K.pop(st, st.cellEls[+b[1]]); Session.submit(st, +b[1]); return 'ok'; }
+      return false;
+    },
+    next(st, strat) {
+      const q = st.q; if (st.picked) return null;
+      const n = q.ask === 'where' ? q.lamps.length : q.opts.length, i = strat === 'wrong' ? (q.answer + 1 + (st.gen % (n - 1))) % n : q.answer;
+      if (q.ask === 'where') return st.lampEls ? { g: 'tap', p: { id: 'lamp' + i } } : null;
+      return st.cellEls ? { g: 'tap', p: { id: 'm' + i } } : null;
+    },
+    wrongLine(q) { return q.ask === 'where' ? '光走不到这里' : q.ask === 'flip' ? '转这面不行哦' : '放这里不行哦'; },
+    async feedback(st, ans) { const e = st.q.ask === 'where' ? st.lampEls[ans] : st.cellEls[ans]; if (e) K.wiggle(st, e); W5U.say(st, this.wrongLine(st.q)); await st.scope.wait(T(550)); },
+    /* the mirrors after his change (or the right one) */
+    changed(st, i) { const q = st.q, key = q.opts[i]; if (q.ask === 'flip') return Object.assign({}, q.mir, { [key]: q.mir[key] === '/' ? '\\' : '/' }); return Object.assign({}, q.mir, { [key]: q.m }); },
+    /* turn a mirror over (an animation) or put the given one in a cell */
+    async change(st, i, col) {
+      const q = st.q, key = q.opts[i];
+      if (q.ask === 'flip') { const gg = st.mirG[key]; if (gg) await st.scope.anim(gg, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(90deg)' }], { duration: 320, easing: EASE.glide }); st.mirNow = this.changed(st, i); st.ghost = null; }
+      else { st.mirNow = Object.assign({}, q.mir); st.ghost = { key, m: q.m, col }; }
+      this.drawFloor(st);
+      if (q.ask === 'place') { const gg = st.mirG[key]; if (gg) st.scope.anim(gg, [{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 260 }); }
+    },
+    /* 1. his lamp (mirror, cell) blue - turned / placed: where the light would go then; 2. the real light walks, a flash at
+       its first mirror ("碰到镜子拐弯"); 3. the lamp lights, gold ("光照到这里") */
+    async explain(st, ans) {
+      const q = st.q, my = st;
+      if (q.ask === 'where') {
+        W5U.blue(st, st.lampEls[ans]);
+        await fbDone(st); if (!Session.alive(my)) return;
+        W5U.note(st, '碰到镜子拐弯');
+        await this.shine(st, q.mir, null); if (!Session.alive(my)) return;
+        await st.scope.wait(350); if (!Session.alive(my)) return;
+        const e = st.lampEls[q.answer]; this.light(st, e);
+        W5U.gold(st, e);
+        await W5U.sum(st, '光照到这里');
+        return;
+      }
+      W5U.blue(st, st.cellEls[ans]);
+      await fbDone(st); if (!Session.alive(my)) return;
+      await this.change(st, ans, '#9AD3FF'); if (!Session.alive(my)) return;
+      await this.shine(st, this.changed(st, ans), BLUE); if (!Session.alive(my)) return;
+      await st.scope.wait(400); if (!Session.alive(my)) return;
+      st.mirNow = Object.assign({}, q.mir); st.ghost = null; this.drawFloor(st); this.drawBeam(st, null);
+      await this.change(st, q.answer, null); if (!Session.alive(my)) return;
+      W5U.note(st, '碰到镜子拐弯');
+      await this.shine(st, this.changed(st, q.answer), null); if (!Session.alive(my)) return;
+      await st.scope.wait(300); if (!Session.alive(my)) return;
+      this.light(st, st.dino); W5U.gold(st, [st.cellEls[q.answer], st.dino]);
+      await W5U.sum(st, '光照到这里');
+    },
+    rightEls(st) { const q = st.q; return [q.ask === 'where' ? st.lampEls[q.answer] : st.cellEls[q.answer]]; },
+    async reveal(st) {
+      const q = st.q, my = st;
+      if (q.ask !== 'where') { await this.change(st, q.answer, null); if (!Session.alive(my)) return; }
+      await this.shine(st, q.ask === 'where' ? q.mir : this.changed(st, q.answer), null); if (!Session.alive(my)) return;
+      const e = q.ask === 'where' ? st.lampEls[q.answer] : st.dino; this.light(st, e);
+      W5U.gold(st, this.rightEls(st)); Sfx.reveal();
+      this.cheerAll(st);
+      st.summary = '光照到这里'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(800));
+    },
+    workEls(st) { return st.lampEls || st.cellEls || []; },
+    snap(st) { return { ask: st.q.ask }; },
+    lines() { return uniq([this.intro, '光碰到镜子会拐弯！', '光会照到哪里？', '转哪面镜子，', '镜子放哪一格，', '光能照到小恐龙？', '光走不到这里', '转这面不行哦', '放这里不行哦', '碰到镜子拐弯', '光照到这里'].concat(this.praise)); },
+  };
+
+  /* ================================================================ U6 看！ 变大变小 (F9 Fruit Party, S14 Who Is Taller?, S7 Shape
+     Beauty Contest). On the left a little block shape on squares; 赛罗's light turns it into "？". Five cards with bigger
+     shapes on the same squares: "变大以后是哪个？" (every square becomes 2 x 2).
+       L1 2-3 squares (a line, a little L) twice as big; wrong: only wider, only taller, one square missing, not bigger ·
+       L2 3-4 squares (L, S ... shapes that are not their own mirror image) + turned over then bigger · L3 4-5 squares in two
+       colours: the colours stay where they were (wrong: colours swapped) · L4 the other way: a big shape, "变小以后是哪个？"
+       (half as long, half as wide) · L5 the right one is bigger AND turned 90° ("转过来也一样"); wrong: turned over, only
+       wider, not bigger, another shape.
+     Wrong: his card blue ("只变宽了哦" ...); the right shape laid over his card, what differs ringed blue ("这里不一样"); the
+     little shape grows on the left, every square into four ("一格变四格"); the right card gold ("长宽都变大"). */
+  const P6 = W5U.poly;
+  const U6SH = {
+    2: [[[0, 0], [1, 0]]],
+    3: [[[0, 0], [1, 0], [2, 0]], [[0, 0], [0, 1], [1, 1]]],
+    4: [[[0, 0], [0, 1], [0, 2], [1, 2]], [[0, 0], [1, 0], [1, 1], [2, 1]], [[0, 0], [1, 0], [2, 0], [2, 1]], [[1, 0], [0, 1], [1, 1], [2, 1]]],
+    5: [[[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]], [[0, 0], [1, 0], [1, 1], [2, 1], [2, 2]], [[0, 0], [1, 0], [2, 0], [2, 1], [3, 1]], [[1, 0], [0, 1], [1, 1], [2, 1], [2, 2]]],
+  };
+  const UCOL6 = ['#FF6B5B', '#4FB3FF'];
+  /* a coloured shape: [[c, r, colour], ...] */
+  const nrm6 = s => { const x0 = Math.min(...s.map(a => a[0])), y0 = Math.min(...s.map(a => a[1])); return s.map(a => [a[0] - x0, a[1] - y0, a[2] || 0]).sort((a, b) => a[1] - b[1] || a[0] - b[0]); };
+  const key6 = s => nrm6(s).map(a => a.join(':')).join(',');
+  const scl = (s, sx, sy) => nrm6([].concat(...s.map(([c, r, k]) => { const o = []; for (let i = 0; i < sx; i++) for (let j = 0; j < sy; j++) o.push([c * sx + i, r * sy + j, k]); return o; })));
+  const half = s => nrm6(s.filter(([c, r]) => c % 2 === 0 && r % 2 === 0).map(([c, r, k]) => [c / 2, r / 2, k]));
+  const mirr = s => nrm6(s.map(([c, r, k]) => [-c, r, k]));
+  const rot90 = s => nrm6(s.map(([c, r, k]) => [-r, c, k]));
+  const chiral = cells => !P6.forms(cells).slice(0, 4).includes(P6.key(cells.map(([x, y]) => [-x, y])));
+  const ext6 = s => ({ w: Math.max(...s.map(a => a[0])) + 1, h: Math.max(...s.map(a => a[1])) + 1 });
+  W5R.U6 = {
+    kind0: 'scale5', verb: '看！', intro: '变大光线！', praise: ['大小看得真准！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      for (let t = 0; t < 400; t++) {
+        const n = d === 1 ? rng.int(2, 3) : d === 2 ? rng.int(3, 4) : d === 3 ? rng.int(4, 5) : d === 4 ? rng.int(3, 4) : 4;
+        let cells = rng.pick(U6SH[n]).map(a => a.slice());
+        const turns = rng.int(0, 3); for (let k = 0; k < turns; k++) cells = cells.map(([x, y]) => [-y, x]);
+        if (rng.chance(0.5) && d >= 2) cells = cells.map(([x, y]) => [-x, y]);
+        let base = nrm6(cells.map(([c, r]) => [c, r, 0]));
+        if ((d === 2 || d === 5) && !chiral(base.map(a => a.slice(0, 2)))) continue;
+        if (d === 3) { const k = base.map(() => rng.int(0, 1)); if (!k.includes(0) || !k.includes(1)) continue; base = base.map((a, i) => [a[0], a[1], k[i]]); }
+        const big = scl(base, 2, 2), E = ext6(big);
+        if (E.w > 6 || E.h > 6) continue;
+        const other = () => { const alt = U6SH[n].filter(sh => !P6.same(sh, base.map(a => a.slice(0, 2)))); return alt.length ? scl(nrm6(rng.pick(alt).map(([c, r]) => [c, r, 0])), 2, 2) : null; };
+        /* one square fewer (one whose loss keeps the shape in one piece) */
+        const less = () => { if (base.length <= 2) return null; const ok = base.map((_, j) => j).filter(j => P6.joined(base.filter((_, i) => i !== j).map(a => a.slice(0, 2)))); const j = rng.pick(ok); return nrm6(base.filter((_, i) => i !== j)); };
+        const miss = () => { const m = less(); return m ? scl(m, 2, 2) : null; };
+        let right, C = [];
+        if (d === 4) {
+          right = base;
+          C = [['big', big], ['narrow', scl(base, 1, 2)], ['short', scl(base, 2, 1)], ['mirror', chiral(base.map(a => a.slice(0, 2))) ? mirr(base) : null], ['miss', less()]];
+        } else if (d === 5) {
+          right = rot90(big);
+          C = [['mirror', rot90(mirr(big))], ['wide', rot90(scl(base, 2, 1))], ['same', rot90(base)], ['shape', other()], ['tall', rot90(scl(base, 1, 2))]];
+        } else {
+          right = big;
+          C = [['wide', scl(base, 2, 1)], ['tall', scl(base, 1, 2)], ['same', base], ['miss', miss()]];
+          if (d >= 2) C.push(['mirror', d === 2 ? mirr(big) : null], ['shape', other()]);
+          if (d === 3) C.push(['color', scl(base.map(a => [a[0], a[1], 1 - a[2]]), 2, 2)]);
+        }
+        /* four wrong ones, all different from the right one and from each other */
+        const seen = new Set([key6(right)]), wrong = [];
+        rng.shuffle(C.filter(c => c[1])).forEach(([why, s]) => { const k = key6(s); if (wrong.length < 4 && !seen.has(k)) { seen.add(k); wrong.push({ why, s }); } });
+        if (wrong.length < 4) continue;
+        if (d === 3 && !wrong.some(w => w.why === 'color')) { const cw = C.find(c => c[0] === 'color'); if (cw && !seen.has(key6(cw[1]))) wrong[3] = { why: 'color', s: cw[1] }; else continue; }
+        if ([right].concat(wrong.map(w => w.s)).some(s => ext6(s).w > 6 || ext6(s).h > 6)) continue;
+        const R = { why: 'right', s: right }, deck = W5U.deal(G, R, wrong, 'u6');
+        return { d, k: [d, key6(base), deck.map(x => x.why).join('.')], base: d === 4 ? big : base, shrink: d === 4, cards: deck, answer: deck.indexOf(R) };
+      }
+      const b = nrm6([[0, 0, 0], [1, 0, 0]]); const deck = [{ why: 'right', s: scl(b, 2, 2) }, { why: 'wide', s: scl(b, 2, 1) }, { why: 'tall', s: scl(b, 1, 2) }, { why: 'same', s: b }, { why: 'miss', s: scl(nrm6([[0, 0, 0]]), 2, 2) }];
+      return { d, k: [d, 'x'], base: b, cards: deck, answer: 0 };
+    },
+    audit(q) { return [{ n: q.cards.length, at: q.answer, right: q.cards.filter(c => c.why === 'right').length }]; },
+    geo() { const L = K.L(); return L ? { px: 512, py: 226, pw: 470, ph: 216, cs: 168, cy: 452, gap: 16, per: 5, u: 23 } : { px: 352, py: 330, pw: 600, ph: 220, cs: 190, cy: 560, gap: 18, per: 3, u: 24 }; },
+    decor(G) { W3X.decor2(G, this.chars); },
+    place(st) {
+      const g = this.geo(); if (!st.panel) return;
+      place(st.panel, Math.round(g.px - g.pw / 2), Math.round(g.py - g.ph / 2), g.pw, g.ph);
+      if (st.cards) W5U.lay(st.cards, Stage.W / 2, g.per === 5 ? g.cy : g.cy + 105, g.cs, g.cs, g.gap, 20, g.per);
+      this.drawPanel(st);
+    },
+    /* a shape as svg rects at u px a square, centred in w x h; opt.dash: outline only */
+    shapeSvg(s, u, w, h, opt) {
+      opt = opt || {}; const E = ext6(s), x0 = (w - E.w * u) / 2, y0 = (h - E.h * u) / 2;
+      let out = '';
+      if (opt.grid) for (let c = -1; c <= E.w; c++) for (let r = -1; r <= E.h; r++) out += '<rect x="' + R1(x0 + c * u) + '" y="' + R1(y0 + r * u) + '" width="' + u + '" height="' + u + '" fill="none" stroke="rgba(46,111,216,.16)" stroke-width="1.5"/>';
+      s.forEach(([c, r, k]) => { out += opt.dash ? '<rect x="' + R1(x0 + c * u + 2) + '" y="' + R1(y0 + r * u + 2) + '" width="' + (u - 4) + '" height="' + (u - 4) + '" rx="3" fill="rgba(255,201,60,.18)" stroke="#E0A400" stroke-width="3" stroke-dasharray="5 4"/>' : '<rect x="' + R1(x0 + c * u + 1) + '" y="' + R1(y0 + r * u + 1) + '" width="' + (u - 2) + '" height="' + (u - 2) + '" rx="3" fill="' + UCOL6[k || 0] + '" stroke="' + INK + '" stroke-width="2.5"/>'; });
+      return out;
+    },
+    /* the panel: the little shape, 赛罗's light, the "?" (or, after the explanation, the shape grown) */
+    drawPanel(st) {
+      const q = st.q, g = this.geo(), s = st.panel._s, u = g.u, w = g.pw, h = g.ph;
+      s.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      const bw = Math.min(170, w * 0.36);
+      let out = '<rect x="4" y="4" width="' + (w - 8) + '" height="' + (h - 8) + '" rx="22" fill="rgba(255,255,255,.82)" stroke="#7BA7D8" stroke-width="4"/>';
+      out += '<g transform="translate(18 18)">' + this.shapeSvg(q.base, u, bw, h - 36, { grid: true }) + '</g>';
+      const ax = 18 + bw + 12, bx = w - 18 - bw;
+      out += '<path d="M' + ax + ' ' + h / 2 + 'H' + (bx - 16) + '" stroke="#FFE45C" stroke-width="14" stroke-linecap="round"/><path d="M' + ax + ' ' + h / 2 + 'H' + (bx - 16) + '" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M' + (bx - 30) + ' ' + (h / 2 - 16) + 'L' + (bx - 10) + ' ' + h / 2 + 'L' + (bx - 30) + ' ' + (h / 2 + 16) + '" fill="none" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>';
+      out += '<rect x="' + bx + '" y="18" width="' + bw + '" height="' + (h - 36) + '" rx="14" fill="rgba(223,240,255,.9)" stroke="#2E6FD8" stroke-width="4" stroke-dasharray="10 7"/>';
+      if (st.grown) out += '<g transform="translate(' + bx + ' 18)">' + this.shapeSvg(q.shrink ? half(q.base) : scl(q.base, 2, 2), u, bw, h - 36, { grid: true }) + '</g>';
+      else out += '<text x="' + (bx + bw / 2) + '" y="' + (h / 2 + 22) + '" text-anchor="middle" font-size="64" font-weight="900" fill="#2E6FD8" font-family="system-ui,sans-serif">?</text>';
+      s.innerHTML = out;
+    },
+    present(st) {
+      const q = st.q, g = this.geo();
+      st.panel = W2X.thing(st, 10, 10, 5, ''); st.panel.style.pointerEvents = 'none';
+      st.panel._s = svg('svg', { width: '100%', height: '100%' }, st.panel); st.panel._s.style.overflow = 'visible';
+      const z = thumb('zero', 46); Object.assign(z.style, { position: 'absolute', left: '-14px', top: '-14px' }); st.panel.appendChild(z);
+      st.cards = q.cards.map((c, i) => { const e = W3X.card(st, 'card' + i, 6, 'card'); const sv = svg('svg', { viewBox: '0 0 ' + g.cs + ' ' + g.cs, width: '100%', height: '100%' }, e); sv.style.pointerEvents = 'none'; sv.innerHTML = this.shapeSvg(c.s, g.u, g.cs, g.cs, { grid: true }); e._sv = sv; return e; });
+      st.opts = q.cards.map((_, i) => i);
+      this.place(st);
+      K.pop(st, st.panel); st.cards.forEach((c, i) => K.pop(st, c, 120 + 60 * i));
+      K.task(st, [[ic('<rect x="8" y="58" width="16" height="16" fill="#FF6B5B" stroke="#2B2118" stroke-width="3"/><rect x="24" y="58" width="16" height="16" fill="#FF6B5B" stroke="#2B2118" stroke-width="3"/><path d="M44 50L60 50" stroke="#FFC93C" stroke-width="6"/><rect x="62" y="30" width="16" height="16" fill="#FF6B5B" stroke="#2B2118" stroke-width="2"/><rect x="78" y="30" width="16" height="16" fill="#FF6B5B" stroke="#2B2118" stroke-width="2"/><rect x="62" y="46" width="16" height="16" fill="#FF6B5B" stroke="#2B2118" stroke-width="2"/><rect x="78" y="46" width="16" height="16" fill="#FF6B5B" stroke="#2B2118" stroke-width="2"/>')], ['q']]);
+      K.say(st, q.shrink ? '变小以后是哪个？' : '变大以后是哪个？');
+    },
+    onGesture(st, name, p) { if (name !== 'tap' || st.picked) return false; const i = K.cardIndex(p.id); if (i < 0) return false; st.picked = true; K.pop(st, st.cards[i]); Session.submit(st, i); return 'ok'; },
+    next(st, strat) { const q = st.q; if (st.picked || !st.cards) return null; return { g: 'tap', p: { id: 'card' + (strat === 'wrong' ? (q.answer + 1 + (st.gen % 4)) % 5 : q.answer) } }; },
+    whyLine(q, why) { return { wide: '只变宽了哦', tall: '只变高了哦', same: '没有变大哦', miss: '少了一格哦', mirror: '翻过来了哦', color: '颜色换了哦', shape: '形状变了哦', big: '没有变小哦', narrow: '只变窄了哦', short: '只变矮了哦' }[why] || '形状变了哦'; },
+    async feedback(st, ans) { K.wiggle(st, st.cards[ans]); W5U.say(st, this.whyLine(st.q, st.q.cards[ans].why)); await st.scope.wait(T(550)); },
+    /* 1. his card blue; the right shape laid over it (dashed), what differs ringed blue ("这里不一样"); 2. the little shape grows
+       on the left, every square into four ("一格变四格"); 3. the right card gold */
+    async explain(st, ans) {
+      const q = st.q, my = st, g = this.geo(), mine = q.cards[ans].s, right = q.cards[q.answer].s;
+      W5U.blue(st, st.cards[ans]);
+      await fbDone(st); if (!Session.alive(my)) return;
+      const e = st.cards[ans]; e._sv.innerHTML = this.shapeSvg(mine, g.u, g.cs, g.cs, { grid: true }) + this.shapeSvg(right, g.u, g.cs, g.cs, { dash: true });
+      /* the squares that differ (both drawn from the card's middle): one blue ring round them */
+      const Em = ext6(mine), Er = ext6(right), om = [(g.cs - Em.w * g.u) / 2, (g.cs - Em.h * g.u) / 2], orr = [(g.cs - Er.w * g.u) / 2, (g.cs - Er.h * g.u) / 2];
+      const pm = new Map(mine.map(([c, r, k]) => [R1(om[0] + c * g.u) + ':' + R1(om[1] + r * g.u), k])), pr = new Map(right.map(([c, r, k]) => [R1(orr[0] + c * g.u) + ':' + R1(orr[1] + r * g.u), k]));
+      const diff = []; pm.forEach((k, p) => { if (pr.get(p) !== k) diff.push(p); }); pr.forEach((k, p) => { if (pm.get(p) !== k) diff.push(p); });
+      if (diff.length) { const b = box(e), xs = diff.map(p => +p.split(':')[0]), ys = diff.map(p => +p.split(':')[1]), sc = b.w / g.cs; K.ring(st, [{ x: b.x + Math.min(...xs) * sc, y: b.y + Math.min(...ys) * sc, w: (Math.max(...xs) - Math.min(...xs) + g.u) * sc, h: (Math.max(...ys) - Math.min(...ys) + g.u) * sc }], 4, BLUE); }
+      W5U.note(st, '这里不一样');
+      await st.scope.wait(1000); if (!Session.alive(my)) return;
+      st.grown = true; this.drawPanel(st); K.pop(st, st.panel);
+      W5U.note(st, q.shrink ? '四格变一格' : '一格变四格');
+      await st.scope.wait(950); if (!Session.alive(my)) return;
+      W5U.gold(st, st.cards[q.answer]);
+      await W5U.sum(st, q.shrink ? '长宽都变小' : q.d === 5 ? '转过来也一样' : '长宽都变大');
+    },
+    rightEls(st) { return [st.cards[st.q.answer]]; },
+    async reveal(st) {
+      const q = st.q;
+      st.grown = true; this.drawPanel(st);
+      W5U.gold(st, st.cards[q.answer]); Sfx.reveal();
+      this.cheerAll(st);
+      st.summary = q.shrink ? '长宽都变小' : q.d === 5 ? '转过来也一样' : '长宽都变大'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    workEls(st) { return st.cards || []; },
+    snap(st) { return { cards: st.q.cards.map(c => c.why) }; },
+    lines() { return uniq([this.intro, '变大以后是哪个？', '变小以后是哪个？', '这里不一样', '一格变四格', '四格变一格', '长宽都变大', '长宽都变小', '转过来也一样'].concat(this.praise, ['wide', 'tall', 'same', 'miss', 'mirror', 'color', 'shape', 'big', 'narrow', 'short'].map(w => this.whyLine(null, w)))); },
+  };
+
+  /* ================================================================ U7 数！ 光棒搭房子 (F4 Little Painter, S7 Shape Beauty Contest;
+     the assessment's question 5). 赛罗 builds little crystal houses from glowing sticks, all the same length, on a dot grid.
+     Tap a stick: it lights up with a little dot beside it - only to remember it was counted (tap again: it goes). Five
+     number cards: "用了几根光棒？"
+       L1 one shape: a triangle (3), a square (4), a zigzag (3-5) · L2 two shapes apart (<= 8) · L3 two shapes sharing a side:
+       the little house (square + roof = 6), two squares side by side (7) - the shared stick counts once · L4 three squares in
+       a row (10), a window of four (12), houses with more rooms (<= 12) · L5 the other way: "七根光棒，能搭哪一个？" - five
+       shapes, one uses exactly seven.
+     Wrong: his card blue ("不是八根"; L5 "这个用了八根"); the sticks light one by one, numbered; a stick two shapes share
+     shines longer ("这根两边都用"); the right card gold ("一共七根"). */
+  const H3 = Math.sqrt(3) / 2;
+  /* the shapes: lists of sticks [[x1, y1, x2, y2]] in stick units (y down), with which sticks two shapes share */
+  const sq = (x, y) => [[x, y, x + 1, y], [x + 1, y, x + 1, y + 1], [x + 1, y + 1, x, y + 1], [x, y + 1, x, y]];
+  const tri = (x, y) => [[x, y, x + 1, y], [x + 1, y, x + 0.5, y - H3], [x + 0.5, y - H3, x, y]];
+  const zig = (x, y, n) => Array.from({ length: n }, (_, i) => [x + i * 0.5, y + (i % 2 ? -H3 : 0), x + (i + 1) * 0.5, y + (i % 2 ? 0 : -H3)]);
+  const U7F = {
+    tri: () => tri(0, 1), sq: () => sq(0, 0), zig3: () => zig(0, 1, 3), zig4: () => zig(0, 1, 4), zig5: () => zig(0, 1, 5),
+    house: () => sq(0, 1).concat(tri(0, 1)), sq2: () => sq(0, 0).concat(sq(1, 0)), tri2: () => tri(0, 1).concat([[0, 1, 1, 1], [1, 1, 0.5, 1 + H3], [0.5, 1 + H3, 0, 1]]),
+    side: () => sq(0, 0).concat([[1, 0, 1, 1], [1, 0, 1 + H3, 0.5], [1 + H3, 0.5, 1, 1]]), sq3: () => sq(0, 0).concat(sq(1, 0), sq(2, 0)),
+    win: () => sq(0, 0).concat(sq(1, 0), sq(0, 1), sq(1, 1)), tower: () => sq(0, 1).concat(sq(0, 2), tri(0, 1)), house2: () => sq(0, 1).concat(sq(1, 1), tri(0, 1)),
+    house3: () => sq(0, 1).concat(sq(1, 1), tri(0, 1), tri(1, 1)), stack3: () => sq(0, 0).concat(sq(1, 0), sq(0, 1)),
+  };
+  const PAIRS = [['tri', 'sq'], ['sq', 'sq'], ['tri', 'tri'], ['sq', 'zig3'], ['tri', 'zig4'], ['tri', 'zig3'], ['sq', 'zig4']];
+  const kS = s => s.slice().map(v => R1(v * 100) / 100);
+  const skey = s => { const a = kS(s), p = [a[0] + ',' + a[1], a[2] + ',' + a[3]].sort(); return p.join('|'); };
+  /* a figure: one or two shapes (two: the second moved right of the first); the sticks, without doubles, and which are shared */
+  const build7 = names => {
+    const all = []; let dx = 0;
+    names.forEach(nm => { const S = U7F[nm](), xs = S.flatMap(s => [s[0], s[2]]); const x0 = Math.min(...xs); S.forEach(s => all.push([s[0] - x0 + dx, s[1], s[2] - x0 + dx, s[3]])); dx += Math.max(...xs) - x0 + 0.9; });
+    const cnt = new Map(); all.forEach(s => { const k = skey(s); cnt.set(k, (cnt.get(k) || 0) + 1); });
+    const seen = new Set(), S0 = [];
+    all.forEach(s => { const k = skey(s); if (seen.has(k)) return; seen.add(k); S0.push({ s, sh: cnt.get(k) > 1 }); });
+    /* pieces that touch belong together; each piece counted round its middle, the shared sticks last */
+    const pt = (x, y) => R1(x * 100) / 100 + ',' + R1(y * 100) / 100, comp = S0.map((_, i) => i);
+    const find = i => (comp[i] === i ? i : (comp[i] = find(comp[i])));
+    S0.forEach((a, i) => S0.forEach((b, j) => { if (j > i && [pt(a.s[0], a.s[1]), pt(a.s[2], a.s[3])].some(p => p === pt(b.s[0], b.s[1]) || p === pt(b.s[2], b.s[3]))) comp[find(i)] = find(j); }));
+    const groups = {}; S0.forEach((a, i) => { (groups[find(i)] = groups[find(i)] || []).push(a); });
+    const ordered = [];
+    Object.values(groups).sort((A, B) => Math.min(...A.map(a => Math.min(a.s[0], a.s[2]))) - Math.min(...B.map(a => Math.min(a.s[0], a.s[2])))).forEach(G => {
+      const cx = G.reduce((t, a) => t + a.s[0] + a.s[2], 0) / (2 * G.length), cy = G.reduce((t, a) => t + a.s[1] + a.s[3], 0) / (2 * G.length);
+      const ang = a => { const x = (a.s[0] + a.s[2]) / 2 - cx, y = (a.s[1] + a.s[3]) / 2 - cy; return (Math.atan2(y, x) + Math.PI * 2.75) % (Math.PI * 2); };
+      G.filter(a => !a.sh).sort((a, b) => ang(a) - ang(b)).concat(G.filter(a => a.sh)).forEach(a => ordered.push(a));
+    });
+    return { sticks: ordered.map(a => a.s), shared: ordered.map((a, i) => (a.sh ? i : -1)).filter(i => i >= 0) };
+  };
+  const U7L = { 1: [['tri'], ['sq'], ['zig3'], ['zig4'], ['zig5']], 3: [['house'], ['sq2'], ['tri2'], ['side']], 4: [['sq3'], ['win'], ['tower'], ['house2'], ['house3'], ['stack3']] };
+  W5R.U7 = {
+    kind0: 'sticks5', verb: '数！', intro: '光棒搭房子！', praise: ['一根不多不少！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      if (d === 5) {
+        /* five shapes, one uses exactly seven sticks */
+        for (let t = 0; t < 200; t++) {
+          const seven = rng.pick([['sq2'], ['tri', 'sq'], ['sq', 'zig3'], ['tri', 'zig4']]);
+          const pool = [['house'], ['sq', 'sq'], ['tri2'], ['tower'], ['side'], ['tri', 'tri'], ['sq3'], ['house2'], ['stack3'], ['zig5'], ['sq'], ['tri', 'zig3']].filter(f => build7(f).sticks.length !== 7);
+          const others = rng.shuffle(pool).slice(0, 4);
+          const counts = others.map(f => build7(f).sticks.length);
+          if (new Set(counts).size < 3) continue;
+          const deck = W5U.deal(G, seven, others, 'u7c');
+          return { d, k: [d, deck.map(f => f.join('+')).join('.')], figs: deck, n: 7, ask: 'which', answer: deck.indexOf(seven) };
+        }
+      }
+      const names = d === 2 ? rng.pick(PAIRS) : rng.pick(U7L[d]);
+      const f = build7(names), n = f.sticks.length;
+      return { d, k: [d, names.join('+'), rng.int(0, 2)], names, n, ask: 'count', answer: n, opts: W5U.nums(G, n, 1, 14) };
+    },
+    audit(q) {
+      if (q.ask === 'which') return [{ n: q.figs.length, at: q.answer, right: q.figs.filter(f => build7(f).sticks.length === q.n).length }];
+      return [{ n: q.opts.length, at: q.opts.indexOf(q.answer), right: q.opts.filter(v => v === q.answer).length }];
+    },
+    geo(q) {
+      const L = K.L();
+      if (q.ask === 'which') return L ? { cs: 168, cy: 392, gap: 16, per: 5 } : { cs: 196, cy: 470, gap: 18, per: 3 };
+      return L ? { fx: 512, fy: 316, fw: 600, fh: 330, umax: 120, cy: 612, cs: 116, gap: 18 } : { fx: 352, fy: 470, fw: 620, fh: 440, umax: 130, cy: 830, cs: 120, gap: 12 };
+    },
+    decor(G) { W3X.decor2(G, this.chars); },
+    /* a figure's sticks in px: unit u, centred on (cx, cy) */
+    layout7(f, cx, cy, w, h, umax) {
+      const xs = f.sticks.flatMap(s => [s[0], s[2]]), ys = f.sticks.flatMap(s => [s[1], s[3]]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const u = Math.min(umax, (w - 30) / Math.max(1, x1 - x0), (h - 30) / Math.max(1, y1 - y0));
+      return f.sticks.map(s => [cx + (s[0] - (x0 + x1) / 2) * u, cy + (s[1] - (y0 + y1) / 2) * u, cx + (s[2] - (x0 + x1) / 2) * u, cy + (s[3] - (y0 + y1) / 2) * u]).concat([u]);
+    },
+    stickSvg(s, P, opt) {
+      opt = opt || {};
+      const L = 'x1="' + R1(P[0]) + '" y1="' + R1(P[1]) + '" x2="' + R1(P[2]) + '" y2="' + R1(P[3]) + '"';
+      let out = '<line ' + L + ' stroke="' + (opt.glow || 'rgba(158,231,255,.55)') + '" stroke-width="' + (opt.w || 18) + '" stroke-linecap="round"/><line ' + L + ' stroke="' + INK + '" stroke-width="' + (opt.w ? opt.w * 0.5 : 9) + '" stroke-linecap="round"/><line ' + L + ' stroke="' + (opt.col || '#BFF0FF') + '" stroke-width="' + (opt.w ? opt.w * 0.28 : 5) + '" stroke-linecap="round"/>';
+      return out;
+    },
+    dotsSvg(P) { const D = new Set(); P.forEach(p => { D.add(R1(p[0]) + ',' + R1(p[1])); D.add(R1(p[2]) + ',' + R1(p[3])); }); let o = ''; D.forEach(k => { const [x, y] = k.split(','); o += '<circle cx="' + x + '" cy="' + y + '" r="7" fill="#FFF6B8" stroke="' + INK + '" stroke-width="2.5"/>'; }); return o; },
+    place(st) {
+      const q = st.q, g = this.geo(q);
+      if (q.ask === 'which') { if (st.cards) W5U.lay(st.cards, Stage.W / 2, g.cy, g.cs, g.cs, g.gap, 24, g.per); return; }
+      if (!st.fig) return;
+      relayer(st.figL);
+      const P = this.layout7(st.fig, g.fx, g.fy, g.fw, g.fh, g.umax); st.u = P.pop(); st.P = P;
+      this.drawFig(st);
+      if (st.cards) W5U.lay(st.cards, Stage.W / 2, g.cy, g.cs, g.cs, g.gap);
+    },
+    cardSpot(st) { const g = this.geo(st.q); return { cx: Stage.W / 2, cy: g.cy, size: g.cs, gap: g.gap }; },
+    /* the figure: a faint dot grid, the sticks (marked ones lit, with a little dot), the end dots; the tap bands */
+    drawFig(st) {
+      const s = st.figL._s, P = st.P, g = this.geo(st.q), u = st.u;
+      while (s.firstChild) s.removeChild(s.firstChild);
+      let out = '<rect x="' + (g.fx - g.fw / 2) + '" y="' + (g.fy - g.fh / 2) + '" width="' + g.fw + '" height="' + g.fh + '" rx="22" fill="rgba(240,248,255,.78)" stroke="#7BA7D8" stroke-width="4"/>';
+      for (let x = g.fx - g.fw / 2 + 18; x < g.fx + g.fw / 2 - 10; x += u / 2) for (let y = g.fy - g.fh / 2 + 18; y < g.fy + g.fh / 2 - 10; y += u / 2) out += '<circle cx="' + R1(x) + '" cy="' + R1(y) + '" r="2.4" fill="rgba(46,111,216,.25)"/>';
+      P.forEach((p, i) => { const lit = (st.marks || []).includes(i), hot = st.hot === i; out += this.stickSvg(null, p, hot ? { glow: 'rgba(255,201,60,.7)', col: '#FFC93C', w: 24 } : lit ? { glow: 'rgba(255,236,140,.7)', col: '#FFE45C' } : {}); if (lit) { const mx = (p[0] + p[2]) / 2, my = (p[1] + p[3]) / 2, nx = -(p[3] - p[1]), ny = p[2] - p[0], L = Math.hypot(nx, ny) || 1; out += '<circle cx="' + R1(mx + nx / L * 18) + '" cy="' + R1(my + ny / L * 18) + '" r="7" fill="#FF6B5B" stroke="' + INK + '" stroke-width="2"/>'; } });
+      out += this.dotsSvg(P);
+      s.innerHTML = out;
+      /* tap bands (80 wide): a stick lit as a counting mark (not the answer) */
+      const bands = svg('g', {}, s);
+      st.bands = P.map((p, i) => { const b = svg('line', { x1: R1(p[0]), y1: R1(p[1]), x2: R1(p[2]), y2: R1(p[3]), stroke: 'rgba(0,0,0,0)', 'stroke-width': Math.min(84, u * 0.8), 'stroke-linecap': 'butt' }, bands); b.style.pointerEvents = 'visibleStroke'; b._box = () => W5U.rect(b); Input.bind(b, { id: 'st' + i }); (st.bound || (st.bound = [])).push(b); return b; });
+    },
+    /* a card of L5: a little figure */
+    figCard(st, names, i) {
+      const g = this.geo(st.q), e = W3X.card(st, 'card' + i, 6, 'card'), f = build7(names), P = this.layout7(f, g.cs / 2, g.cs / 2, g.cs - 8, g.cs - 8, 60); P.pop();
+      const sv = svg('svg', { viewBox: '0 0 ' + g.cs + ' ' + g.cs, width: '100%', height: '100%' }, e); sv.style.pointerEvents = 'none';
+      sv.innerHTML = P.map(p => this.stickSvg(null, p, { w: 11 })).join('') + this.dotsSvg(P).replace(/r="7"/g, 'r="4.5"');
+      e._f = f; e._P = P; e._sv = sv; return e;
+    },
+    present(st) {
+      const q = st.q, g = this.geo(q);
+      if (q.ask === 'which') {
+        st.cards = q.figs.map((f, i) => this.figCard(st, f, i)); st.opts = q.figs.map((_, i) => i);
+        this.place(st); st.cards.forEach((c, i) => K.pop(st, c, 60 * i));
+        K.task(st, [[ic('<path d="M14 80L86 20" stroke="#2B2118" stroke-width="12" stroke-linecap="round"/><path d="M14 80L86 20" stroke="#BFF0FF" stroke-width="6" stroke-linecap="round"/>')], [{ qty: q.n }], ['q']]);
+        W3X.say2(st, CN[q.n] + '根光棒，', '能搭哪一个？');
+        return;
+      }
+      st.marks = []; st.fig = build7(q.names);
+      st.figL = layer(st, 5); st.figL.style.pointerEvents = 'none';
+      st.cards = numRow(st, q.opts, g.cs); st.opts = q.opts.slice();
+      this.place(st);
+      K.pop(st, st.figL);
+      K.task(st, [[ic('<path d="M14 80L86 20" stroke="#2B2118" stroke-width="12" stroke-linecap="round"/><path d="M14 80L86 20" stroke="#BFF0FF" stroke-width="6" stroke-linecap="round"/>')], ['q']]);
+      K.say(st, '用了几根光棒？');
+    },
+    onGesture(st, name, p) {
+      if (name !== 'tap' || st.picked) return false;
+      const m = /^st(\d+)$/.exec(p.id || '');
+      if (m) { const i = +m[1], on = !st.marks.includes(i); st.marks = on ? st.marks.concat(i) : st.marks.filter(x => x !== i); this.drawFig(st); if (on) Sfx.place(); else Sfx.back(); return 'free'; }
+      const i = K.cardIndex(p.id); if (i < 0) return false;
+      st.picked = true; K.pop(st, st.cards[i]); Session.submit(st, st.opts[i]); return 'ok';
+    },
+    next(st, strat) { const q = st.q; if (st.picked || !st.cards) return null; const i = strat === 'wrong' ? st.opts.findIndex(v => v !== q.answer) : st.opts.indexOf(q.answer); return { g: 'tap', p: { id: 'card' + i } }; },
+    wrongLine(q, v) { return q.ask === 'which' ? '这个用了' + CNQ(build7(q.figs[v]).sticks.length) + '根' : '不是' + CNQ(v) + '根'; },
+    async feedback(st, ans) { const c = W5U.cardOf(st, ans); if (c) K.wiggle(st, c); W5U.say(st, this.wrongLine(st.q, ans)); await st.scope.wait(T(550)); },
+    /* number the sticks of points P (stage px) one after another (an animation); the shared ones shine longer */
+    countSticks(st, P, shared, toStage) {
+      const dt = P.length > 8 ? 120 : 160;
+      P.forEach((p, j) => { const a = toStage(p[0], p[1]), b = toStage(p[2], p[3]); badgeAt(st, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, j + 1, 34, dt * j); st.scope.timeout(() => Sfx.count(Math.min(20, j + 1)), dt * j); });
+      return T(dt * P.length + 200);
+    },
+    /* 1. his card blue (the feedback line said once); 2. the sticks counted, the shared one shines ("这根两边都用"); 3. gold */
+    async explain(st, ans) {
+      const q = st.q, my = st;
+      W5U.blue(st, W5U.cardOf(st, ans));
+      await fbDone(st); if (!Session.alive(my)) return;
+      if (q.ask === 'which') {
+        const e = st.cards[q.answer], b = box(e), sc = b.w / this.geo(q).cs;
+        const ms = this.countSticks(st, e._P, e._f.shared, (x, y) => [b.x + x * sc, b.y + y * sc]);
+        W5U.note(st, '一根一根数');
+        await st.scope.wait(Math.max(1000, ms)); if (!Session.alive(my)) return;
+        W5U.gold(st, e);
+        await W5U.sum(st, W5U.all(q.n, '根'));
+        return;
+      }
+      const sh = st.fig.shared;
+      if (sh.length) { st.hot = sh[0]; this.drawFig(st); }
+      const ms = this.countSticks(st, st.P, sh, (x, y) => [x, y]);
+      W5U.note(st, sh.length ? '这根两边都用' : '一根一根数');
+      await st.scope.wait(Math.max(1100, ms)); if (!Session.alive(my)) return;
+      W5U.gold(st, W5U.cardOf(st, q.answer));
+      await W5U.sum(st, W5U.all(q.answer, '根'));
+    },
+    rightEls(st) { return [W5U.cardOf(st, st.q.answer)]; },
+    async reveal(st) {
+      const q = st.q;
+      W5U.gold(st, W5U.cardOf(st, q.answer)); Sfx.reveal();
+      this.cheerAll(st);
+      st.summary = W5U.all(q.ask === 'which' ? q.n : q.answer, '根'); W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    workEls(st) { return st.cards || []; },
+    snap(st) { return { n: st.q.n, marks: (st.marks || []).slice() }; },
+    lines() {
+      const out = [this.intro, '用了几根光棒？', '能搭哪一个？', '这根两边都用', '一根一根数'].concat(this.praise);
+      for (let v = 1; v <= 14; v++) out.push('不是' + CNQ(v) + '根');
+      for (let v = 3; v <= 12; v++) out.push(W5U.all(v, '根'), '这个用了' + CNQ(v) + '根');
+      out.push('七根光棒，');
+      return uniq(out);
+    },
+  };
+
+  /* ================================================================ U8 藏！ 楼后面几只小怪兽 (reasoning; F13 Field Trip, F18 Surprise
+     for Mom). A row of 2-4 crystal buildings (opaque); little block monsters (friends playing hide and seek) are behind them:
+     a head shows here, a tail there, a head over a roof. "楼后面藏着几只？" - five number cards.
+       L1 2-3 of them, each shows one part · L2 one is wider than its building: its head on one side, its tail on the other,
+       the same colour - one · L3 a red head on the left and a blue tail on the right: two · L4 the same colour but a big head
+       and a small tail: two; or a head and a tail two buildings apart: two · L5 heads over the roofs, tails beside, 4
+       buildings, 3-5 of them: colour, size and place together.
+     Wrong: his card blue ("不是四只"); the buildings turn to glass, every monster is ringed once ("头和尾巴是一只" /
+     "颜色不一样，是两只" / "大小不一样，是两只" / "离得太远，是两只"); the right card gold ("一共三只"). */
+  const MCOL = { red: '#FF6B5B', blue: '#4FB3FF', green: '#5CC46E', purple: '#B57BFF', orange: '#FF9F43' };
+  /* a block monster (friendly): a big square head with round eyes and two little round horns, a lower body, a tail.
+     Lying: head at the front end (f = 1 faces right). Standing: head on top, the tail out to one side at the bottom.
+     H: the head's size. Returns svg in stage px for the monster whose head's centre is at (hx, hy). */
+  const monsterSvg = (m, hx, hy) => {
+    const H = m.H, c = MCOL[m.col], k = 'stroke="' + INK + '" stroke-width="3.5" stroke-linejoin="round"', f = m.f;
+    let s = '';
+    if (m.pose === 'lie') {
+      const bw = m.L, by = hy - H * 0.05, bx0 = f > 0 ? hx - bw : hx, tx = f > 0 ? bx0 : bx0 + bw;
+      s += '<path d="M' + R1(tx) + ' ' + R1(by + H * 0.04) + 'L' + R1(tx - f * H * 0.9) + ' ' + R1(by + H * 0.3) + 'L' + R1(tx) + ' ' + R1(by + H * 0.48) + 'Z" fill="' + c + '" ' + k + '/>';
+      s += '<rect x="' + R1(bx0) + '" y="' + R1(by) + '" width="' + R1(bw) + '" height="' + R1(H * 0.55) + '" rx="' + R1(H * 0.18) + '" fill="' + c + '" ' + k + '/>';
+    } else {
+      const top = hy + H * 0.35, bh = m.L, tx = hx + (f > 0 ? -1 : 1) * H * 0.3;
+      if (!m.noTail) s += '<path d="M' + R1(tx) + ' ' + R1(top + bh - H * 0.5) + 'L' + R1(tx - f * H * 0.95) + ' ' + R1(top + bh - H * 0.24) + 'L' + R1(tx) + ' ' + R1(top + bh - H * 0.06) + 'Z" fill="' + c + '" ' + k + '/>';
+      s += '<rect x="' + R1(hx - H * 0.36) + '" y="' + R1(top) + '" width="' + R1(H * 0.72) + '" height="' + R1(bh) + '" rx="' + R1(H * 0.18) + '" fill="' + c + '" ' + k + '/>';
+    }
+    s += '<circle cx="' + R1(hx - H * 0.28) + '" cy="' + R1(hy - H * 0.5) + '" r="' + R1(H * 0.13) + '" fill="#FFE45C" ' + k + '/><circle cx="' + R1(hx + H * 0.28) + '" cy="' + R1(hy - H * 0.5) + '" r="' + R1(H * 0.13) + '" fill="#FFE45C" ' + k + '/>';
+    s += '<rect x="' + R1(hx - H / 2) + '" y="' + R1(hy - H / 2) + '" width="' + H + '" height="' + H + '" rx="' + R1(H * 0.22) + '" fill="' + c + '" ' + k + '/>';
+    s += '<circle cx="' + R1(hx - H * 0.18 + f * H * 0.06) + '" cy="' + R1(hy - H * 0.06) + '" r="' + R1(H * 0.13) + '" fill="#fff" ' + k + '/><circle cx="' + R1(hx + H * 0.18 + f * H * 0.06) + '" cy="' + R1(hy - H * 0.06) + '" r="' + R1(H * 0.13) + '" fill="#fff" ' + k + '/>';
+    s += '<circle cx="' + R1(hx - H * 0.18 + f * H * 0.09) + '" cy="' + R1(hy - H * 0.04) + '" r="' + R1(H * 0.055) + '" fill="' + INK + '"/><circle cx="' + R1(hx + H * 0.18 + f * H * 0.09) + '" cy="' + R1(hy - H * 0.04) + '" r="' + R1(H * 0.055) + '" fill="' + INK + '"/>';
+    s += '<path d="M' + R1(hx - H * 0.14) + ' ' + R1(hy + H * 0.2) + 'Q' + R1(hx) + ' ' + R1(hy + H * 0.3) + ' ' + R1(hx + H * 0.14) + ' ' + R1(hy + H * 0.2) + '" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/>';
+    return s;
+  };
+  /* a hiding place: a monster (lie: head out on side `side` of building b, or the whole width with its tail out on the other
+     side; stand: head over the roof, tail out at the side). The layout turns these into positions. */
+  const U8COLS = Object.keys(MCOL);
+  W5R.U8 = {
+    kind0: 'peek5', verb: '藏！', intro: '小怪兽捉迷藏！', praise: ['数得真清楚！'],
+    gen(G, o) {
+      const d = lvOf(o), rng = o.rng;
+      for (let t = 0; t < 300; t++) {
+        const nb = d <= 1 ? rng.int(2, 3) : d <= 3 ? 3 : d === 4 ? rng.pick([3, 4]) : 4;
+        const slots = []; for (let b = 0; b < nb; b++) { slots.push(b + 'L', b + 'R'); if (d === 5) slots.push(b + 'T'); }
+        const free = new Set(slots), M = [], cols = rng.shuffle(U8COLS);
+        let ci = 0; const col = () => cols[ci++ % cols.length], size = () => rng.pick(['s', 'b']);
+        /* a side slot also closes the facing side of the next building (one thing per gap: nothing overlaps) */
+        const take = (...ks) => { if (!ks.every(k => free.has(k))) return false; ks.forEach(k => { free.delete(k); const b = +k[0]; if (k[1] === 'R') free.delete((b + 1) + 'L'); if (k[1] === 'L') free.delete((b - 1) + 'R'); }); return true; };
+        let trap = null;
+        const single = () => { const opts = Array.from(free).filter(k => k[1] !== 'T'); if (!opts.length) return false; const k = rng.pick(opts); take(k); M.push({ kind: 'one', b: +k[0], side: k[1], part: rng.pick(['head', 'tail']), col: col(), sz: size() }); return true; };
+        const wide = () => { const b = rng.int(0, nb - 1); if (!take(b + 'L', b + 'R')) return false; M.push({ kind: 'wide', b, f: rng.pick([1, -1]), col: col(), sz: size() }); return true; };
+        if (d === 1) { const n = rng.int(2, 3); for (let i = 0; i < n; i++) single(); }
+        else if (d === 2) { if (!wide()) continue; trap = 'wide'; const n = rng.int(1, 2); for (let i = 0; i < n; i++) single(); }
+        else if (d === 3) {
+          /* a head on the left and a tail on the right of one building, different colours: two */
+          const b = rng.int(0, nb - 1); if (!take(b + 'L', b + 'R')) continue;
+          const c1 = col(), c2 = col(), z = size(), f = rng.pick([1, -1]);
+          M.push({ kind: 'one', b, side: f > 0 ? 'R' : 'L', part: 'head', col: c1, sz: z }, { kind: 'one', b, side: f > 0 ? 'L' : 'R', part: 'tail', col: c2, sz: z }); trap = 'color';
+          if (rng.chance(0.5)) wide(); single();
+        } else if (d === 4) {
+          if (rng.chance(0.5)) {
+            const b = rng.int(0, nb - 1); if (!take(b + 'L', b + 'R')) continue;
+            const c1 = col(), f = rng.pick([1, -1]);
+            M.push({ kind: 'one', b, side: f > 0 ? 'R' : 'L', part: 'head', col: c1, sz: 'b' }, { kind: 'one', b, side: f > 0 ? 'L' : 'R', part: 'tail', col: c1, sz: 's' }); trap = 'size';
+          } else {
+            /* a head at the right of building b, a tail at the left of building b + 2 ... no: a head and a tail two buildings apart */
+            if (nb < 3) continue;
+            const b = rng.int(0, nb - 3), c1 = col(), z = size();
+            if (!take(b + 'R', (b + 2) + 'L')) continue;
+            M.push({ kind: 'one', b, side: 'R', part: 'tail', col: c1, sz: z }, { kind: 'one', b: b + 2, side: 'L', part: 'head', col: c1, sz: z }); trap = 'far';
+          }
+          wide() || single(); if (rng.chance(0.5)) single();
+        } else {
+          /* standing ones: a head over the roof, its tail out beside (one), or a head over the roof and somebody else's tail */
+          const b = rng.int(0, nb - 1), f = rng.pick([1, -1]), side = f > 0 ? 'L' : 'R';
+          if (!take(b + 'T', b + side)) continue;
+          M.push({ kind: 'stand', b, f, col: col(), sz: 'b' }); trap = 'stand';
+          const n = rng.int(1, 3);
+          for (let i = 0; i < n; i++) { if (rng.chance(0.4)) { const t2 = Array.from(free).filter(k => k[1] === 'T'); if (t2.length) { const k = rng.pick(t2); take(k); M.push({ kind: 'roof', b: +k[0], col: col(), sz: size() }); continue; } } if (!(rng.chance(0.4) && wide())) single(); }
+        }
+        const n = M.length;
+        if (n < (d === 5 ? 3 : 2) || n > (d === 5 ? 5 : 4)) continue;
+        const bw = Array.from({ length: nb }, () => rng.int(0, 2));
+        return { d, k: [d, nb, M.map(m => m.kind + m.b + (m.side || '') + (m.part || '') + m.col[0] + m.sz).join('.'), bw.join('')], nb, bw, M, trap, answer: n, opts: W5U.nums(G, n, 1, 9) };
+      }
+      return { d, k: [d, 'x'], nb: 2, bw: [1, 1], M: [{ kind: 'one', b: 0, side: 'L', part: 'head', col: 'red', sz: 'b' }, { kind: 'one', b: 1, side: 'R', part: 'tail', col: 'blue', sz: 's' }], trap: null, answer: 2, opts: [1, 2, 3, 4, 5] };
+    },
+    audit(q) { return [{ n: q.opts.length, at: q.opts.indexOf(q.answer), right: q.opts.filter(v => v === q.answer).length }]; },
+    geo(q) {
+      const L = K.L();
+      return L ? { x0: 120, x1: 904, ground: 500, top: 190, cy: 612, cs: 108, gap: 14 } : { x0: 40, x1: 664, ground: 700, top: 300, cy: 830, cs: 120, gap: 12 };
+    },
+    /* the friends: 奥特曼 in one corner, 小怪兽 in the other, 小恐龙 beside 奥特曼 */
+    decor(G) {
+      const L = K.L(), A = id => G.actors[id];
+      if (A('ultraman')) showActor(A('ultraman'), L ? 86 : 72, L ? 698 : 1016, L ? 176 : 140);
+      if (A('kaiju1')) showActor(A('kaiju1'), L ? 944 : 634, L ? 698 : 1016, L ? 150 : 128);
+      if (A('kaiju2')) showActor(A('kaiju2'), L ? 170 : 168, L ? 698 : 1016, L ? 112 : 104);
+    },
+    /* the buildings (x, w, h) and every monster's head position, from the question (the same picture after a turn) */
+    scene(q) {
+      const g = this.geo(q), nb = q.nb, L5 = K.L(), span = g.x1 - g.x0, slot = span / nb;
+      const B = Array.from({ length: nb }, (_, i) => { const w = Math.round(slot * (0.46 + 0.05 * q.bw[i])), cx = g.x0 + (i + 0.5) * slot, h = Math.round((g.ground - g.top) * (0.74 + 0.09 * ((i + q.bw[i]) % 3))); return { x: Math.round(cx - w / 2), w, h, y: g.ground - h }; });
+      const sc = nb >= 4 ? 0.82 : 1, HS = { s: Math.round((L5 ? 50 : 44) * sc), b: Math.round((L5 ? 70 : 60) * sc) };
+      const P = q.M.map(m => {
+        const b = B[m.b], H = HS[m.sz], hy = g.ground - H * 0.56;
+        if (m.kind === 'wide') return Object.assign({}, m, { pose: 'lie', H, L: b.w + H * 0.42 + 2, hx: m.f > 0 ? b.x + b.w + H * 0.42 : b.x - H * 0.42, hy });
+        const roofY = x => b.y - 34 * Math.max(0, 1 - Math.abs(x - (b.x + b.w / 2)) / (b.w / 2 + 6)), over = hx => Math.min(roofY(hx - H / 2), roofY(hx + H / 2), roofY(Math.min(Math.max(hx, b.x), b.x + b.w))) - H * 0.22;
+        if (m.kind === 'stand') { const f = m.f, hx = f > 0 ? b.x + H * 0.55 : b.x + b.w - H * 0.55, hyR = over(hx); return Object.assign({}, m, { pose: 'stand', f, H, L: g.ground - (hyR + H * 0.35) - 4, hx, hy: hyR }); }
+        if (m.kind === 'roof') { const hx = b.x + b.w / 2 + (m.b % 2 ? -1 : 1) * b.w * 0.22; return Object.assign({}, m, { pose: 'stand', f: 1, H, L: H * 0.9, hx, hy: over(hx), noTail: true }); }
+        const out = m.side === 'R' ? 1 : -1;
+        if (m.part === 'head') { const L = Math.max(H * 0.5, Math.min(b.w - H * 0.3 - 8, H * 1.5)); return Object.assign({}, m, { pose: 'lie', f: out, H, L, hx: out > 0 ? b.x + b.w + H * 0.4 : b.x - H * 0.4, hy }); }
+        const L = Math.max(H * 0.6, Math.min(b.w - H * 0.6, H * 1.4));
+        return Object.assign({}, m, { pose: 'lie', f: -out, H, L, hx: out > 0 ? b.x + b.w + 2 - L : b.x - 2 + L, hy });
+      });
+      return { B, P };
+    },
+    decorScene(st) {
+      const q = st.q, g = this.geo(q), S = this.scene(q), sb = st.back._s, sf = st.front._s;
+      relayer(st.back); relayer(st.front);
+      sb.innerHTML = S.P.map(p => '<g class="mon">' + monsterSvg(p, p.hx, p.hy) + '</g>').join('');
+      let f = '';
+      S.B.forEach((b, i) => {
+        f += '<g class="bld"><rect x="' + b.x + '" y="' + b.y + '" width="' + b.w + '" height="' + b.h + '" rx="10" fill="' + ['#C9DDF5', '#D8CFF5', '#CDEFE6', '#F2D9E6'][i % 4] + '" stroke="' + INK + '" stroke-width="5"/>';
+        f += '<polygon points="' + (b.x - 6) + ',' + b.y + ' ' + (b.x + b.w / 2) + ',' + (b.y - 34) + ' ' + (b.x + b.w + 6) + ',' + b.y + '" fill="#9EC5F0" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>';
+        for (let r = 0; r < Math.floor((b.h - 40) / 60); r++) for (let c = 0; c < 2; c++) f += '<rect x="' + R1(b.x + b.w * (0.2 + 0.38 * c)) + '" y="' + (b.y + 26 + r * 60) + '" width="' + R1(b.w * 0.22) + '" height="32" rx="6" fill="#FFF6B8" stroke="' + INK + '" stroke-width="3"/>';
+        f += '</g>';
+      });
+      f += '<path d="M' + (g.x0 - 30) + ' ' + g.ground + 'H' + (g.x1 + 30) + '" stroke="' + INK + '" stroke-width="4" stroke-linecap="round" opacity=".5"/>';
+      sf.innerHTML = f;
+      if (st.glass) sf.querySelectorAll('.bld').forEach(e => { e.style.opacity = '0.28'; });
+      st.S = S;
+    },
+    place(st) {
+      const q = st.q, g = this.geo(q); if (!st.back) return;
+      this.decorScene(st);
+      if (st.cards) W5U.lay(st.cards, Stage.W / 2, g.cy, g.cs, g.cs, g.gap);
+    },
+    cardSpot(st) { const g = this.geo(st.q); return { cx: Stage.W / 2, cy: g.cy, size: g.cs, gap: g.gap }; },
+    present(st) {
+      const q = st.q, g = this.geo(q);
+      st.back = layer(st, 3); st.front = layer(st, 4);
+      st.cards = numRow(st, q.opts, g.cs); st.opts = q.opts.slice();
+      this.place(st);
+      K.pop(st, st.front);
+      K.task(st, [[ic('<rect x="20" y="30" width="44" height="64" rx="6" fill="#C9DDF5" stroke="#2B2118" stroke-width="4"/><rect x="64" y="52" width="22" height="20" rx="6" fill="#5CC46E" stroke="#2B2118" stroke-width="4"/><circle cx="71" cy="60" r="4" fill="#fff" stroke="#2B2118" stroke-width="2"/><path d="M20 70L4 78L20 84Z" fill="#FF6B5B" stroke="#2B2118" stroke-width="3"/>')], ['q']]);
+      K.say(st, '楼后面藏着几只？');
+    },
+    onGesture(st, name, p) { return W5U.tapCard(st, name, p); },
+    next(st, strat) { return W5U.cardNext(st, strat); },
+    async feedback(st, ans) { const c = W5U.cardOf(st, ans); if (c) K.wiggle(st, c); W5U.say(st, '不是' + CNQ(ans) + '只'); await st.scope.wait(T(550)); },
+    trapLine(q) { return { wide: '头和尾巴是一只', stand: '头和尾巴是一只', color: '颜色不一样，是两只', size: '大小不一样，是两只', far: '离得太远，是两只' }[q.trap] || '一只一只数'; },
+    /* a box round a monster: its visible-or-not whole body (stage px) */
+    monBox(p) {
+      const H = p.H;
+      if (p.pose === 'lie') { const x0 = p.f > 0 ? p.hx - p.L - H * 0.7 : p.hx - H / 2, x1 = p.f > 0 ? p.hx + H / 2 : p.hx + p.L + H * 0.7; return { x: x0, y: p.hy - H * 0.65, w: x1 - x0, h: H * 1.3 }; }
+      const tip = p.noTail ? p.hx : p.hx - p.f * H * 1.25, x0 = Math.min(p.hx - H / 2, tip), x1 = Math.max(p.hx + H / 2, tip); return { x: x0, y: p.hy - H * 0.65, w: x1 - x0, h: p.L + H * 1.0 + H * 0.05 };
+    },
+    /* 1. his card blue (said once); 2. the buildings turn to glass, every monster ringed once, counted ("头和尾巴是一只" ...);
+       3. the right card gold ("一共三只") */
+    async explain(st, ans) {
+      const q = st.q, my = st;
+      W5U.blue(st, W5U.cardOf(st, ans));
+      await fbDone(st); if (!Session.alive(my)) return;
+      st.glass = true; this.decorScene(st);
+      st.front._s.querySelectorAll('.bld').forEach(e => st.scope.anim(e, [{ opacity: 1 }, { opacity: 0.28 }], { duration: 380 }));
+      st.S.P.forEach((p, j) => { const b = this.monBox(p); st.scope.timeout(() => { if (!Session.alive(my)) return; K.ring(st, [b], 4, '#FF9F43'); badgeAt(st, p.hx, p.hy - p.H * 0.75 - 6, j + 1, 38); Sfx.count(j + 1); }, 420 + 260 * j); });
+      W5U.note(st, this.trapLine(q));
+      await st.scope.wait(Math.max(1300, 420 + 260 * st.S.P.length + 200)); if (!Session.alive(my)) return;
+      W5U.gold(st, W5U.cardOf(st, q.answer));
+      await W5U.sum(st, '一共' + CNQ(q.answer) + '只');
+    },
+    rightEls(st) { return [W5U.cardOf(st, st.q.answer)]; },
+    async reveal(st) {
+      const q = st.q;
+      W5U.gold(st, W5U.cardOf(st, q.answer)); Sfx.reveal();
+      st.glass = true; this.decorScene(st);
+      this.cheerAll(st);
+      st.summary = '一共' + CNQ(q.answer) + '只'; W5U.sum(st, st.summary);
+      await st.scope.wait(T(900));
+    },
+    cheerAll(st) { if (st.explaining) return; ['ultraman', 'kaiju1', 'kaiju2'].forEach(id => { const a = st.G.actors[id]; if (a && a.x > 0) a.cheer(); }); },
+    workEls(st) { return st.cards || []; },
+    snap(st) { return { n: st.q.answer, trap: st.q.trap }; },
+    lines() {
+      const out = [this.intro, '楼后面藏着几只？', '头和尾巴是一只', '颜色不一样，是两只', '大小不一样，是两只', '离得太远，是两只', '一只一只数'].concat(this.praise);
+      for (let v = 1; v <= 9; v++) out.push('不是' + CNQ(v) + '只');
+      for (let v = 2; v <= 5; v++) out.push('一共' + CNQ(v) + '只');
+      return uniq(out);
+    },
+  };
+})();
 /* ================================================================ ⑦ 复仇者·积木楼 (avengers5, from level 3): V5 加号飞机、减号飞机 ·
    V6 切成一样的 · V7 积木转转 · V8 穿过墙洞 (reasoning). docs/W5-DESIGN.md §5 ⑦. One function, no top-level names: each rule
    is W5R.<id>, registered (background, friends, icon, review card) in games.js. Package D. */
@@ -7422,25 +8686,26 @@ window.W5S = W => '<div class="cloth"><svg viewBox="0 0 60 42"><rect x="2" y="2"
   + '<path d="M12 3L21 7.5V16.5L12 21L3 16.5V7.5ZM3 7.5L12 12L21 7.5M12 12V21" fill="none" stroke="#2B2118" stroke-width="2" stroke-linejoin="round"/></svg>';
 /* Think Academy PreK (F = autumn, S = spring) -> 积木城 (docs/W5-DESIGN.md appendix B); null: not made (and why) */
 const W5LESSONS = [
-  ['F1 Turning Cubes', ['V7', 'J5']], ['F2 How is the Weather?', ['J6'], '读表（穿衣不做）'], ['F3 Zoo Locations', ['P8']], ['F4 Little Painter', ['P7']],
-  ['F5 City Adventure', ['P7'], 'P7 第 5 级：平行线'], ['F6 Squary\'s Farm', ['H6']], ['F7 Unforgettable Trip', null, '不做：规律已有，是强项'], ['F8 Rainforest', ['H6']],
-  ['F9 Fruit Party', ['X6', 'H7']], ['F10 Special Twins', ['H5', 'V6']], ['F11 Insect World', ['J7']], ['F12 Little Handyman', ['V6']],
-  ['F13 Field Trip', ['X7', 'P5']], ['F14 Lucky Ring', ['B5']], ['F15 Let\'s Make Cakes', ['P6', 'A7']], ['F16 Ask Elves', null, '不做：云上 U2 已有'],
-  ['F17 Popping Candy', ['B8']], ['F18 Surprise for Mom', ['H8']],
-  ['S1 Chase It', ['B7', 'A5']], ['S2 Taking Photos', ['X5']], ['S3 Step by Step', ['A6']], ['S4 Tidy Up', ['J8', 'J6']], ['S5 Kingdom of Origami', ['H5'], '只做折（打孔是星空 M4）'],
-  ['S6 One Day in Cannery', ['J7']], ['S7 Shape Beauty Contest', ['P7', 'J6', 'J5']], ['S8 Party at Beach', ['P6', 'B6', 'A7']], ['S9 Rolling Shapes', null, '不做：云上 E3 已有'],
-  ['S10 Squary the Pirate', ['J7'], '有序思考（排除法已有）'], ['S11 Top It Up', ['P6', 'V5', 'A7']], ['S12 Lost in Castle', ['A5'], 'A5 第 4–5 级：城堡'], ['S13 Float and Sink', null, '不做：屏幕上没法真的试'],
-  ['S14 Who Is Taller?', ['X8', 'X6', 'H7']], ['S15 Wowowowo', null, '不做：已有 F4、Y3'], ['S16 Piggy Bank', ['V5', 'A7']], ['S17 Tumble Jumble', ['V8', 'X5']], ['S18 Journey to the Cave', ['A8']],
+  ['F1 Turning Cubes', ['V7', 'J5', 'Z6']], ['F2 How is the Weather?', ['J6'], '读表（穿衣不做）'], ['F3 Zoo Locations', ['P8']], ['F4 Little Painter', ['P7', 'U7']],
+  ['F5 City Adventure', ['P7', 'U5'], 'P7 第 5 级：平行线'], ['F6 Squary\'s Farm', ['H6']], ['F7 Unforgettable Trip', null, '不做：规律已有，是强项'], ['F8 Rainforest', ['H6']],
+  ['F9 Fruit Party', ['X6', 'H7', 'U6']], ['F10 Special Twins', ['H5', 'V6']], ['F11 Insect World', ['J7', 'Z6']], ['F12 Little Handyman', ['V6']],
+  ['F13 Field Trip', ['X7', 'P5', 'Z5', 'U8']], ['F14 Lucky Ring', ['B5', 'Z5']], ['F15 Let\'s Make Cakes', ['P6', 'A7', 'Z7']], ['F16 Ask Elves', null, '不做：云上 U2 已有'],
+  ['F17 Popping Candy', ['B8']], ['F18 Surprise for Mom', ['H8', 'U8']],
+  ['S1 Chase It', ['B7', 'A5', 'U5', 'Z8']], ['S2 Taking Photos', ['X5']], ['S3 Step by Step', ['A6', 'Z5', 'U5']], ['S4 Tidy Up', ['J8', 'J6']], ['S5 Kingdom of Origami', ['H5'], '只做折（打孔是星空 M4）'],
+  ['S6 One Day in Cannery', ['J7']], ['S7 Shape Beauty Contest', ['P7', 'J6', 'J5', 'Z6', 'U6', 'U7']], ['S8 Party at Beach', ['P6', 'B6', 'A7', 'Z7']], ['S9 Rolling Shapes', null, '不做：云上 E3 已有'],
+  ['S10 Squary the Pirate', ['J7', 'Z8'], '有序思考（排除法已有）'], ['S11 Top It Up', ['P6', 'V5', 'A7', 'Z7']], ['S12 Lost in Castle', ['A5'], 'A5 第 4–5 级：城堡'], ['S13 Float and Sink', null, '不做：屏幕上没法真的试'],
+  ['S14 Who Is Taller?', ['X8', 'X6', 'H7', 'U6']], ['S15 Wowowowo', null, '不做：已有 F4、Y3'], ['S16 Piggy Bank', ['V5', 'A7', 'Z7']], ['S17 Tumble Jumble', ['V8', 'X5', 'Z5']], ['S18 Journey to the Cave', ['A8', 'Z8']],
 ];
 /* the games' names for the parent (docs/W5-DESIGN.md §0) */
 const W5NAMES = { P5: '捉迷藏', P6: '小剧场', P7: '钉板', P8: '记位置', B5: '左手右手', B6: '发生了什么', B7: '线团', B8: '找不同', J5: '三角拼图', J6: '数图形填表', J7: '拍下所有分法', J8: '按什么分的',
   A5: '画路线', A6: '看箭头走', A7: '对号入座', A8: '排座位', H5: '剪纸对折', H6: '几个几个圈', H7: '哪块地大', H8: '千里眼找', X5: '从哪儿拍的', X6: '拉直比一比', X7: '取经队排队', X8: '换尺子量',
-  V5: '加号飞机减号飞机', V6: '切成一样的', V7: '积木转转', V8: '穿过墙洞' };
+  V5: '加号飞机减号飞机', V6: '切成一样的', V7: '积木转转', V8: '穿过墙洞',
+  Z5: '听口令装机器人', Z6: '零件一样吗', Z7: '帮大黄蜂改作业', Z8: '卡车开出去', U5: '光线拐弯', U6: '变大变小', U7: '光棒搭房子', U8: '楼后面几只小怪兽' };
 const W5P = sh => {
   if (!LIVE5.length) return;
   const isl = g => ORDER5.find(w => WORLDS[w].games.includes(g)), gname = g => g + ' ' + (W5NAMES[g] || '');
   if (W5.open()) {
-    el('h3', '', sh, { text: '积木城（第五世界，在第二片海和云上之间：位置、路线、图形和加减的意思；上线 ' + LIVE5.length + '/7 个岛）' });
+    el('h3', '', sh, { text: '积木城（第五世界，在第二片海和云上之间：位置、路线、图形和加减的意思；上线 ' + LIVE5.length + '/' + ORDER5.length + ' 个岛）' });
     const t = el('table', '', sh); t.innerHTML = '<tr><th>岛</th><th>开放</th><th>小游戏（✓ 已过 · 星）</th><th>难度</th></tr>';
     ORDER5.forEach(id => {
       const ws = Store.w(id), tr = el('tr', '', t), live = W5.live(id);
@@ -7464,7 +8729,7 @@ const W5P = sh => {
 };
 /* this file can come after the map was drawn: 积木城's flags get their own look now */
 if (typeof Screens !== 'undefined' && Screens.cur === 'map' && MapView.built && MapView.set === 5) { ORDER5.forEach(id => { const I = MapView.isl[id]; if (I && I.flag) I.flag.innerHTML = FLAG_HTML(id); }); MapView.update(); }
-/* ---------------------------------------------------------------- the 28 games of 积木城: one rule each (W5R.<id>, raw/js/w5/
+/* ---------------------------------------------------------------- the 36 games of 积木城 (28 + §16's Z5-Z8, U5-U8): one rule each (W5R.<id>, raw/js/w5/
    <island>.js) + the island's things. Row: [id, island, new background, fallback background (until the new picture is in
    assets/bg: raw/js/build_w5.py lists what is there in W5HAVE), friends (first = the host's side), host, icon, review card,
    boost, things]. A rule not written yet falls back to the sky's MSums (a playable stand-in; its island is not live).
@@ -7507,6 +8772,15 @@ const IC5 = (() => {
     cut: I('<rect x="10" y="22" width="80" height="56" fill="#C8D3E0" ' + S + '/><path d="M50 14V86" stroke="#E8414B" stroke-width="6" stroke-dasharray="8 5"/>'),
     tiles: I('<g ' + S + '><rect x="10" y="10" width="38" height="38" fill="#4FB3FF"/><rect x="52" y="10" width="38" height="38" fill="#4FB3FF"/><rect x="10" y="52" width="38" height="38" fill="#4FB3FF"/><rect x="52" y="52" width="38" height="38" fill="#4FB3FF"/></g><path d="M10 48L48 10V48ZM90 48L52 10H90ZM10 52H48L10 90ZM52 52H90L90 90Z" fill="#FFC93C"/>'),
     wall: I('<rect x="6" y="12" width="88" height="76" rx="4" fill="#C98B4A" ' + S + '/><path d="M30 40H54V54H70V76H30Z" fill="#2B2118"/>'),
+    /* §16: 变形金刚·积木厂 and 奥特曼·积木光之国 */
+    assem: I('<rect x="8" y="8" width="84" height="84" rx="6" fill="#FFF8EC" stroke="' + k + '" stroke-width="3" stroke-dasharray="6 4"/><rect x="38" y="40" width="24" height="24" fill="#E8413A" ' + S + '/><rect x="38" y="14" width="24" height="24" fill="#FFC93C" ' + S + '/><rect x="64" y="40" width="24" height="24" fill="#4FB3FF" ' + S + '/>'),
+    morph: I('<rect x="6" y="52" width="40" height="22" rx="5" fill="#FFC93C" ' + S + '/><circle cx="16" cy="78" r="7" fill="' + k + '"/><circle cx="36" cy="78" r="7" fill="' + k + '"/><path d="M50 50h8M54 46l6 4-6 4" fill="none" ' + S + '/><rect x="66" y="16" width="20" height="18" fill="#FFC93C" ' + S + '/><rect x="62" y="36" width="28" height="32" fill="#FFC93C" ' + S + '/><rect x="64" y="70" width="10" height="18" fill="' + k + '"/><rect x="78" y="70" width="10" height="18" fill="' + k + '"/>'),
+    fix: I('<rect x="6" y="18" width="88" height="56" rx="6" fill="#2E5E3E" ' + S + '/><text x="50" y="58" font-size="28" font-weight="900" text-anchor="middle" fill="#fff">5−3</text><path d="M56 84l10 10 22-26" fill="none" stroke="#5CC46E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>'),
+    park: I('<rect x="6" y="6" width="88" height="88" rx="6" fill="#DCE6F5" ' + S + '/><rect x="12" y="40" width="40" height="20" rx="5" fill="#E8413A" ' + S + '/><rect x="58" y="14" width="18" height="40" rx="5" fill="#FFC93C" ' + S + '/><path d="M94 50h-8" stroke="#5CC46E" stroke-width="8"/>'),
+    beam: I('<path d="M8 30H62V82" fill="none" stroke="#FFE066" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/><path d="M50 18L74 42" stroke="#4FB3FF" stroke-width="8" stroke-linecap="round"/><circle cx="62" cy="86" r="9" fill="#FFC93C" ' + S + '/>'),
+    scale: I('<rect x="8" y="58" width="16" height="16" fill="#4FB3FF" ' + S + '/><rect x="24" y="58" width="16" height="16" fill="#4FB3FF" ' + S + '/><path d="M44 66h8M48 62l6 4-6 4" fill="none" ' + S + '/><rect x="58" y="42" width="16" height="16" fill="#4FB3FF" ' + S + '/><rect x="74" y="42" width="16" height="16" fill="#4FB3FF" ' + S + '/><rect x="58" y="58" width="16" height="16" fill="#4FB3FF" ' + S + '/><rect x="74" y="58" width="16" height="16" fill="#4FB3FF" ' + S + '/>'),
+    sticks: I('<path d="M20 80V44H60V80ZM20 44L40 18L60 44" fill="none" stroke="#7FE3FF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><g fill="' + k + '"><circle cx="20" cy="80" r="4"/><circle cx="60" cy="80" r="4"/><circle cx="20" cy="44" r="4"/><circle cx="60" cy="44" r="4"/><circle cx="40" cy="18" r="4"/></g><text x="80" y="70" font-size="26" font-weight="900" text-anchor="middle" fill="' + k + '">?</text>'),
+    peek: I('<circle cx="30" cy="30" r="12" fill="#B57BFF" ' + S + '/><circle cx="26" cy="28" r="3" fill="' + k + '"/><circle cx="34" cy="28" r="3" fill="' + k + '"/><rect x="18" y="38" width="46" height="54" rx="4" fill="#BFE4FF" ' + S + '/><path d="M64 80Q82 80 88 66" fill="none" stroke="#B57BFF" stroke-width="7" stroke-linecap="round"/>'),
   };
 })();
 [
@@ -7538,6 +8812,16 @@ const IC5 = (() => {
   ['V6', 'avengers5', 'avengers_workshop', 'avengers_lab', ['ironman', 'spiderman'], 'ironman', IC5.cut, 'shape', -1],
   ['V7', 'avengers5', 'avengers_tilehall', 'avengers_armory', ['panther', 'widow'], 'panther', IC5.tiles, null, 0],
   ['V8', 'avengers5', 'avengers_yard', 'avengers_field', ['hulk', 'captain'], 'hulk', IC5.wall, 'pos', 0],
+  /* §16 (client 2026-10-19): 变形金刚·积木厂 (raw/js/w5/transformers.js) and 奥特曼·积木光之国 (raw/js/w5/ultraman.js); fallback
+     backgrounds: the sky's Autobot rooms, 字字岛's land of light (zz_, the client's pictures) */
+  ['Z5', 'trans5', 'trans_assembly', 'trans_hangar', ['optimus', 'bumblebee'], 'optimus', IC5.assem, 'pos', 0],
+  ['Z6', 'trans5', 'trans_garage5', 'trans_dock', ['bumblebee', 'optimus'], 'bumblebee', IC5.morph, 'shape', 0],
+  ['Z7', 'trans5', 'trans_school', 'trans_control', ['bumblebee', 'optimus'], 'bumblebee', IC5.fix, 'sub10', 0, ['crate', 'car', 'duck', 'fish']],
+  ['Z8', 'trans5', 'trans_yard', 'paw_mapmat', ['optimus', 'bumblebee'], 'optimus', IC5.park, null, 0],
+  ['U5', 'ultra5', 'ultra_crystalhall', 'zz_ultra2_quiz', ['ultraman', 'kaiju2'], 'ultraman', IC5.beam, null, 0],
+  ['U6', 'ultra5', 'ultra_lab', 'zz_ultra4_abc', ['zero', 'ultraman'], 'zero', IC5.scale, 'shape', 0],
+  ['U7', 'ultra5', 'ultra_plaza', 'zz_ultra_find', ['zero', 'kaiju1'], 'zero', IC5.sticks, 'shape', 0],
+  ['U8', 'ultra5', 'ultra_street', 'zz_ultra4_write', ['ultraman', 'kaiju1', 'kaiju2'], 'ultraman', IC5.peek, null, 0],
 ].forEach(([id, world, bg, fb, chars, host, icon, card, boost, props]) => {
   const r = W5R[id];
   w5Game(r, { id, world, bg: W5HAVE.has(bg) ? bg : fb, chars, host, iconSrc: icon, boost: boost || (r && r.boost) || 0, props: (props || []).concat((r && r.props) || []) });

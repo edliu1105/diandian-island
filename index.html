@@ -613,6 +613,7 @@ const Store = {
     d.w3 = o.w3 === true; d.w3seen = o.w3seen === true; d.gate3 = o.gate3 === true || d.w3seen; d.fin3 = o.fin3 === 'due' || o.fin3 === 'seen' ? o.fin3 : '';
     d.w4 = o.w4 === true; d.w4seen = o.w4seen === true; d.gate4 = o.gate4 === true || d.w4seen; d.fin4 = o.fin4 === 'due' || o.fin4 === 'seen' ? o.fin4 : ''; if (o.mapSet === 4) d.mapSet = 4;
     d.w5 = o.w5 === true; d.w5seen = o.w5seen === true; d.gate5 = o.gate5 === true || d.w5seen; d.fin5 = o.fin5 === 'due' || o.fin5 === 'seen' ? o.fin5 : ''; d.w3pre = o.w3pre === true; if (o.mapSet === 5) d.mapSet = 5;
+    d.w5extra = Array.isArray(o.w5extra) ? o.w5extra.filter((x, i, a) => ORDER5.includes(x) && a.indexOf(x) === i) : []; d.fin5n = Math.round(num(o.fin5n, d.fin5 ? 7 : 0, 0, 99));
     d.fin2 = o.fin2 === 'due' || o.fin2 === 'seen' ? o.fin2 : '';
     /* v2 (docs/PLAN-v2.md): memory of skill / fact cards, the key and the gems, the parent's checks and tests */
     const cardOk = c => typeof c === 'string' && (/^F[+-]\d+[+-]\d+$/.test(c) || /^[a-z]+\d+$/.test(c));
@@ -2887,7 +2888,7 @@ const MapView = {
     if (!this.built) return;
     const vw = window.innerWidth, vh = window.innerHeight, port = vh > vw * 1.02;
     const MP = this.set === 5 ? MAPPOS5 : this.set === 4 ? MAPPOS4 : this.set === 3 ? MAPPOS3 : this.set === 2 ? MAPPOS2 : MAPPOS, P = port ? MP.port : MP.land;
-    const S = Math.round(Math.min(vw, vh) * (port ? 0.27 : 0.25));
+    const S = Math.round(Math.min(vw, vh) * (port ? 0.27 : 0.25) * (this.set === 5 ? 0.9 : 1));      /* 积木城: eleven places */
     const pts = [];
     Object.keys(this.isl).forEach(id => {
       const I = this.isl[id], [px, py] = P[id], x = vw * px / 100, y = vh * py / 100, s = id === 'festival' || id === 'rainbow' || id === 'starcastle' || id === 'blockcastle' ? S * 0.9 : id === 'gate' ? S * 0.8 : S, sp = id === 'festival' || id === 'gate' || id === 'rainbow' || id === 'starcastle' || id === 'blockcastle';
@@ -2988,7 +2989,7 @@ const MapView = {
     if (!ws.unlocked || !W5.live(id)) {
       const I = this.isl[id];
       I.cloud.animate([{ transform: 'translate(-50%,-50%)' }, { transform: 'translate(-56%,-50%)' }, { transform: 'translate(-44%,-50%)' }, { transform: 'translate(-50%,-50%)' }], { duration: T(420) + 1 });
-      Voice.sayNow(W5.live(id) ? '先去这里玩吧！' : '新岛还在建哦！', { tag: 'map' });
+      Voice.sayNow(W5.live(id) ? '先去这里玩吧！' : WORLDS[id].soon || '新岛还在建哦！', { tag: 'map' });
       const r = this.recommend(); if (r) this.pointAt(r);
       return;
     }
@@ -3111,7 +3112,7 @@ const MapView = {
       J.cloud.animate([{ opacity: 1, transform: 'translate(-50%,-50%)' }, { opacity: 0, transform: 'translate(-50%,-90%) scale(1.4)' }], { duration: T(900) + 1, fill: 'forwards' });
       J.hero.style.opacity = 1;
       J.hero.animate([{ transform: 'translateY(24px) scale(.2)', opacity: 0 }, { transform: 'translateY(0) scale(1)', opacity: 1 }], { duration: T(520) + 1, delay: T(380), easing: EASE.pop, fill: 'backwards' });
-      Sfx.fanfare(); Voice.say('新小岛开啦！', { tag: 'unlock' });
+      Sfx.fanfare(); Voice.say(WORLDS[o].arrive || '新小岛开啦！', { tag: 'unlock' });
       Fx.burst(0, 0, { screen: true, n: 1 });
       await new Promise(r => setTimeout(r, T(1000)));
       this.update();
@@ -3156,9 +3157,19 @@ const MapView = {
     }
     if (this.set === 5 && Store.s.fin5 === 'due' && this.isl.blockcastle) {
       if (!live()) return false;
-      Store.s.fin5 = 'seen'; Store.save();
+      Store.s.fin5 = 'seen'; Store.s.fin5n = ORDER5.length; Store.save();
       await this.openShow('blockcastle', '积木城堡开啦！');
       if (live()) this.pointAt('blockcastle');
+      await new Promise(r => setTimeout(r, T(2200)));
+      if (live()) Finale.play('blocks');
+      return true;
+    }
+    if (this.set === 5 && Store.s.fin5 === 'seen' && (Store.s.fin5n || 7) < ORDER5.length && W5.allDone() && this.isl.blockcastle) {
+      if (!live()) return false;
+      Store.s.fin5n = ORDER5.length; Store.save();
+      const C = this.isl.blockcastle; C.glow.style.opacity = 1;
+      C.land.animate([{ transform: 'translate(-50%,-50%) scale(1)' }, { transform: 'translate(-50%,-50%) scale(1.15)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: T(900) + 1, iterations: 2 });
+      Sfx.fanfare(); Voice.say('新朋友也来啦！', { tag: 'unlock' }); Fx.burst(0, 0, { screen: true, n: 1 });
       await new Promise(r => setTimeout(r, T(2200)));
       if (live()) Finale.play('blocks');
       return true;
@@ -3344,9 +3355,9 @@ const Finale = {
     tapify(home, () => { this.stop(); Screens.show('map'); MapView.update(); MapView.after(T(500)); });      /* the shows that are due: the gold gate (R12-gate) */
     sc.add(() => home.remove());
     const vw = window.innerWidth, vh = window.innerHeight;
-    const all = LIVE().flatMap(w => WORLDS[w].chars).concat(W2.allDone() ? ['catboy', 'owlette', 'gekko'] : []);
+    const all = LIVE().flatMap(w => WORLDS[w].chars).concat(W2.allDone() ? ['catboy', 'owlette', 'gekko'] : [], kind === 'blocks' ? ['optimus', 'bumblebee', 'ultraman', 'zero', 'kaiju1', 'kaiju2'] : []);
     const ci = all.indexOf('captain'); if (ci >= 0) { all.splice(ci, 1); all.splice(Math.min(all.length, all.indexOf('widow') + 1), 0, 'captain'); }   /* R5-4: not behind the hammer */
-    const rows = [all.slice(0, 13), all.slice(13, 26), all.slice(26)];
+    const per = kind === 'blocks' ? Math.ceil(all.length / 3) : 13, rows = [all.slice(0, per), all.slice(per, 2 * per), all.slice(2 * per)];
     const base = Math.min(vw, vh);
     rows.forEach((row, r) => {
       const h = base * [0.2, 0.24, 0.28][r], y = vh * [0.6, 0.72, 0.88][r];
@@ -10963,42 +10974,50 @@ const MAPPOS4 = {
 };
 /*@@W4END@@*/
 /*@@W5@@*/
-const ORDER5 = ['peppa5', 'bluey5', 'pjmasks5', 'paw5', 'huluwa5', 'xiyou5', 'avengers5'];
+const ORDER5 = ['peppa5', 'bluey5', 'pjmasks5', 'paw5', 'trans5', 'huluwa5', 'xiyou5', 'ultra5', 'avengers5'];
 const LIVE5 = window.__live5 || ['peppa5', 'bluey5', 'pjmasks5', 'paw5', 'huluwa5', 'xiyou5', 'avengers5'];
-const W5A = { i:1,m:'map_blocks',g:'gate_blocks',c:'blockcastle',f:'finale_blocks',t:'' };
+const W5A = { i:1,m:'map_blocks',g:'gate_blocks',c:'blockcastle',f:'finale_blocks',z:'trans5',u:'ultra5',t:'' };
 [['peppa', 'peppa2', 1, '佩奇·积木屋', 'peppa', 'george', 'rain', 'P', '佩奇搭积木！'],
   ['bluey', 'bluey2', 1, 'Bluey·积木院', 'bluey', 'bingo', 'crickets', 'B', '来我家玩吧！'],
   ['pjmasks', 'pjmasks', 1, '睡衣小英雄·积木塔', 'owlette', 'catboy', 'city', 'J', '积木塔出发！'],
   ['paw', 'paw2', 2, '汪汪队·积木站', 'chase', 'skye', 'waves', 'A', '积木站出动！'],
   ['huluwa', 'huluwa2', 2, '葫芦娃·积木山', 'grandpa', 'gourd2', 'wind', 'H', '葫芦娃搭积木！'],
   ['xiyou', 'xiyou2', 2, '西游记·积木庙', 'wukong', 'bajie', 'wind', 'X', '俺老孙搭积木！'],
-  ['avengers', 'avengers2', 3, '复仇者·积木楼', 'captain', 'hulk', 'city', 'V', '复仇者，搭起来！']].forEach(([skin, fb, base, name, host, runner, amb, L, hi], i) => {
-  const id = ORDER5[i], W4w = WORLDS[skin + '4'];
+  ['avengers', 'avengers2', 3, '复仇者·积木楼', 'captain', 'hulk', 'city', 'V', '复仇者，搭起来！']].forEach(([skin, fb, base, name, host, runner, amb, L, hi]) => {
+  const id = skin + '5', W4w = WORLDS[skin + '4'];
   WORLDS[id] = { map: 5, isl: W5A.i ? id : fb, skin, base, name, color: W4w.color, color2: W4w.color2, host, runner, chars: W4w.chars.concat(skin === 'huluwa' ? ['snake'] : skin === 'avengers' ? ['panther'] : []), amb, games: [5, 6, 7, 8].map(k => L + k), hi };
   MAXLV[id] = 5; WORLDS[id].games.forEach(g => { REQUIRED[g] = []; });
 });
+[['trans5', W5A.z, '变形金刚·积木厂', '#E8413A', '#2E6FD8', 'optimus', 'bumblebee', ['optimus', 'bumblebee'], 'Z', '汽车人，变形！', '变形金刚来啦！', '变形金刚快来啦！'],
+  ['ultra5', W5A.u, '奥特曼·积木光之国', '#AEB8C8', '#E0303A', 'ultraman', 'zero', ['ultraman', 'zero', 'kaiju1', 'kaiju2'], 'U', '光之国出发！', '奥特曼来啦！', '奥特曼快来啦！']].forEach(([id, isl, name, color, color2, host, runner, chars, L, hi, arrive, soon]) => {
+  WORLDS[id] = { map: 5, isl, skin: 'avengers', base: 2, name, color, color2, host, runner, chars, amb: 'city', games: [5, 6, 7, 8].map(k => L + k), hi, arrive, soon };
+  MAXLV[id] = 5; WORLDS[id].games.forEach(g => { REQUIRED[g] = []; });
+});
 const W5 = {
-  get full() { return LIVE5.length === 7; },
+  get full() { return LIVE5.length === ORDER5.length; },
+  get whole() { return ORDER5.filter(w => !WORLDS[w].arrive).every(w => LIVE5.includes(w)); },
   live: w => !ORDER5.includes(w) || LIVE5.includes(w),
   open() { return LIVE5.length > 0 && (W2.allDone() || !!Store.s.w5 || !!Store.s.w3seen); },
   allDone() { return ORDER5.every(w => W2.islandDone(w)); },
   check(show) {
-    const S = Store.s; let any = false;
-    if (!S.w3pre && (S.w3seen || S.gate3 || (!this.full && W2.allDone()))) { S.w3pre = true; any = true; }
-    ORDER5.forEach((id, i) => {
+    const S = Store.s, ex = S.w5extra || (S.w5extra = []); let any = false;
+    if (!S.w3pre && (S.w3seen || S.gate3 || (!this.whole && W2.allDone()))) { S.w3pre = true; any = true; }
+    for (let pass = 0; pass < 2; pass++) ORDER5.forEach((id, i) => {
       const ws = Store.w(id);
       if (ws.unlocked || !LIVE5.includes(id)) return;
-      if (S.w2all || (this.open() && ORDER5.slice(0, i).every(w => W2.islandDone(w)))) { ws.unlocked = true; if (show) ws.justOpened = true; any = true; }
+      const go = S.w2all || (this.open() && ORDER5.slice(0, i).every(w => !LIVE5.includes(w) || ex.includes(w) || W2.islandDone(w)));
+      const bonus = ORDER5.slice(i + 1).some(w => Store.w(w).unlocked);
+      if (go || bonus) { ws.unlocked = true; if (show || bonus || WORLDS[id].arrive) ws.justOpened = true; if (bonus) ex.push(id); any = true; }
     });
-    if (this.allDone() && !S.fin5) { S.fin5 = 'due'; any = true; }
+    if (this.allDone() && !S.fin5) { S.fin5 = 'due'; S.fin5n = ORDER5.length; any = true; }
     if (any) Store.save();
   },
 };
-W3.open = () => !!Store.s.w3 || !!Store.s.w3pre || (W5.full ? W5.allDone() : W2.allDone());
+W3.open = () => !!Store.s.w3 || !!Store.s.w3pre || (W5.whole ? ORDER5.every(w => !LIVE5.includes(w) || W2.islandDone(w)) : W2.allDone());
 const ALLW = () => ORDER.concat(ORDER2, ORDER5, ORDER3, ORDER4);
 const MAPPOS5 = {
-  land: { peppa5: [11, 74], bluey5: [14, 38], pjmasks5: [33, 15], paw5: [63, 14], huluwa5: [87, 27], xiyou5: [88, 66], avengers5: [67, 80], blockcastle: [39, 80], gate: [50, 47] },
-  port: { peppa5: [21, 85], bluey5: [17, 59], pjmasks5: [22, 33], paw5: [50, 19], huluwa5: [80, 32], xiyou5: [83, 59], avengers5: [79, 85], blockcastle: [50, 87], gate: [50, 50] },
+  land: { peppa5: [10, 78], bluey5: [10, 49], pjmasks5: [17, 19], paw5: [35, 30], trans5: [67, 19], huluwa5: [86, 42], xiyou5: [86, 71], ultra5: [69, 84], avengers5: [50, 84], blockcastle: [30, 83], gate: [50, 50] },
+  port: { peppa5: [21, 89], bluey5: [17, 68], pjmasks5: [18, 47], paw5: [22, 25], trans5: [50, 22], huluwa5: [78, 27], xiyou5: [82, 48], ultra5: [80, 69], avengers5: [71, 90], blockcastle: [46, 88], gate: [50, 53] },
 };
 /*@@W5END@@*/
 /*@@V2@@*/

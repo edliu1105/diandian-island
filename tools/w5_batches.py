@@ -71,10 +71,26 @@ W5 = [
     ('prop_fish', 'prop', 'common', 'one small cute orange fish with a round body and a little tail fin, side view, a plain toy fish with a simple dot eye'),
 ]
 
+# ---------------- §16 (client 2026-10-19): 变形金刚·积木厂 (trans5, Z5-Z8) and 奥特曼·积木光之国 (ultra5, U5-U8): 2 islands + 8
+# backgrounds, no new things. No logos anywhere (no Autobot sign, no colour timer), no character, nothing a game asks about.
+# Its own index: batches/index_w5b.tsv (python tools/w5_batches.py b), then python tools/w5_process.py <ids>.
+W5B = [
+    ('isl_trans5', 'island', 'avengers', BLOCK + 'a small toy factory built of red and blue toy bricks with a roll-up door, a little crane made of yellow bricks, a short road in front with one small toy-brick car, NO logos, NO signs, NO letters'),
+    ('isl_ultra5', 'island', 'avengers', BLOCK + 'a land of light built of silver-white and pale blue toy bricks: glowing crystal towers and a red and silver striped arch made of bricks, NO faces, NO logos, NO people'),
+    ('bg_trans_assembly', 'bg', 'avengers', 'inside a toy-brick factory assembly hall: pipes and round lamps on the walls far at the back, red and blue brick walls' + FLOOR + ', no parts, no robots, no cars, no logos'),
+    ('bg_trans_garage5', 'bg', 'avengers', 'inside a toy-brick repair garage: a tool wall far at the back, a roll-up door, warm light' + FLOOR + ', no cars, no robots, no logos'),
+    ('bg_trans_school', 'bg', 'avengers', 'a small classroom inside a toy-brick factory: one big EMPTY blank dark green chalkboard on the back wall, a window, brick walls' + FLOOR + ', nothing written on the board, no numbers, no desks, no logos'),
+    ('bg_trans_yard', 'bg', 'avengers', 'the yard of a toy-brick factory: a low brick wall and a wide gate, factory buildings far at the back, a blue sky' + FLOOR + ', no cars, no trucks, no parking lines, no logos'),
+    ('bg_ultra_crystalhall', 'bg', 'avengers', 'a grand hall of glowing pale blue crystal: crystal pillars far at the back, soft light' + FLOOR + ', no mirrors, no lamps on the floor, no people, no characters'),
+    ('bg_ultra_lab', 'bg', 'avengers', 'a futuristic laboratory of white and pale blue crystal: glowing machines far at the back' + FLOOR + ', no shapes drawn on the walls, no people, no characters'),
+    ('bg_ultra_plaza', 'bg', 'avengers', 'a wide plaza in a city of glowing crystal towers far at the back, a pale blue sky' + FLOOR + ', no sticks, no frames, no houses in front, no people, no characters'),
+    ('bg_ultra_street', 'bg', 'avengers', 'a street of a crystal city: tall glowing towers far at the back, a pale sky' + FLOOR + ', no buildings in front, no monsters, no people, no characters'),
+]
 
-def main():
+
+def main(items=None, name='index_w5.tsv', tag='w5'):
     groups = {}
-    for aid, kind, world, subject in W5:
+    for aid, kind, world, subject in (items or W5):
         groups.setdefault((world, 'bg' if kind == 'bg' else 'obj'), []).append((aid, kind, world, subject))
     refs_of = {'peppa': ['peppa.png', 'george.png'], 'bluey': ['bluey.png', 'bingo.png'], 'huluwa': ['gourd3.png', 'grandpa.png'],
                'paw': ['chase.png', 'marshall.png'], 'xiyou': ['wukong.png', 'bajie.png'], 'avengers': ['ironman.png', 'hulk.png'], 'common': ['wukong.png', 'peppa.png']}
@@ -82,7 +98,7 @@ def main():
     for (world, cls), lst in groups.items():
         for i in range(0, len(lst), 3):
             chunk = lst[i:i + 3]
-            bid = 'w5_%s_%s_%02d' % (world, cls, i // 3 + 1)
+            bid = '%s_%s_%s_%02d' % (tag, world, cls, i // 3 + 1)
             body = [HEADER]
             if cls == 'bg': body.append(OPAQUE)
             if any(k == 'island' for _, k, _, _ in chunk):
@@ -99,9 +115,10 @@ def main():
             if any(k == 'island' for _, k, _, _ in chunk):
                 refs += ['assets/isl/peppa2.png', 'assets/isl/xiyou2.png']
             idx.append('%s\t%s\t%s' % (bid, ','.join(refs), ','.join(targets)))
-    open(os.path.join(BATCH_DIR, 'index_w5.tsv'), 'w', encoding='utf-8').write('\n'.join(idx) + '\n')
-    print('batches', len(idx), 'images', len(W5))
+    open(os.path.join(BATCH_DIR, name), 'w', encoding='utf-8').write('\n'.join(idx) + '\n')
+    print('batches', len(idx), 'images', len(items or W5))
 
 
 if __name__ == '__main__':
-    main()
+    if sys.argv[1:] == ['b']: main(W5B, 'index_w5b.tsv', 'w5b')
+    else: main()
