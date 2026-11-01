@@ -5067,10 +5067,26 @@ const W5U = {
     },
     drops(st, i) { return [0, 2, 3].filter(j => j !== i).map(j => ({ id: 'n' + [0, 0, 1, 2][j], rect: () => box(st.tiles[j]) })); },
     tileOf(id) { const m = /^n(\d)$/.exec(id || ''); return m ? [0, 2, 3][+m[1]] : id === 'op' ? 1 : -1; },
-    /* the row of five number cards above tile i: the numbers around the one in it */
+    /* the row of five number cards above tile i: five numbers in a row (1-10) that always hold the one the sentence needs
+       there (by role; together: the other part when he put that part first) and, where both fit, the one in it now; where
+       the needed one sits in the row changes from story to story. Kept while it still holds the needed one. (Client
+       2026-11-01: the row was the numbers around the one in it - for 5 − 4 = 1 written 5 − 1 = 4 the 4 offered 2 3 4 5 6,
+       no 1: a swapped story could not be mended by tapping) */
+    rowVals(st, i) {
+      const q = st.q, R = q.right, P = st.rows || (st.rows = {}), cur = +st.vals[i];
+      let want = +R[i];
+      if (q.type === 'join' && i !== 3) { const o = 2 - i; if (st.vals[o] === R[i] && st.vals[o] !== R[o]) want = +R[o]; }
+      if (!(P[i] != null && P[i] <= want && want <= P[i] + 4)) {
+        const hi = [0, 5, 7, 9, 9, 10][q.d] || 10, los = [];      /* never past the level's numbers: at L1 always 1 2 3 4 5 */
+        for (let lo = Math.max(1, want - 4); lo <= Math.min(6, want, Math.max(1, hi - 4)); lo++) los.push(lo);
+        const both = los.filter(lo => lo <= cur && cur <= lo + 4), pool = both.length ? both : los;
+        P[i] = pool[(q.v[0] * 7 + q.v[1] * 3 + q.v[2] + i * 5) % pool.length];
+      }
+      return [0, 1, 2, 3, 4].map(k => P[i] + k);
+    },
     openPop(st, i) {
       this.closePop(st);
-      const cur = +st.vals[i], lo = Math.max(1, Math.min(6, cur - 2)), vals = [0, 1, 2, 3, 4].map(k => lo + k), tb = box(st.tiles[i]), s = 92, gp = 8, W = 5 * s + 4 * gp;
+      const cur = +st.vals[i], vals = this.rowVals(st, i), tb = box(st.tiles[i]), s = 92, gp = 8, W = 5 * s + 4 * gp;
       const x0 = Math.max(8, Math.min(Stage.W - 8 - W, Math.round(tb.x + tb.w / 2 - W / 2))), y0 = Math.round(tb.y - s - 30);
       const els = vals.map((v, k) => { const c = W3X.card(st, null, 60); c.style.zIndex = 60; c.appendChild(this.tileNode(String(v), 54)); place(c, x0 + k * (s + gp), y0, s, s); if (v === cur) c.style.boxShadow = '0 0 0 5px ' + GOLD + ', 0 0 0 9px ' + INK; K.reg(st, 'p' + k, c, {}); K.pop(st, c, 30 * k); return c; });
       st.pop = { i, els, vals }; st.tiles[i].style.outline = '6px solid ' + GOLD; st.tiles[i].style.outlineOffset = '3px';
