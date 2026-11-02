@@ -3547,12 +3547,27 @@ const SWU = {
   watch(reg) {
     if (!reg || this.reg === reg) return;
     this.reg = reg;
-    reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') this.maybe(); }); });
+    reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') this.maybe(); if (w.state === 'redundant') this.retry(); }); });
+    if (!reg.installing && !reg.waiting && !reg.active) this.retry();
     /* the first install claiming a page that had no worker is NOT a version switch (same release as this page) */
     this.hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.switching) { location.reload(); return; } if (this.hadController) { this.stale = true; this.reloadIfSafe(); } this.hadController = true; });
     try { const p = reg.update(); if (p && p.catch) p.catch(() => {}); } catch (e) {}      /* offline / flaky Wi-Fi: the check fails, nothing else */
     this.maybe();
+  },
+  /* an install that did not finish leaves this version without its worker (no offline play): Chromium ends any service worker
+     event after 5 minutes - the whole package is ~85 MB since 积木城, more on a slow line - and a file that will not come
+     fails it too. Try again 30 s later, while the app is open (at most 20 times); the files already fetched stay in this
+     version's cache, so a new try only fetches the rest (2026-11-01: before, it waited for the next launch) */
+  retry() {
+    if (this.tries >= 20) return;
+    clearTimeout(this.rt);
+    this.rt = setTimeout(() => {
+      const reg = this.reg; if (!reg || reg.installing || reg.waiting) return;
+      this.tries = (this.tries || 0) + 1;
+      const again = reg.active ? reg.update() : navigator.serviceWorker.register('sw.js');
+      if (again && again.catch) again.catch(() => this.retry());
+    }, window.__swRetryMs || 30000);
   },
   safe() { return Screens.cur === 'entry' || document.hidden; },
   maybe() { if (this.reg && this.reg.waiting && navigator.serviceWorker.controller && this.safe()) this.apply(); },

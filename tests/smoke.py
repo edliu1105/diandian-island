@@ -72,15 +72,16 @@ def main():
             log.ok('[%s] first load ready in %.1f s' % (eng, time.time() - t0))
             page.click('#play')
             page.wait_for_function("document.querySelector('#map').classList.contains('on')", timeout=10000)
-            full = []
-            for _ in range(240):
-                cs = cache_state(page)
+            # the install is over when the version's META is written (an install still running has PARTIAL - counted, it made a
+            # cache look full too early) and this version controls the page; ~8 200 files / 85 MB since 积木城: up to 15 min
+            full, ctrl, t1 = [], False, time.time()
+            for _ in range(180):
+                full = page.evaluate("async () => { const out = []; for (const k of await caches.keys()) if (k.startsWith('ddi-assets-') && await (await caches.open(k)).match('./__ddi_meta.json')) out.push(k); return out; }")
                 ctrl = page.evaluate("!!(navigator.serviceWorker && navigator.serviceWorker.controller)")
-                full = [k for k, n in cs.items() if k.startswith('ddi-assets-') and n >= len(assets) + 1]
                 if full and ctrl:
                     break
-                page.wait_for_timeout(1000)
-            log.check(bool(full), '[%s] service worker precached all %d assets %s' % (eng, len(assets), cache_state(page)))
+                page.wait_for_timeout(5000)
+            log.check(bool(full) and ctrl, '[%s] service worker installed all %d assets and controls the page (%.0f s) %s' % (eng, len(assets), time.time() - t1, cache_state(page)))
 
             def play(tag):
                 for w, g in PLAY:
