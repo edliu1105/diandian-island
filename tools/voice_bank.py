@@ -3,7 +3,8 @@
 Chinese voice - the same voice as the counting numbers (tools/make_voice.py) - into assets/voice/v/<fnv1a>.mp3, and the
 list of recorded keys into assets/voice/bank.json (index.html: Bank). Only sentences without a recording are made, so
 re-running after new games costs only the new sentences.
-usage: python tools/voice_bank.py [lines.json]      (default raw/voice_lines.json, a JSON list of sentences)"""
+usage: python tools/voice_bank.py [lines.json] [--resay]      (default raw/voice_lines.json, a JSON list of sentences;
+--resay makes the lines SOUNDS changes again)"""
 import os, sys, json, struct, asyncio, subprocess
 import edge_tts
 
@@ -11,6 +12,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'assets', 'voice', 'v')
 TMP = os.path.join(ROOT, 'raw', 'voice', 'v')
 VOICE = 'zh-CN-XiaoyiNeural'
+# A character with two sounds that the voice reads the wrong way in our lines (2026-11-01: 你能行的 came out as 你能航的 and
+# 这一行 as 这一形): the voice is given the same sound written with a character that has only that one sound. The key (the
+# file name) stays the line's own text. A line changed here keeps its old clip until it is made again (--resay);
+# tests/test_sounds.py: every line with 行 says one of the two
+SOUNDS = [('能行', '能形'), ('不行', '不形'), ('一行', '一航'), ('那行', '那航'), ('每行', '每航'), ('行和列', '航和列')]
+
+
+def spoken(text):
+    """what the voice is given for a line"""
+    for a, b in SOUNDS:
+        text = text.replace(a, b)
+    return text
 
 
 def key(text):
@@ -41,7 +54,7 @@ async def one(sem, text, stats):
     async with sem:
         for attempt in range(4):
             try:
-                await edge_tts.Communicate(text, VOICE, rate='-6%', pitch='+4Hz').save(raw)
+                await edge_tts.Communicate(spoken(text), VOICE, rate='-6%', pitch='+4Hz').save(raw)
                 break
             except Exception as e:
                 if attempt == 3:
@@ -56,9 +69,14 @@ async def one(sem, text, stats):
 
 
 async def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'raw', 'voice_lines.json')
+    args = [a for a in sys.argv[1:] if a != '--resay']
+    src = args[0] if args else os.path.join(ROOT, 'raw', 'voice_lines.json')
     lines = sorted(set(t.strip() for t in json.load(open(src, encoding='utf-8')) if t and t.strip()))
     os.makedirs(OUT, exist_ok=True); os.makedirs(TMP, exist_ok=True)
+    if '--resay' in sys.argv:
+        for t in lines:
+            if spoken(t) != t and os.path.exists(os.path.join(OUT, key(t) + '.mp3')):
+                os.remove(os.path.join(OUT, key(t) + '.mp3'))
     stats = {'have': 0, 'made': 0, 'fail': 0}
     sem = asyncio.Semaphore(6)
     await asyncio.gather(*(one(sem, t, stats) for t in lines))

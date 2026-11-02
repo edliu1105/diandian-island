@@ -34,6 +34,7 @@ run hints          tests/test_hints.py "$ENG"
 run idle           tests/test_idle.py "$ENG"
 run background     tests/test_background.py "$ENG"
 run voice          tests/test_voice.py "$ENG"
+run sounds         tests/test_sounds.py
 run nospeech       tests/test_nospeech.py "$ENG"
 run boot           tests/test_boot.py "$ENG"
 run offline        tests/test_offline.py "$ENG"
